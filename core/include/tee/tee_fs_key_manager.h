@@ -32,7 +32,11 @@
 
 #define TEE_FS_KM_CHIP_ID_LENGTH    32
 #define TEE_FS_KM_HMAC_ALG          TEE_ALG_HMAC_SHA256
+#ifndef ENABLE_CRYPTOENGINE
 #define TEE_FS_KM_AUTH_ENC_ALG      TEE_ALG_AES_GCM
+#else
+#define TEE_FS_KM_AUTH_ENC_ALG      TEE_ALG_AES_CCM
+#endif
 #define TEE_FS_KM_ENC_FEK_ALG       TEE_ALG_AES_ECB_NOPAD
 #define TEE_FS_KM_SSK_SIZE          TEE_SHA256_HASH_SIZE
 #define TEE_FS_KM_FEK_SIZE          16  /* bytes */

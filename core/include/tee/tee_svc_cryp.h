@@ -102,4 +102,7 @@ TEE_Result syscall_asymm_verify(unsigned long state,
 			size_t num_params, const void *data, size_t data_len,
 			const void *sig, size_t sig_len);
 
+TEE_Result syscall_rcar_aes_unwrap(void *srcData, uint32_t srcLen,
+		void *keyData, uint32_t keySize, uint32_t isSecretKey, void *destData,
+		uint32_t *dstLen);
 #endif /* TEE_SVC_CRYP_H */

@@ -53,4 +53,7 @@ void gic_cpu_init(struct gic_data *gd);
 void gic_it_handle(struct gic_data *gd);
 
 void gic_dump_state(struct gic_data *gd);
+
+void gic_it_set_cpu_mask(struct gic_data *gd, size_t it, uint8_t cpu_mask);
+
 #endif /*__DRIVERS_GIC_H*/

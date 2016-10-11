@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
+ * Copyright (c) 2015-2016, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -38,5 +39,6 @@ TEE_Result tee_time_get_ta_time(const TEE_UUID *uuid, TEE_Time *time);
 TEE_Result tee_time_get_ree_time(TEE_Time *time);
 TEE_Result tee_time_set_ta_time(const TEE_UUID *uuid, const TEE_Time *time);
 void tee_time_wait(uint32_t milliseconds_delay);
+TEE_Result arm_cntpct_get_sys_time(TEE_Time *time);
 
 #endif

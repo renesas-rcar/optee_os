@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2015, Linaro Limited
+ * Copyright (c) 2015-2016, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -52,6 +53,13 @@
 
 #if defined(CFG_WITH_VFP)
 #include <kernel/vfp.h>
+#endif
+
+#ifdef PLATFORM_RCAR
+#include "rcar_common.h"
+#include "rcar_log_func.h"
+#include "rcar_ddr_training.h"
+#include "rcar_maskrom.h"
 #endif
 
 #define PADDR_INVALID		0xffffffff
@@ -325,7 +333,10 @@ static void init_primary_helper(uint32_t pageable_part, uint32_t nsec_entry)
 	init_vfp_sec();
 
 	init_runtime(pageable_part);
-
+#ifdef PLATFORM_RCAR
+	/* Log buffer clear */
+	log_buf_init();
+#endif
 	IMSG("Initializing (%s)\n", core_v_str);
 
 	thread_init_primary(generic_boot_get_handlers());
@@ -338,6 +349,14 @@ static void init_primary_helper(uint32_t pageable_part, uint32_t nsec_entry)
 
 	if (init_teecore() != TEE_SUCCESS)
 		panic();
+#ifdef PLATFORM_RCAR
+	/* LSI Product setup */
+	product_setup();
+
+	/* Initialize DDR training */
+	ddr_training_timer_init();
+	ddr_training_timer_start();
+#endif
 	DMSG("Primary CPU switching to normal world boot\n");
 }
 

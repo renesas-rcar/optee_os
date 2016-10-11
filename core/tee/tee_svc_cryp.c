@@ -2430,7 +2430,7 @@ static TEE_Result tee_svc_cipher_update_helper(unsigned long state,
 	}
 
 	if (last_block && cs->ctx_finalize != NULL) {
-		cs->ctx_finalize(cs->ctx, cs->mode);
+		cs->ctx_finalize(cs->ctx, cs->algo);
 		cs->ctx_finalize = NULL;
 	}
 
@@ -3513,4 +3513,19 @@ TEE_Result syscall_asymm_verify(unsigned long state,
 out:
 	free(params);
 	return res;
+}
+
+TEE_Result syscall_rcar_aes_unwrap(void *srcData, uint32_t srcLen, void *keyData,
+		uint32_t keySize, uint32_t isSecretKey, void *destData,
+		uint32_t *dstLen)
+{
+	TEE_Result ret;
+
+	if (NULL != (crypto_ops.cipher.unwrap)) {
+		ret = crypto_ops.cipher.unwrap(srcData, srcLen, keyData,
+				keySize, isSecretKey, destData, dstLen);
+	} else {
+		ret = TEE_ERROR_NOT_IMPLEMENTED;
+	}
+	return ret;
 }

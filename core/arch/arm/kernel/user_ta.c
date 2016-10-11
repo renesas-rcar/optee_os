@@ -1,6 +1,7 @@
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
  * Copyright (c) 2015, Linaro Limited
+ * Copyright (c) 2015-2016, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -52,8 +53,13 @@
 #include "elf_load.h"
 #include "elf_common.h"
 
+#ifdef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
+#include "rcar_ta_auth.h"
+#endif
+
 #define STACK_ALIGNMENT   (sizeof(long) * 2)
 
+#ifndef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
 static TEE_Result load_header(const struct shdr *signed_ta,
 		struct shdr **sec_shdr)
 {
@@ -74,13 +80,16 @@ static TEE_Result load_header(const struct shdr *signed_ta,
 
 	return TEE_SUCCESS;
 }
+#endif
 
 static TEE_Result check_shdr(struct shdr *shdr)
 {
+#ifndef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
 	struct rsa_public_key key;
 	TEE_Result res;
 	uint32_t e = TEE_U32_TO_BIG_ENDIAN(ta_pub_key_exponent);
 	size_t hash_size;
+#endif
 
 	if (shdr->magic != SHDR_MAGIC || shdr->img_type != SHDR_TA)
 		return TEE_ERROR_SECURITY;
@@ -88,6 +97,7 @@ static TEE_Result check_shdr(struct shdr *shdr)
 	if (TEE_ALG_GET_MAIN_ALG(shdr->algo) != TEE_MAIN_ALGO_RSA)
 		return TEE_ERROR_SECURITY;
 
+#ifndef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
 	res = tee_hash_get_digest_size(TEE_DIGEST_HASH_TO_ALGO(shdr->algo),
 				       &hash_size);
 	if (res != TEE_SUCCESS)
@@ -120,6 +130,7 @@ out:
 	crypto_ops.acipher.free_rsa_public_key(&key);
 	if (res != TEE_SUCCESS)
 		return TEE_ERROR_SECURITY;
+#endif
 	return TEE_SUCCESS;
 }
 
@@ -182,7 +193,9 @@ static TEE_Result load_elf(struct user_ta_ctx *utc, struct shdr *shdr,
 			const struct shdr *nmem_shdr)
 {
 	TEE_Result res;
+#ifndef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
 	size_t hash_ctx_size;
+#endif
 	void *hash_ctx = NULL;
 	uint32_t hash_algo;
 	uint8_t *nwdata = (uint8_t *)nmem_shdr + SHDR_GET_SIZE(shdr);
@@ -193,6 +206,7 @@ static TEE_Result load_elf(struct user_ta_ctx *utc, struct shdr *shdr,
 	void *p;
 	size_t vasize;
 
+#ifndef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
 	if (!tee_vbuf_is_non_sec(nwdata, nwdata_len))
 		return TEE_ERROR_SECURITY;
 
@@ -217,6 +231,9 @@ static TEE_Result load_elf(struct user_ta_ctx *utc, struct shdr *shdr,
 				     (uint8_t *)shdr, sizeof(struct shdr));
 	if (res != TEE_SUCCESS)
 		goto out;
+#else
+	hash_algo = TEE_ALG_SHA256;	/* dummy data are set */
+#endif
 
 	res = elf_load_init(hash_ctx, hash_algo, nwdata, nwdata_len,
 			    &elf_state);
@@ -272,6 +289,7 @@ static TEE_Result load_elf(struct user_ta_ctx *utc, struct shdr *shdr,
 	if (res != TEE_SUCCESS)
 		goto out;
 
+#ifndef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
 	digest = malloc(shdr->hash_size);
 	if (!digest) {
 		res = TEE_ERROR_OUT_OF_MEMORY;
@@ -287,7 +305,7 @@ static TEE_Result load_elf(struct user_ta_ctx *utc, struct shdr *shdr,
 		res = TEE_ERROR_SECURITY;
 		goto out;
 	}
-
+#endif
 	/*
 	 * Replace the init attributes with attributes used when the TA is
 	 * running.
@@ -326,10 +344,17 @@ static TEE_Result ta_load(const TEE_UUID *uuid, const struct shdr *signed_ta,
 	struct shdr *sec_shdr = NULL;
 	struct ta_head *ta_head;
 
+#ifndef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
 	res = load_header(signed_ta, &sec_shdr);
 	if (res != TEE_SUCCESS)
 		goto error_return;
-
+#else
+	res = rcar_auth_ta_certificate(signed_ta, &sec_shdr);
+	if (res != TEE_SUCCESS) {
+		goto error_return;
+	}
+	signed_ta = (const struct shdr *)sec_shdr;
+#endif
 	res = check_shdr(sec_shdr);
 	if (res != TEE_SUCCESS)
 		goto error_return;
@@ -396,12 +421,15 @@ static TEE_Result ta_load(const TEE_UUID *uuid, const struct shdr *signed_ta,
 
 	tee_mmu_set_ctx(NULL);
 	/* end thread protection (multi-threaded) */
-
+#ifndef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
 	free(sec_shdr);
+#endif
 	return TEE_SUCCESS;
 
 error_return:
+#ifndef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
 	free(sec_shdr);
+#endif
 	tee_mmu_set_ctx(NULL);
 	if (utc) {
 		tee_mmu_final(utc);

@@ -71,6 +71,9 @@ struct cipher_ops {
 			     size_t len, uint8_t *dst);
 	void       (*final)(void *ctx, uint32_t algo);
 	TEE_Result (*get_block_size)(uint32_t algo, size_t *size);
+	TEE_Result (*unwrap)(void *srcData, uint32_t srcLen,
+			const void *keyData, uint32_t keySize,
+			uint32_t isSecretKey, void *destData, uint32_t *dstLen);
 };
 
 /* Message Authentication Code functions */
@@ -285,6 +288,21 @@ struct prng_ops {
 
 	/* to read random data from PRNG implementation	 */
 	TEE_Result (*read)(void *buf, size_t blen);
+
+	/* to read random data from PRNG implementation	(SHE) */
+	TEE_Result (*read_without_init)(void *buf, size_t blen);
+
+	/* to initialize PRNG (SHE)*/
+	TEE_Result (*init)(void);
+};
+
+struct util_ops {
+	/* to driver 128bit customer keys(CMAC) using Crypto Engine Secure */
+	TEE_Result (*cmac_derivekey)(uint32_t keyType, uint8_t *in,
+			uint32_t inSize, uint8_t *out, uint32_t outSize);
+	TEE_Result (*rpmb_signframes)(uint64_t *in, uint32_t listSize,
+			uint8_t *out, uint32_t outSize);
+	TEE_Result (*rpmb_derivekey)(uint8_t *out, uint32_t outSize);
 };
 
 /* Cryptographic Provider API */
@@ -300,6 +318,7 @@ struct crypto_ops {
 	struct acipher_ops acipher;
 	struct bignum_ops bignum;
 	struct prng_ops prng;
+	struct util_ops util;
 };
 
 extern const struct crypto_ops crypto_ops;

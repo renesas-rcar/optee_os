@@ -40,6 +40,9 @@
 #include <kernel/misc.h>
 #include <kernel/trace_ta.h>
 #include "svc_cache.h"
+#ifdef PLATFORM_RCAR
+#include <rcar_maskrom.h>
+#endif
 
 #if (TRACE_LEVEL == TRACE_FLOW) && defined(CFG_TEE_CORE_TA_TRACE)
 #define TRACE_SYSCALLS
@@ -133,6 +136,9 @@ static const struct syscall_entry tee_svc_syscall_table[] = {
 	SYSCALL_ENTRY(syscall_se_channel_transmit),
 	SYSCALL_ENTRY(syscall_se_channel_close),
 	SYSCALL_ENTRY(syscall_cache_operation),
+#ifdef PLATFORM_RCAR
+	SYSCALL_ENTRY(syscall_rcar_aes_unwrap),
+#endif
 };
 
 #ifdef TRACE_SYSCALLS

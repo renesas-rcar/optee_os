@@ -38,7 +38,7 @@
 	.macro get_thread_ctx core_local, res, tmp0, tmp1
 		ldr	w\tmp0, [\core_local, \
 				#THREAD_CORE_LOCAL_CURR_THREAD]
-		adr	x\res, threads
+		ldr	x\res, =threads
 		mov	x\tmp1, #THREAD_CTX_SIZE
 		madd	x\res, x\tmp0, x\tmp1, x\res
 	.endm
@@ -77,7 +77,7 @@ END_FUNC vector_fast_smc_entry
 LOCAL_FUNC vector_fiq_entry , :
 	/* Secure Monitor received a FIQ and passed control to us. */
 	bl	thread_check_canaries
-	adr	x16, thread_fiq_handler_ptr
+	ldr	x16, =thread_fiq_handler_ptr
 	ldr	x16, [x16]
 	blr	x16
 	ldr	x0, =TEESMC_OPTEED_RETURN_FIQ_DONE
@@ -86,7 +86,7 @@ LOCAL_FUNC vector_fiq_entry , :
 END_FUNC vector_fiq_entry
 
 LOCAL_FUNC vector_cpu_on_entry , :
-	adr	x16, thread_cpu_on_handler_ptr
+	ldr	x16, =thread_cpu_on_handler_ptr
 	ldr	x16, [x16]
 	blr	x16
 	mov	x1, x0
@@ -96,7 +96,7 @@ LOCAL_FUNC vector_cpu_on_entry , :
 END_FUNC vector_cpu_on_entry
 
 LOCAL_FUNC vector_cpu_off_entry , :
-	adr	x16, thread_cpu_off_handler_ptr
+	ldr	x16, =thread_cpu_off_handler_ptr
 	ldr	x16, [x16]
 	blr	x16
 	mov	x1, x0
@@ -106,7 +106,7 @@ LOCAL_FUNC vector_cpu_off_entry , :
 END_FUNC vector_cpu_off_entry
 
 LOCAL_FUNC vector_cpu_suspend_entry , :
-	adr	x16, thread_cpu_suspend_handler_ptr
+	ldr	x16, =thread_cpu_suspend_handler_ptr
 	ldr	x16, [x16]
 	blr	x16
 	mov	x1, x0
@@ -116,7 +116,7 @@ LOCAL_FUNC vector_cpu_suspend_entry , :
 END_FUNC vector_cpu_suspend_entry
 
 LOCAL_FUNC vector_cpu_resume_entry , :
-	adr	x16, thread_cpu_resume_handler_ptr
+	ldr	x16, =thread_cpu_resume_handler_ptr
 	ldr	x16, [x16]
 	blr	x16
 	mov	x1, x0
@@ -126,7 +126,7 @@ LOCAL_FUNC vector_cpu_resume_entry , :
 END_FUNC vector_cpu_resume_entry
 
 LOCAL_FUNC vector_system_off_entry , :
-	adr	x16, thread_system_off_handler_ptr
+	ldr	x16, =thread_system_off_handler_ptr
 	ldr	x16, [x16]
 	blr	x16
 	mov	x1, x0
@@ -136,7 +136,7 @@ LOCAL_FUNC vector_system_off_entry , :
 END_FUNC vector_system_off_entry
 
 LOCAL_FUNC vector_system_reset_entry , :
-	adr	x16, thread_system_reset_handler_ptr
+	ldr	x16, =thread_system_reset_handler_ptr
 	ldr	x16, [x16]
 	blr	x16
 	mov	x1, x0
@@ -786,7 +786,7 @@ LOCAL_FUNC elx_fiq , :
 	stp	x30, x2, [sp, #ELX_FIQ_REC_LR]
 
 	bl	thread_check_canaries
-	adr	x16, thread_fiq_handler_ptr
+	ldr	x16, =thread_fiq_handler_ptr
 	ldr	x16, [x16]
 	blr	x16
 

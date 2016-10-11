@@ -54,7 +54,9 @@
 #include <kernel/thread.h>
 #include <arm.h>
 
+#ifndef MAX_MMAP_REGIONS
 #define MAX_MMAP_REGIONS	10
+#endif
 
 /* Default NSec shared memory allocated from NSec world */
 unsigned long default_nsec_shm_size __data; /* XXX __data is a workaround */

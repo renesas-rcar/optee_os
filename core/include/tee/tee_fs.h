@@ -68,5 +68,10 @@ extern const struct tee_file_operations ree_fs_ops;
 #ifdef CFG_RPMB_FS
 extern const struct tee_file_operations rpmb_fs_ops;
 #endif
+#ifdef CFG_STANDALONE_FS
+extern const struct tee_file_operations standalone_fs_ops;
+#endif
+
+const struct tee_file_operations *file_ops(uint32_t storage_id);
 
 #endif

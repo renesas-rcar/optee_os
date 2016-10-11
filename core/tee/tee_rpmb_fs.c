@@ -63,6 +63,10 @@ struct tee_rpmb_fs_stat {
 	uint32_t reserved;
 };
 
+#if !defined(CFG_CRYPT_HW_CRYPTOENGINE) || (CFG_CRYPT_HW_CRYPTOENGINE == 0)
+#error "RPMB requires Crypto Engine."
+#endif
+
 /**
  * FS parameters: Information often used by internal functions.
  * fat_start_address will be set by rpmb_fs_setup().
@@ -314,6 +318,8 @@ out:
  * to return error code!
  */
 static TEE_Result tee_get_hw_unique_key(struct tee_hw_unique_key *hwkey)
+	__unused;
+static TEE_Result tee_get_hw_unique_key(struct tee_hw_unique_key *hwkey)
 {
 	if (!hwkey)
 		return TEE_ERROR_BAD_PARAMETERS;
@@ -326,41 +332,17 @@ static TEE_Result tee_get_hw_unique_key(struct tee_hw_unique_key *hwkey)
 static TEE_Result tee_rpmb_key_gen(uint16_t dev_id __unused,
 				   uint8_t *key, uint32_t len)
 {
-	TEE_Result res;
-	struct tee_hw_unique_key hwkey;
-	uint8_t *ctx = NULL;
+	TEE_Result res = TEE_SUCCESS;
 
 	if (!key || RPMB_KEY_MAC_SIZE != len) {
 		res = TEE_ERROR_BAD_PARAMETERS;
-		goto out;
 	}
 
-	IMSG("RPMB: Using generated key");
-	res = tee_get_hw_unique_key(&hwkey);
-	if (res != TEE_SUCCESS)
-		goto out;
-
-	ctx = malloc(rpmb_ctx->hash_ctx_size);
-	if (!ctx) {
-		res = TEE_ERROR_OUT_OF_MEMORY;
-		goto out;
+	if (res == TEE_SUCCESS) {
+		IMSG("RPMB: Using generated key");
+		res = crypto_ops.util.rpmb_derivekey(key, len);
 	}
-
-	res = crypto_ops.mac.init(ctx, TEE_ALG_HMAC_SHA256, hwkey.data,
-				  HW_UNIQUE_KEY_LENGTH);
-	if (res != TEE_SUCCESS)
-		goto out;
-
-	res = crypto_ops.mac.update(ctx, TEE_ALG_HMAC_SHA256,
-				    (uint8_t *)rpmb_ctx->cid,
-				    RPMB_EMMC_CID_SIZE);
-	if (res != TEE_SUCCESS)
-		goto out;
-
-	res = crypto_ops.mac.final(ctx, TEE_ALG_HMAC_SHA256, key, len);
-
-out:
-	free(ctx);
+	
 	return res;
 }
 
@@ -393,41 +375,34 @@ static void bytes_to_u16(uint8_t *bytes, uint16_t *u16)
 }
 
 static TEE_Result tee_rpmb_mac_calc(uint8_t *mac, uint32_t macsize,
-				    uint8_t *key, uint32_t keysize,
+				    uint8_t *key __unused,
+				    uint32_t keysize __unused,
 				    struct rpmb_data_frame *datafrms,
 				    uint16_t blkcnt)
 {
 	TEE_Result res = TEE_ERROR_GENERIC;
 	int i;
-	uint8_t *ctx = NULL;
+	size_t listsize;
+	uint64_t *listfrm = NULL;
 
-	if (!mac || !key || !datafrms)
+	if ((mac == NULL) || (datafrms == NULL) || (blkcnt == 0U)) {
 		return TEE_ERROR_BAD_PARAMETERS;
-
-	ctx = malloc(rpmb_ctx->hash_ctx_size);
-	if (!ctx)
-		return TEE_ERROR_OUT_OF_MEMORY;
-
-	res = crypto_ops.mac.init(ctx, TEE_ALG_HMAC_SHA256, key, keysize);
-	if (res != TEE_SUCCESS)
-		goto func_exit;
-
-	for (i = 0; i < blkcnt; i++) {
-		res = crypto_ops.mac.update(ctx, TEE_ALG_HMAC_SHA256,
-					  datafrms[i].data,
-					  RPMB_MAC_PROTECT_DATA_SIZE);
-		if (res != TEE_SUCCESS)
-			goto func_exit;
 	}
 
-	res = crypto_ops.mac.final(ctx, TEE_ALG_HMAC_SHA256, mac, macsize);
-	if (res != TEE_SUCCESS)
-		goto func_exit;
+	listsize = sizeof(void *) * (size_t)blkcnt;
+	listfrm = malloc(listsize);
 
-	res = TEE_SUCCESS;
+	if (listfrm == NULL) {
+		return TEE_ERROR_OUT_OF_MEMORY;
+	}
 
-func_exit:
-	free(ctx);
+	for (i = 0; i < blkcnt; i++) {
+		/* Add list */
+		listfrm[i] = (uint64_t)&datafrms[i].data;
+	}
+	res = crypto_ops.util.rpmb_signframes(listfrm, (uint32_t)blkcnt, mac, macsize);
+
+	free(listfrm);
 	return res;
 }
 
@@ -711,12 +686,13 @@ static TEE_Result tee_rpmb_data_cpy_mac_calc(struct rpmb_data_frame *datafrm,
 {
 	TEE_Result res = TEE_ERROR_GENERIC;
 	int i;
-	uint8_t *ctx = NULL;
 	uint16_t offset;
 	uint32_t size;
 	uint8_t *data;
 	uint16_t start_idx;
 	struct rpmb_data_frame localfrm;
+	size_t listsize;
+	uint64_t *listfrm = NULL;
 
 	if (!datafrm || !rawdata || !nbr_frms || !lastfrm)
 		return TEE_ERROR_BAD_PARAMETERS;
@@ -728,16 +704,12 @@ static TEE_Result tee_rpmb_data_cpy_mac_calc(struct rpmb_data_frame *datafrm,
 
 	data = rawdata->data;
 
-	ctx = malloc(rpmb_ctx->hash_ctx_size);
-	if (!ctx) {
-		res = TEE_ERROR_OUT_OF_MEMORY;
-		goto func_exit;
-	}
+	listsize = sizeof(void *) * (size_t)nbr_frms;
+	listfrm = malloc(listsize);
 
-	res = crypto_ops.mac.init(ctx, TEE_ALG_HMAC_SHA256, rpmb_ctx->key,
-				  RPMB_KEY_MAC_SIZE);
-	if (res != TEE_SUCCESS)
-		goto func_exit;
+	if (listfrm == NULL) {
+		return TEE_ERROR_OUT_OF_MEMORY;
+	}
 
 	/*
 	 * Note: JEDEC JESD84-B51: "In every packet the address is the start
@@ -755,11 +727,8 @@ static TEE_Result tee_rpmb_data_cpy_mac_calc(struct rpmb_data_frame *datafrm,
 		 */
 		memcpy(&localfrm, &datafrm[i], RPMB_DATA_FRAME_SIZE);
 
-		res = crypto_ops.mac.update(ctx, TEE_ALG_HMAC_SHA256,
-					    localfrm.data,
-					    RPMB_MAC_PROTECT_DATA_SIZE);
-		if (res != TEE_SUCCESS)
-			goto func_exit;
+		/* Add list */
+		listfrm[i] = (uint64_t)&datafrm[i].data;
 
 		if (i == 0) {
 			/* First block */
@@ -787,21 +756,14 @@ static TEE_Result tee_rpmb_data_cpy_mac_calc(struct rpmb_data_frame *datafrm,
 	if (res != TEE_SUCCESS)
 		goto func_exit;
 
-	/* Update MAC against the last block */
-	res = crypto_ops.mac.update(ctx, TEE_ALG_HMAC_SHA256, lastfrm->data,
-				    RPMB_MAC_PROTECT_DATA_SIZE);
-	if (res != TEE_SUCCESS)
-		goto func_exit;
-
-	res = crypto_ops.mac.final(ctx, TEE_ALG_HMAC_SHA256, rawdata->key_mac,
-				   RPMB_KEY_MAC_SIZE);
-	if (res != TEE_SUCCESS)
-		goto func_exit;
-
-	res = TEE_SUCCESS;
+	/* Add list against the last block */
+	listfrm[nbr_frms -1U] = (uint64_t)lastfrm->data;
+	res = crypto_ops.util.rpmb_signframes(listfrm, (uint32_t)nbr_frms,
+						rawdata->key_mac,
+						RPMB_KEY_MAC_SIZE);
 
 func_exit:
-	free(ctx);
+	free(listfrm);
 	return res;
 }
 

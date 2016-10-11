@@ -25,7 +25,7 @@ srcs-$(CFG_CRYPTO_PBKDF2) += tee_cryp_pbkdf2.c
 ifeq ($(CFG_WITH_USER_TA),y)
 
 srcs-y += tee_svc.c
-cppflags-tee_svc.c-y += -DTEE_IMPL_VERSION=$(TEE_IMPL_VERSION)
+cppflags-tee_svc.c-y += -DTEE_IMPL_VERSION='$(TEE_IMPL_VERSION)'
 srcs-y += tee_svc_cryp.c
 srcs-y += tee_svc_storage.c
 srcs-$(CFG_RPMB_FS) += tee_rpmb_fs.c

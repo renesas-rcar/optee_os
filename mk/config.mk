@@ -133,7 +133,7 @@ CFG_RPMB_FS_DEV_ID ?= 0
 # Applies to both the REE and the RPMB filesystems
 CFG_ENC_FS ?= y
 
-ifeq (,$(filter y,$(CFG_REE_FS) $(CFG_RPMB_FS)))
+ifeq (,$(filter y,$(CFG_REE_FS) $(CFG_RPMB_FS) $(CFG_STANDALONE_FS)))
 $(error At least one filesystem must be enabled)
 endif
 

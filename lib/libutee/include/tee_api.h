@@ -462,4 +462,7 @@ void TEE_BigIntComputeFMM(TEE_BigIntFMM *dest, TEE_BigIntFMM *op1,
 			  TEE_BigIntFMM *op2, TEE_BigInt *n,
 			  TEE_BigIntFMMContext *context);
 
+TEE_Result RCAR_AesUnwrap(void *srcData, uint32_t srcLen, void *keyData,
+	uint32_t keySize, uint32_t isSecretKey, void *destData, uint32_t *dstLen);
+
 #endif /* TEE_API_H */

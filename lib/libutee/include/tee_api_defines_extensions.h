@@ -86,5 +86,7 @@
 #define TEE_STORAGE_PRIVATE_REE	 0x80000000
 /* Storage is the Replay Protected Memory Block partition of an eMMC device */
 #define TEE_STORAGE_PRIVATE_RPMB 0x80000100
+/* Storage is provided by the QSPI/Hyper Flash */
+#define TEE_STORAGE_PRIVATE_STANDALONE 0x80001000
 
 #endif /* TEE_API_DEFINES_EXTENSIONS_H */

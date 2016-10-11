@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
+ * Copyright (c) 2015-2016, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -192,6 +193,86 @@ static struct map_area bootcfg_memory_map[] = {
 	 .pa = DEVICE6_PA_BASE, .size = DEVICE6_SIZE,
 	 .va = DEVICE6_VA_BASE,
 	 .device = true, .secure = true, .rw = true,
+	 },
+#endif
+#ifdef MEMORY1_BASE
+	{
+	 .type = MEMORY1_TYPE,
+	 .pa = MEMORY1_BASE, .size = MEMORY1_SIZE,
+	 .secure = MEMORY1_SECURE, .cached = MEMORY1_CACHED,
+	 .device = MEMORY1_DEVICE, .rw = MEMORY1_RW, .exec = MEMORY1_EXEC,
+	 },
+#endif
+#ifdef MEMORY2_BASE
+	{
+	 .type = MEMORY2_TYPE,
+	 .pa = MEMORY2_BASE, .size = MEMORY2_SIZE,
+	 .secure = MEMORY2_SECURE, .cached = MEMORY2_CACHED,
+	 .device = MEMORY2_DEVICE, .rw = MEMORY2_RW, .exec = MEMORY2_EXEC,
+	 },
+#endif
+#ifdef MEMORY3_BASE
+	{
+	 .type = MEMORY3_TYPE,
+	 .pa = MEMORY3_BASE, .size = MEMORY3_SIZE,
+	 .secure = MEMORY3_SECURE, .cached = MEMORY3_CACHED,
+	 .device = MEMORY3_DEVICE, .rw = MEMORY3_RW, .exec = MEMORY3_EXEC,
+	 },
+#endif
+#ifdef MEMORY4_BASE
+	{
+	 .type = MEMORY4_TYPE,
+	 .pa = MEMORY4_BASE, .size = MEMORY4_SIZE,
+	 .secure = MEMORY4_SECURE, .cached = MEMORY4_CACHED,
+	 .device = MEMORY4_DEVICE, .rw = MEMORY4_RW, .exec = MEMORY4_EXEC,
+	 },
+#endif
+#ifdef MEMORY5_BASE
+	{
+	 .type = MEMORY5_TYPE,
+	 .pa = MEMORY5_BASE, .size = MEMORY5_SIZE,
+	 .secure = MEMORY5_SECURE, .cached = MEMORY5_CACHED,
+	 .device = MEMORY5_DEVICE, .rw = MEMORY5_RW, .exec = MEMORY5_EXEC,
+	 },
+#endif
+#ifdef MEMORY6_BASE
+	{
+	 .type = MEMORY6_TYPE,
+	 .pa = MEMORY6_BASE, .size = MEMORY6_SIZE,
+	 .secure = MEMORY6_SECURE, .cached = MEMORY6_CACHED,
+	 .device = MEMORY6_DEVICE, .rw = MEMORY6_RW, .exec = MEMORY6_EXEC,
+	 },
+#endif
+#ifdef MEMORY7_BASE
+	{
+	 .type = MEMORY7_TYPE,
+	 .pa = MEMORY7_BASE, .size = MEMORY7_SIZE,
+	 .secure = MEMORY7_SECURE, .cached = MEMORY7_CACHED,
+	 .device = MEMORY7_DEVICE, .rw = MEMORY7_RW, .exec = MEMORY7_EXEC,
+	 },
+#endif
+#ifdef MEMORY8_BASE
+	{
+	 .type = MEMORY8_TYPE,
+	 .pa = MEMORY8_BASE, .size = MEMORY8_SIZE,
+	 .secure = MEMORY8_SECURE, .cached = MEMORY8_CACHED,
+	 .device = MEMORY8_DEVICE, .rw = MEMORY8_RW, .exec = MEMORY8_EXEC,
+	 },
+#endif
+#ifdef MEMORY9_BASE
+	{
+	 .type = MEMORY9_TYPE,
+	 .pa = MEMORY9_BASE, .size = MEMORY9_SIZE,
+	 .secure = MEMORY9_SECURE, .cached = MEMORY9_CACHED,
+	 .device = MEMORY9_DEVICE, .rw = MEMORY9_RW, .exec = MEMORY9_EXEC,
+	 },
+#endif
+#ifdef MEMORY10_BASE
+	{
+	 .type = MEMORY10_TYPE,
+	 .pa = MEMORY10_BASE, .size = MEMORY10_SIZE,
+	 .secure = MEMORY10_SECURE, .cached = MEMORY10_CACHED,
+	 .device = MEMORY10_DEVICE, .rw = MEMORY10_RW, .exec = MEMORY10_EXEC,
 	 },
 #endif
 	{.type = MEM_AREA_NOTYPE}

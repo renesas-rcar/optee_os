@@ -205,7 +205,7 @@ static void gic_it_add(struct gic_data *gd, size_t it)
 			gd->gicd_base + GICD_IGROUPR(idx));
 }
 
-static void gic_it_set_cpu_mask(struct gic_data *gd, size_t it,
+void gic_it_set_cpu_mask(struct gic_data *gd, size_t it,
 				uint8_t cpu_mask)
 {
 	size_t idx = it / NUM_INTS_PER_REG;

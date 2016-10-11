@@ -97,7 +97,7 @@ copy_init:
 #ifdef CFG_WITH_PAGER
 	adr	x1, __init_end
 #else
-	adr	x1, _end
+	ldr	x1, =_end
 #endif
 	sub	x1, x1, x0
 	bl	inv_dcache_range
@@ -125,7 +125,7 @@ copy_init:
 #ifdef CFG_WITH_PAGER
 	adr	x1, __init_end
 #else
-	adr	x1, _end
+	ldr	x1, =_end
 #endif
 	sub	x1, x1, x0
 	bl	flush_dcache_range

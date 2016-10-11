@@ -187,3 +187,5 @@
                 TEE_SCN_SE_CHANNEL_CLOSE, 1
 
         UTEE_SYSCALL utee_cache_operation, TEE_SCN_CACHE_OPERATION, 3
+
+        UTEE_SYSCALL urcar_aes_unwrap, RCAR_SCN_AES_UNWRAP, 7

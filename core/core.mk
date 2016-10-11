@@ -68,9 +68,28 @@ libdir = lib/libmpa
 include mk/lib.mk
 base-prefix :=
 
+ifeq ($(CFG_CRYPT_HW_CRYPTOENGINE),y)
+core-platform-cflags += -DENABLE_CRYPTOENGINE
+
+ifeq ($(CFG_CRYPT_ENABLE_CEPKA),y)
+libname = crypto_engine_pka
+libdir = core/lib/libcryptoengine
+include core/lib/libcryptoengine/libcc.mk
+endif
+
+libname = crypto_engine_secure
+libdir = core/lib/libcryptoengine
+include core/lib/libcryptoengine/libcc.mk
+
+libname = crypto_engine
+libdir = core/lib/libcryptoengine
+include mk/lib.mk
+
+else
 libname = tomcrypt
 libdir = core/lib/libtomcrypt
 include mk/lib.mk
+endif
 
 #
 # Do main source

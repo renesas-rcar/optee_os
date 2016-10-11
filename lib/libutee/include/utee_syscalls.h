@@ -293,4 +293,7 @@ TEE_Result utee_se_channel_close(unsigned long c);
 /* op is of type enum utee_cache_operation */
 TEE_Result utee_cache_operation(void *va, size_t l, unsigned long op);
 
+TEE_Result urcar_aes_unwrap(void *srcData, uint32_t srcLen, void *keyData,
+	uint32_t keySize, uint32_t isSecretKey, void *destData, uint32_t *dstLen);
+
 #endif /* UTEE_SYSCALLS_H */

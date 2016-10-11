@@ -1035,7 +1035,7 @@ static int read_block_from_storage(struct tee_fs_fd *fdp, struct block *b)
 	}
 
 	b->data_size = res;
-	DMSG("Successfully read block%d from storage, size=%d",
+	DMSG("Successfully read block%d from storage, size=%zu",
 		b->block_num, b->data_size);
 	res = 0;
 fail:
@@ -1065,7 +1065,7 @@ static int flush_block_to_storage(struct tee_fs_fd *fdp, struct block *b,
 			b->block_num, res);
 		goto fail;
 	}
-	DMSG("Successfully writen block%d to storage, size=%d",
+	DMSG("Successfully writen block%d to storage, size=%zu",
 		b->block_num, b->data_size);
 	res = 0;
 fail:

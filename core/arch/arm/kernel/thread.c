@@ -49,7 +49,11 @@
 #include <assert.h>
 
 #ifdef ARM32
+#ifndef ENABLE_CRYPTOENGINE
 #define STACK_TMP_SIZE		1024
+#else
+#define STACK_TMP_SIZE		1024*4
+#endif
 #define STACK_THREAD_SIZE	8192
 
 #if TRACE_LEVEL > 0
@@ -61,7 +65,11 @@
 #endif /*ARM32*/
 
 #ifdef ARM64
+#ifndef ENABLE_CRYPTOENGINE
 #define STACK_TMP_SIZE		2048
+#else
+#define STACK_TMP_SIZE		2048*4
+#endif
 #define STACK_THREAD_SIZE	8192
 
 #if TRACE_LEVEL > 0

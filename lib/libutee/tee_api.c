@@ -340,3 +340,10 @@ TEE_Result TEE_CacheInvalidate(char *buf, size_t len)
 {
 	return utee_cache_operation(buf, len, TEE_CACHEINVALIDATE);
 }
+
+TEE_Result RCAR_AesUnwrap(void *srcData, uint32_t srcLen, void *keyData,
+	uint32_t keySize, uint32_t isSecretKey, void *destData, uint32_t *dstLen)
+{
+	return urcar_aes_unwrap(srcData, srcLen, keyData, keySize, isSecretKey,
+			destData, dstLen);
+}

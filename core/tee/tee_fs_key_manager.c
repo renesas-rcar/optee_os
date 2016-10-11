@@ -202,6 +202,9 @@ static TEE_Result do_auth_enc(TEE_OperationMode mode,
 	uint8_t *ctx = NULL;
 	size_t ctx_size;
 	size_t tag_len = TEE_FS_KM_MAX_TAG_LEN;
+#if defined(ENABLE_CRYPTOENGINE)
+	uint8_t key_iv[TEE_FS_KM_FEK_SIZE + TEE_FS_KM_IV_LEN];
+#endif
 
 	if ((mode != TEE_MODE_ENCRYPT) && (mode != TEE_MODE_DECRYPT))
 		return TEE_ERROR_BAD_PARAMETERS;
@@ -222,14 +225,32 @@ static TEE_Result do_auth_enc(TEE_OperationMode mode,
 		EMSG("request memory size %zu failed", ctx_size);
 		return TEE_ERROR_OUT_OF_MEMORY;
 	}
-
+#if defined(ENABLE_CRYPTOENGINE)
+	res = crypto_ops.authenc.init(ctx, TEE_FS_KM_AUTH_ENC_ALG,
+			mode, fek, fek_len, hdr->aad.iv,
+			TEE_FS_KM_IV_LEN, TEE_FS_KM_MAX_TAG_LEN,
+			sizeof(key_iv), in_size);
+#else
 	res = crypto_ops.authenc.init(ctx, TEE_FS_KM_AUTH_ENC_ALG,
 			mode, fek, fek_len, hdr->aad.iv,
 			TEE_FS_KM_IV_LEN, TEE_FS_KM_MAX_TAG_LEN,
 			sizeof(struct aad), in_size);
+#endif
 	if (res != TEE_SUCCESS)
 		goto exit;
 
+#if defined(ENABLE_CRYPTOENGINE)
+		(void)memcpy(&key_iv[0], hdr->aad.encrypted_key,
+				TEE_FS_KM_FEK_SIZE);
+		(void)memcpy(&key_iv[TEE_FS_KM_FEK_SIZE], hdr->aad.iv,
+				TEE_FS_KM_IV_LEN);
+
+		res = crypto_ops.authenc.update_aad(ctx, TEE_FS_KM_AUTH_ENC_ALG,
+				mode, &key_iv[0],
+				TEE_FS_KM_FEK_SIZE + TEE_FS_KM_IV_LEN);
+		if (res != TEE_SUCCESS)
+			goto exit;
+#else
 	res = crypto_ops.authenc.update_aad(ctx, TEE_FS_KM_AUTH_ENC_ALG,
 			mode, (uint8_t *)hdr->aad.encrypted_key,
 			TEE_FS_KM_FEK_SIZE);
@@ -241,6 +262,7 @@ static TEE_Result do_auth_enc(TEE_OperationMode mode,
 			TEE_FS_KM_IV_LEN);
 	if (res != TEE_SUCCESS)
 		goto exit;
+#endif
 
 	if (mode == TEE_MODE_ENCRYPT) {
 		res = crypto_ops.authenc.enc_final(ctx, TEE_FS_KM_AUTH_ENC_ALG,
