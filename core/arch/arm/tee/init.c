@@ -24,7 +24,7 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#include <assert.h>
+
 #include <initcall.h>
 #include <malloc.h>		/* required for inits */
 
@@ -33,6 +33,7 @@
 #include <mm/core_memprot.h>
 #include <trace.h>
 #include <kernel/time_source.h>
+#include <kernel/generic_boot.h>
 #include <mm/tee_mmu.h>
 #include <tee/tee_fs.h>
 #include <tee/tee_cryp_provider.h>
@@ -42,7 +43,6 @@
 
 #define TEE_MON_MAX_NUM_ARGS    8
 
-extern initcall_t __initcall_start, __initcall_end;
 static void call_initcalls(void)
 {
 	initcall_t *call;
@@ -79,6 +79,6 @@ TEE_Result init_teecore(void)
 	/* call pre-define initcall routines */
 	call_initcalls();
 
-	IMSG("teecore inits done");
+	IMSG("Initialized");
 	return TEE_SUCCESS;
 }

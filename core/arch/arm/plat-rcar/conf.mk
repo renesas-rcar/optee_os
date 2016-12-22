@@ -64,6 +64,8 @@ CFG_HYPER_FLASH := y
 endif
 
 core-platform-cflags += -DPLATFORM_RCAR
+core-platform-cflags += -DMMU_DIRECT_MAPPING
+core-platform-cflags += -DMMU_EXEC_ATTR_MAPPING
 
 # Not covered by compile - /core/arch/arm/kernel/trace_ext.c
 WITH_TRACE_EXT := n
@@ -74,11 +76,6 @@ ifneq ($(RCAR_DEBUG_LOG),0)
 core-platform-cflags += -DRCAR_DEBUG_LOG
 endif
 
-RCAR_INTCTX_LOG ?= 0
-ifneq ($(RCAR_INTCTX_LOG),0)
-core-platform-cflags += -DRCAR_INTCTX_LOG
-endif
-
 VERSION_OF_RENESAS ?= $(shell awk '/VERSION_OF_RENESAS/{ \
 	$$a=substr($$3,2); sub(/.$$/,"",$$a); print $$a}' \
 	< core/arch/$(ARCH)/plat-$(PLATFORM)/rcar_version.h 2> /dev/null)
@@ -86,3 +83,7 @@ TEE_IMPL_VERSION ?= R-Car Rev.$(VERSION_OF_RENESAS)
 CFG_TEE_MANUFACTURER ?= LINARO & Renesas Electronics
 CFG_TEE_FW_IMPL_VERSION ?= $(TEE_IMPL_VERSION)
 CFG_TEE_FW_MANUFACTURER ?= ARM & Renesas Electronics
+
+ifeq ($(CFG_CRYPT_HW_CRYPTOENGINE),y)
+CFG_CORE_HEAP_SIZE ?= 196608
+endif

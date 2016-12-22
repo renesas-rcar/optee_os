@@ -285,6 +285,7 @@ UNWIND(	.cantunwind)
         mrs     r1, spsr
         stm     r0!, {r1, sp, lr}
 
+	orr	r6, r6, #ARM32_CPSR_FIA	/* Disable Async abort, IRQ and FIQ */
 	msr	cpsr, r6		/* Restore mode */
 
 	mov	r0, r5			/* Return original CPSR */
@@ -308,7 +309,7 @@ UNWIND(	.cantunwind)
 	add	sp, #(4 * 4)
 
 	/* Disable interrupts before switching to temporary stack */
-	cpsid	if
+	cpsid	aif
 	bl	thread_get_tmp_sp
 	mov	sp, r0
 
@@ -521,7 +522,7 @@ UNWIND(	.cantunwind)
 	mov	r6, sp
 	mov     sp, r4
 	cps	#CPSR_MODE_SVC
-	push	{r6}
+	push	{r6,r7}
 
 	/*
 	* Don't allow return from this function, return is done through
@@ -541,13 +542,13 @@ END_FUNC __thread_enter_user_mode
 FUNC thread_unwind_user_mode , :
 UNWIND(	.fnstart)
 UNWIND(	.cantunwind)
-	ldr     ip, [sp, #(14 * 0x4)]   /* &ctx->panicked */
+	ldr     ip, [sp, #(15 * 0x4)]   /* &ctx->panicked */
 	str	r1, [ip]
-	ldr     ip, [sp, #(15 * 0x4)]   /* &ctx->panic_code */
+	ldr     ip, [sp, #(16 * 0x4)]   /* &ctx->panic_code */
 	str	r2, [ip]
 
 	/* Restore old user sp */
-	pop	{r4}
+	pop	{r4,r7}
 	cps	#CPSR_MODE_SYS
 	mov	sp, r4
 	cps	#CPSR_MODE_SVC

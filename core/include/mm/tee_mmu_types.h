@@ -56,9 +56,13 @@
 #define TEE_MATTR_CACHE_CACHED	1
 
 #define TEE_MATTR_VIRTUAL		(1 << 15)
+#define TEE_MATTR_LOCKED		(1 << 16)
+#define TEE_MATTR_PAGED			(1 << 17)
 
 
 struct tee_mmap_region {
+	unsigned int type;
+	unsigned int region_size;
 	paddr_t pa;
 	vaddr_t va;
 	size_t size;

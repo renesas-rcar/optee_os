@@ -28,6 +28,7 @@
 #ifndef TEE_MM_H
 #define TEE_MM_H
 
+#include <malloc.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <kernel/tee_common_unpg.h>
@@ -56,9 +57,6 @@ struct _tee_mm_pool_t {
 #endif
 };
 typedef struct _tee_mm_pool_t tee_mm_pool_t;
-
-/* Physical Public DDR pool */
-extern tee_mm_pool_t tee_mm_pub_ddr;
 
 /* Physical Secure DDR pool */
 extern tee_mm_pool_t tee_mm_sec_ddr;
@@ -133,14 +131,7 @@ bool tee_mm_addr_is_within_range(tee_mm_pool_t *pool, uint32_t addr);
 bool tee_mm_is_empty(tee_mm_pool_t *pool);
 
 #ifdef CFG_WITH_STATS
-#define TEE_MM_POOL_DESC_LENGTH 32
-struct tee_mm_pool_stats {
-	char desc[TEE_MM_POOL_DESC_LENGTH];
-	uint32_t allocated;
-	uint32_t max_allocated;
-	uint32_t size;
-};
-void tee_mm_get_pool_stats(tee_mm_pool_t *pool, struct tee_mm_pool_stats *stats,
+void tee_mm_get_pool_stats(tee_mm_pool_t *pool, struct malloc_stats *stats,
 			   bool reset);
 #endif
 

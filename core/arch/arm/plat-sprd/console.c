@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2016, Renesas Electronics Corporation
+ * Copyright (c) 2016, Spreadtrum Communications Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -24,11 +24,35 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef QSPI_QUAD_CONTROL_H
-#define QSPI_QUAD_CONTROL_H
+#include <console.h>
+#include <drivers/sprd_uart.h>
+#include <mm/core_memprot.h>
+#include <platform_config.h>
 
-#include "qspi_hyper_flash_common.h"
+static vaddr_t console_base(void)
+{
+	static vaddr_t base;
 
-void qspi_quad_set_control_ops(struct flash_control_operations *ops);
+	if (cpu_mmu_enabled())
+		base = (vaddr_t)phys_to_virt(CONSOLE_UART_BASE,
+					     MEM_AREA_IO_SEC);
+	else
+		base = CONSOLE_UART_BASE;
 
-#endif /* QSPI_QUAD_CONTROL_H */
+	return base;
+}
+
+/* Do nothing in this function */
+void console_init(void)
+{
+}
+
+void console_putc(int ch)
+{
+	sprd_uart_putc(console_base(), (unsigned char)(ch & 0xff));
+}
+
+void console_flush(void)
+{
+	sprd_uart_flush(console_base());
+}

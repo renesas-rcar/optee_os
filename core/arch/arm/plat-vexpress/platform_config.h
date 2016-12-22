@@ -28,13 +28,6 @@
 #ifndef PLATFORM_CONFIG_H
 #define PLATFORM_CONFIG_H
 
-#define PLATFORM_FLAVOR_ID_fvp		0
-#define PLATFORM_FLAVOR_ID_qemu_armv8a	1
-#define PLATFORM_FLAVOR_ID_qemu_virt	2
-#define PLATFORM_FLAVOR_ID_juno		3
-#define PLATFORM_FLAVOR_IS(flav) \
-	(PLATFORM_FLAVOR == PLATFORM_FLAVOR_ID_ ## flav)
-
 /* Make stacks aligned to data cache line length */
 #define STACK_ALIGNMENT		64
 
@@ -44,20 +37,21 @@
 #endif
 #endif /*ARM64*/
 
-#if PLATFORM_FLAVOR_IS(fvp)
+#if defined(PLATFORM_FLAVOR_fvp)
 
 #define GIC_BASE		0x2c000000
 #define UART0_BASE		0x1c090000
 #define UART1_BASE		0x1c0a0000
 #define UART2_BASE		0x1c0b0000
 #define UART3_BASE		0x1c0c0000
+#define TZC400_BASE		0x2a4a0000
 
 #define IT_UART1		38
 
 #define CONSOLE_UART_BASE	UART1_BASE
 #define IT_CONSOLE_UART		IT_UART1
 
-#elif PLATFORM_FLAVOR_IS(juno)
+#elif defined(PLATFORM_FLAVOR_juno)
 
 #define GIC_BASE		0x2c010000
 
@@ -83,7 +77,7 @@
 #define IT_CONSOLE_UART		IT_UART3
 #define CONSOLE_UART_CLK_IN_HZ	UART3_CLK_IN_HZ
 
-#elif PLATFORM_FLAVOR_IS(qemu_virt)
+#elif defined(PLATFORM_FLAVOR_qemu_virt)
 
 #define GIC_BASE		0x08000000
 #define UART0_BASE		0x09000000
@@ -96,7 +90,7 @@
 #define CONSOLE_UART_BASE	UART1_BASE
 #define IT_CONSOLE_UART		IT_UART1
 
-#elif PLATFORM_FLAVOR_IS(qemu_armv8a)
+#elif defined(PLATFORM_FLAVOR_qemu_armv8a)
 
 #define UART0_BASE		0x09000000
 #define UART1_BASE		0x09040000
@@ -107,9 +101,7 @@
 #error "Unknown platform flavor"
 #endif
 
-#define HEAP_SIZE		(24 * 1024)
-
-#if PLATFORM_FLAVOR_IS(fvp)
+#if defined(PLATFORM_FLAVOR_fvp)
 /*
  * FVP specifics.
  */
@@ -121,7 +113,7 @@
 
 /* Emulated SRAM */
 #define TZSRAM_BASE		(0x06000000)
-#define TZSRAM_SIZE		(200 * 1024)
+#define TZSRAM_SIZE		CFG_CORE_TZSRAM_EMUL_SIZE
 
 #define TZDRAM_BASE		(TZSRAM_BASE + CFG_TEE_RAM_VA_SIZE)
 #define TZDRAM_SIZE		(0x02000000 - CFG_TEE_RAM_VA_SIZE)
@@ -142,7 +134,7 @@
 #define GICC_OFFSET		0x0
 #define GICD_OFFSET		0x3000000
 
-#elif PLATFORM_FLAVOR_IS(juno)
+#elif defined(PLATFORM_FLAVOR_juno)
 /*
  * Juno specifics.
  */
@@ -154,7 +146,7 @@
 
 /* Emulated SRAM */
 #define TZSRAM_BASE		0xFF000000
-#define TZSRAM_SIZE		(200 * 1024)
+#define TZSRAM_SIZE		CFG_CORE_TZSRAM_EMUL_SIZE
 
 #define TZDRAM_BASE		(TZSRAM_BASE + CFG_TEE_RAM_VA_SIZE)
 #define TZDRAM_SIZE		(0x00E00000 - CFG_TEE_RAM_VA_SIZE)
@@ -182,7 +174,7 @@
 #define GICC_OFFSET		0x1f000
 #define GICD_OFFSET		0
 
-#elif PLATFORM_FLAVOR_IS(qemu_virt)
+#elif defined(PLATFORM_FLAVOR_qemu_virt)
 /*
  * QEMU virt specifics.
  */
@@ -197,7 +189,7 @@
 
 /* Emulated SRAM */
 #define TZSRAM_BASE		DRAM0_TEERES_BASE
-#define TZSRAM_SIZE		(200 * 1024)
+#define TZSRAM_SIZE		CFG_CORE_TZSRAM_EMUL_SIZE
 
 #define TZDRAM_BASE		(DRAM0_TEERES_BASE + CFG_TEE_RAM_VA_SIZE)
 #define TZDRAM_SIZE		(DRAM0_TEERES_SIZE - CFG_TEE_RAM_VA_SIZE \
@@ -220,7 +212,7 @@
 #define GICC_OFFSET		0x10000
 
 
-#elif PLATFORM_FLAVOR_IS(qemu_armv8a)
+#elif defined(PLATFORM_FLAVOR_qemu_armv8a)
 
 #ifdef CFG_WITH_PAGER
 #error "Pager not supported for platform vexpress-qemu_armv8a"
@@ -284,32 +276,9 @@
 					  CORE_MMU_DEVICE_SIZE)
 #endif
 
-#define DEVICE0_PA_BASE		ROUNDDOWN(CONSOLE_UART_BASE, \
-					  CORE_MMU_DEVICE_SIZE)
-#define DEVICE0_VA_BASE		DEVICE0_PA_BASE
-#define DEVICE0_SIZE		CORE_MMU_DEVICE_SIZE
-#define DEVICE0_TYPE		MEM_AREA_IO_SEC
-
 #ifdef GIC_BASE
-#define DEVICE1_PA_BASE		ROUNDDOWN(GIC_BASE, CORE_MMU_DEVICE_SIZE)
-#define DEVICE1_VA_BASE		DEVICE1_PA_BASE
-#define DEVICE1_SIZE		CORE_MMU_DEVICE_SIZE
-#define DEVICE1_TYPE		MEM_AREA_IO_SEC
-#endif
-
-#ifdef GICD_OFFSET
-#define DEVICE2_PA_BASE		ROUNDDOWN(GIC_BASE + GICD_OFFSET, \
-					  CORE_MMU_DEVICE_SIZE)
-#define DEVICE2_VA_BASE		DEVICE2_PA_BASE
-#define DEVICE2_SIZE		CORE_MMU_DEVICE_SIZE
-#define DEVICE2_TYPE		MEM_AREA_IO_SEC
-#endif
-
-#ifdef CFG_PCSC_PASSTHRU_READER_DRV
-#define DEVICE3_PA_BASE		ROUNDDOWN(PCSC_BASE, CORE_MMU_DEVICE_SIZE)
-#define DEVICE3_VA_BASE		DEVICE3_PA_BASE
-#define DEVICE3_SIZE		CORE_MMU_DEVICE_SIZE
-#define DEVICE3_TYPE		MEM_AREA_IO_SEC
+#define GICD_BASE		(GIC_BASE + GICD_OFFSET)
+#define GICC_BASE		(GIC_BASE + GICC_OFFSET)
 #endif
 
 #ifndef UART_BAUDRATE

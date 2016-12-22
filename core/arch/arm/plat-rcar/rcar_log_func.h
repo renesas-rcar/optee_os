@@ -62,15 +62,6 @@
 #define MSG_BLK_MAX_NUM		SECRAM_MSG_BLK_NUM
 #endif  /* RCAR_DEBUG_LOG */
 
-#define INTCTX_LOG_NOT_OUTPUT	(0U)
-#define INTCTX_LOG_OUTPUT	(1U)
-
-#ifndef RCAR_INTCTX_LOG
-#define INTCTX_LOG_DEFAULT	INTCTX_LOG_NOT_OUTPUT
-#else
-#define INTCTX_LOG_DEFAULT	INTCTX_LOG_OUTPUT
-#endif /* RCAR_INTCTX_LOG */
-
 /*
  * Struct definition
  */
@@ -99,7 +90,6 @@ extern int32_t is_normal_world_initialized;
  * Prototype declaration
  */
 
-void log_buf_init(void);
 void log_buf_write(const struct msg_block_t *msg_block, int32_t msg_block_num);
 #ifdef RCAR_DEBUG_LOG
 void log_debug_send(const struct msg_block_t *msg_block, int32_t msg_block_num);

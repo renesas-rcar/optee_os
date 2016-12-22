@@ -67,7 +67,8 @@ static TEE_Result crypt_aes(uint32_t algo, TEE_OperationMode mode,
 			uint8_t *data_out);
 #endif
 static TEE_Result generate_cmac(const uint8_t *data_in, size_t data_size,
-			uint8_t *mac_out, const uint8_t *key, size_t key_size);
+			uint8_t *mac_out, const uint8_t *key, size_t key_size,
+			const uint8_t *data2_in, size_t data2_size);
 
 TEE_Result tee_sfkm_generate_random(uint8_t *buf, uint8_t len)
 {
@@ -147,7 +148,8 @@ TEE_Result tee_sfkm_init_key_manager(void)
 	 */
 	if (res == TEE_SUCCESS) {
 		res = generate_cmac(chip_id, sizeof(chip_id),
-				g_safs_suk, ssk, sizeof(ssk));
+				g_safs_suk, ssk, sizeof(ssk),
+				NULL, 0U);
 	}
 
 	/* IV Encryption Key Generation:
@@ -174,7 +176,7 @@ TEE_Result tee_sfkm_encrypt_suk(struct tee_sfkm_crypt_info *c,
 	c->key = g_safs_suk;
 	c->key_size = sizeof(g_safs_suk);
 
-	res = tee_sfkm_encrypt(c, data_out, tag);
+	res = tee_sfkm_encrypt(c, data_out, NULL);
 
 #ifdef CFG_ENC_FS
 	if (res == TEE_SUCCESS) {
@@ -194,6 +196,13 @@ TEE_Result tee_sfkm_encrypt_suk(struct tee_sfkm_crypt_info *c,
 	}
 #endif
 
+	if (res == TEE_SUCCESS) {
+		/* Encrypt-then-MAC */
+		res = generate_cmac(data_out, c->data_size,
+				tag, c->key, c->key_size,
+				encrypted_iv, c->iv_size);
+	}
+
 	return res;
 }
 
@@ -210,10 +219,11 @@ TEE_Result tee_sfkm_encrypt(const struct tee_sfkm_crypt_info *c,
 	res = TEE_SUCCESS;
 #endif
 
-	if (res == TEE_SUCCESS) {
+	if ((res == TEE_SUCCESS) && (tag != NULL)) {
 		/* Encrypt-then-MAC */
 		res = generate_cmac(data_out, c->data_size,
-				tag, c->key, c->key_size);
+				tag, c->key, c->key_size,
+				NULL, 0U);
 	}
 
 	return res;
@@ -234,7 +244,8 @@ TEE_Result tee_sfkm_decrypt_suk(struct tee_sfkm_crypt_info *c,
 
 	/* Encrypt-then-MAC */
 	res = generate_cmac(c->data_in, c->data_size,
-			mac_buf, c->key, c->key_size);
+			mac_buf, c->key, c->key_size,
+			c->iv, c->iv_size);
 
 	if (res == TEE_SUCCESS) {
 		if (memcmp(mac_buf, tag, SAFS_TAG_LEN) != 0) {
@@ -281,7 +292,8 @@ TEE_Result tee_sfkm_decrypt(const struct tee_sfkm_crypt_info *c,
 
 	/* Encrypt-then-MAC */
 	res = generate_cmac(c->data_in, c->data_size,
-			mac_buf, c->key, c->key_size);
+			mac_buf, c->key, c->key_size,
+			NULL, 0U);
 
 	if (res == TEE_SUCCESS) {
 		if (memcmp(mac_buf, tag, SAFS_TAG_LEN) != 0) {
@@ -392,7 +404,8 @@ static TEE_Result crypt_aes(uint32_t algo, TEE_OperationMode mode,
 #endif
 
 static TEE_Result generate_cmac(const uint8_t *data_in, size_t data_size,
-			uint8_t *mac_out, const uint8_t *key, size_t key_size)
+			uint8_t *mac_out, const uint8_t *key, size_t key_size,
+			const uint8_t *data2_in, size_t data2_size)
 {
 	TEE_Result res;
 	uint8_t *ctx = NULL;
@@ -415,6 +428,10 @@ static TEE_Result generate_cmac(const uint8_t *data_in, size_t data_size,
 
 	if (res == TEE_SUCCESS) {
 		res = crypto_ops.mac.update(ctx, algo, data_in, data_size);
+	}
+
+	if ((res == TEE_SUCCESS) && (data2_in != NULL)) {
+		res = crypto_ops.mac.update(ctx, algo, data2_in, data2_size);
 	}
 
 	if (res == TEE_SUCCESS) {

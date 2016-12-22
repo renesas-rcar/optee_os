@@ -59,6 +59,7 @@ void itr_init(struct itr_chip *data);
 void itr_handle(size_t it);
 
 void itr_add(struct itr_handler *handler);
+void itr_del(struct itr_handler *handler);
 void itr_enable(struct itr_handler *handler);
 void itr_disable(struct itr_handler *handler);
 

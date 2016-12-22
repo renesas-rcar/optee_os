@@ -25,6 +25,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <kernel/panic.h>
 #include <kernel/tee_common.h>
 #include <util.h>
 #include <trace.h>
@@ -105,15 +106,17 @@ static size_t tee_mm_stats_allocated(tee_mm_pool_t *pool)
 	return sz << pool->shift;
 }
 
-void tee_mm_get_pool_stats(tee_mm_pool_t *pool, struct tee_mm_pool_stats *stats,
+void tee_mm_get_pool_stats(tee_mm_pool_t *pool, struct malloc_stats *stats,
 			   bool reset)
 {
+	memset(stats, 0, sizeof(*stats));
+
 	stats->size = pool->hi - pool->lo;
 	stats->max_allocated = pool->max_allocated;
 	stats->allocated = tee_mm_stats_allocated(pool);
 
 	if (reset)
-		stats->max_allocated = 0;
+		pool->max_allocated = 0;
 }
 
 static void update_max_allocated(tee_mm_pool_t *pool)
@@ -175,7 +178,9 @@ tee_mm_entry_t *tee_mm_alloc(tee_mm_pool_t *pool, uint32_t size)
 				/* out of memory */
 				return NULL;
 		} else {
-			TEE_ASSERT(pool->hi > pool->lo);
+			if (pool->hi <= pool->lo)
+				panic("invalid pool");
+
 			remaining = (pool->hi - pool->lo);
 			remaining -= ((entry->offset + entry->size) <<
 				      pool->shift);
@@ -287,10 +292,9 @@ void tee_mm_free(tee_mm_entry_t *p)
 	while (entry->next != NULL && entry->next != p)
 		entry = entry->next;
 
-	if (entry->next == NULL) {
-		DMSG("invalid mm_entry %p", (void *)p);
-		TEE_ASSERT(0);
-	}
+	if (!entry->next)
+		panic("invalid mm_entry");
+
 	entry->next = entry->next->next;
 
 	free(p);
@@ -316,14 +320,11 @@ bool tee_mm_is_empty(tee_mm_pool_t *pool)
 	return pool == NULL || pool->entry == NULL || pool->entry->next == NULL;
 }
 
-/* Physical Public DDR pool */
-tee_mm_pool_t tee_mm_pub_ddr __data; /* XXX __data is a workaround */
-
 /* Physical Secure DDR pool */
-tee_mm_pool_t tee_mm_sec_ddr __data; /* XXX __data is a workaround */
+tee_mm_pool_t tee_mm_sec_ddr __early_bss;
 
 /* Virtual eSRAM pool */
-tee_mm_pool_t tee_mm_vcore __data; /* XXX __data is a workaround */
+tee_mm_pool_t tee_mm_vcore __early_bss;
 
 tee_mm_entry_t *tee_mm_find(const tee_mm_pool_t *pool, uint32_t addr)
 {

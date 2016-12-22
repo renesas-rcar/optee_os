@@ -11,6 +11,7 @@ srcs-$(CFG_DYNAMIC_TA_AUTH_BY_HWENGINE) += rcar_ta_auth.c
 srcs-$(CFG_ARM32_core) += rcar_call_maskrom_a32.S
 srcs-$(CFG_ARM64_core) += rcar_call_maskrom_a64.S
 srcs-y += rcar_maskrom.c
+srcs-y += rcar_suspend_to_ram.c
 
 # Copy the base file - /core/arch/arm/kernel/
 srcs-y += trace_ext.c

@@ -58,6 +58,7 @@ const ErrorTable_t error_tbl[SS_ERROR_LAST_NUM] = {
 	{SS_ERROR_SIGNATURE_INVALID,	  TEE_ERROR_SIGNATURE_INVALID	   },
 	{SS_ERROR_TIME_NOT_SET,		  TEE_ERROR_TIME_NOT_SET	   },
 	{SS_ERROR_TIME_NEEDS_RESET,	  TEE_ERROR_TIME_NEEDS_RESET	   },
+	{SS_ERROR_LCS_CHECK,	  	  TEE_ERROR_LCS_CHECK		   },
 	{SS_ERROR_LAST_NUM, 		  0U}
 };
 
@@ -391,20 +392,17 @@ SSError_t bn_alloc_max(struct bignum **s)
  * param[in]	*from		- Pointer to the binary data buffer.
  * param[in]	fromsize	- Size of the binary data buffer.
  * param[out]	*to		- Pointer to the output data of bignum.
- * return	TEE_Result	- TEE internal API error code.
+ * return	Always return SS_SUCCESS of SS provider error code.
  */
 SSError_t ss_bn_bin2bn(const uint8_t *from, size_t fromsize,
 		struct bignum *to)
 {
-	SSError_t ss_res;
-	TEE_Result res;
 	PROV_INMSG("*from=%p, fromsize=%ld, *to=%p\n",from,fromsize,(void *)to);
 
-	res = bn_bin2bn(from, fromsize, to);
+	((mpanum)(to))->size = (ROUNDUP(fromsize, 4U) >> 2U);
+	(void)memcpy((((mpanum)(to))->d), from, fromsize);
 
-	ss_res = ss_translate_error_tee2ss(res);
-	OUTMSG("return ss_res=0x%08x -> res=0x%08x\n",ss_res,res);
-	return ss_res;
+	return SS_SUCCESS;
 }
 
 /*

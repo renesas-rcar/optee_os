@@ -30,7 +30,7 @@
 
 #include <stdint.h>
 
-#define VERSION_OF_RENESAS	"1.0.5"
+#define VERSION_OF_RENESAS	"1.0.6"
 
 extern const int8_t version_of_renesas[];
 

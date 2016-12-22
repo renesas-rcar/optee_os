@@ -1,5 +1,4 @@
 PLATFORM_FLAVOR ?= dra7xx
-PLATFORM_FLAVOR_$(PLATFORM_FLAVOR) := y
 
 # 32-bit flags
 arm32-platform-cpuarch		:= cortex-a15
@@ -17,6 +16,5 @@ $(call force,CFG_WITH_SOFTWARE_PRNG,y)
 
 ta-targets = ta_arm32
 
-CFG_TEE_CORE_EMBED_INTERNAL_TESTS ?= y
 CFG_WITH_STACK_CANARIES ?= y
 CFG_WITH_STATS ?= y

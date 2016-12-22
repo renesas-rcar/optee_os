@@ -30,6 +30,9 @@
 #include <kernel/generic_boot.h>
 #include <kernel/panic.h>
 #include <kernel/pm_stubs.h>
+#include <kernel/tz_ssvce_pl310.h>
+#include <mm/core_mmu.h>
+#include <mm/core_memprot.h>
 #include <platform_config.h>
 #include <stdint.h>
 #include <tee/entry_std.h>
@@ -68,6 +71,20 @@ static void main_fiq(void)
 	panic();
 }
 
+
+static vaddr_t console_base(void)
+{
+	/* in case it's used before .bss is cleared */
+	static void *va __early_bss;
+
+	if (cpu_mmu_enabled()) {
+		if (!va)
+			va = phys_to_virt(UART_CONSOLE_BASE, MEM_AREA_IO_NSEC);
+		return (vaddr_t)va;
+	}
+	return UART_CONSOLE_BASE;
+}
+
 void console_init(void)
 {
 }
@@ -76,12 +93,25 @@ void console_putc(int ch)
 {
 	if (!boot_is_completed)
 		return;
-	__asc_xmit_char((char)ch);
+	__asc_xmit_char((char)ch, console_base());
 }
 
 void console_flush(void)
 {
 	if (!boot_is_completed)
 		return;
-	__asc_flush();
+	__asc_flush(console_base());
+}
+
+vaddr_t pl310_base(void)
+{
+	/* in case it's used before .bss is cleared */
+	static void *va __early_bss;
+
+	if (cpu_mmu_enabled()) {
+		if (!va)
+			va = phys_to_virt(PL310_BASE, MEM_AREA_IO_SEC);
+		return (vaddr_t)va;
+	}
+	return PL310_BASE;
 }

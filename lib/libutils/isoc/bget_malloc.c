@@ -99,27 +99,37 @@
 #define BufStats    1
 #endif
 
+#include <compiler.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <malloc.h>
-#include "bget.c"		/* this is ugly, but this is bget */
 #include <util.h>
+#include <trace.h>
 
-#ifdef __KERNEL__
+#if defined(__KERNEL__)
 /* Compiling for TEE Core */
+#include <kernel/asan.h>
 #include <kernel/mutex.h>
-
-static struct mutex malloc_mu = MUTEX_INITIALIZER;
 
 static void malloc_lock(void)
 {
-	mutex_lock(&malloc_mu);
+	mutex_lock(&__malloc_mu);
 }
 
 static void malloc_unlock(void)
 {
-	mutex_unlock(&malloc_mu);
+	mutex_unlock(&__malloc_mu);
+}
+
+static void tag_asan_free(void *buf, size_t len)
+{
+	asan_tag_heap_free(buf, (uint8_t *)buf + len);
+}
+
+static void tag_asan_alloced(void *buf, size_t len)
+{
+	asan_tag_access(buf, (uint8_t *)buf + len);
 }
 
 #else /*__KERNEL__*/
@@ -131,11 +141,17 @@ static void malloc_lock(void)
 static void malloc_unlock(void)
 {
 }
+
+static void tag_asan_free(void *buf __unused, size_t len __unused)
+{
+}
+
+static void tag_asan_alloced(void *buf __unused, size_t len __unused)
+{
+}
 #endif /*__KERNEL__*/
 
-#if defined(ENABLE_MDBG)
-#include <trace.h>
-#endif
+#include "bget.c"		/* this is ugly, but this is bget */
 
 struct malloc_pool {
 	void *buf;
@@ -146,76 +162,48 @@ static struct malloc_pool *malloc_pool;
 static size_t malloc_pool_len;
 
 #ifdef BufStats
-static size_t max_alloc_heap;
 
-static void raw_malloc_save_max_alloced_size(void)
+static struct malloc_stats mstats;
+
+static void raw_malloc_return_hook(void *p, size_t requested_size)
 {
-	if (totalloc > max_alloc_heap)
-		max_alloc_heap = totalloc;
+	if (totalloc > mstats.max_allocated)
+		mstats.max_allocated = totalloc;
+
+	if (!p) {
+		mstats.num_alloc_fail++;
+		if (requested_size > mstats.biggest_alloc_fail) {
+			mstats.biggest_alloc_fail = requested_size;
+			mstats.biggest_alloc_fail_used = totalloc;
+		}
+	}
 }
 
-void malloc_reset_max_allocated(void)
+void malloc_reset_stats(void)
 {
 	malloc_lock();
-	max_alloc_heap = 0;
+	mstats.max_allocated = 0;
+	mstats.num_alloc_fail = 0;
+	mstats.biggest_alloc_fail = 0;
+	mstats.biggest_alloc_fail_used = 0;
 	malloc_unlock();
 }
 
-size_t malloc_get_max_allocated(void)
+void malloc_get_stats(struct malloc_stats *stats)
 {
-	size_t r;
-
 	malloc_lock();
-	r = max_alloc_heap;
+	memcpy(stats, &mstats, sizeof(*stats));
+	stats->allocated = totalloc;
 	malloc_unlock();
-	return r;
-}
-
-size_t malloc_get_allocated(void)
-{
-	size_t r;
-
-	malloc_lock();
-	r = totalloc;
-	malloc_unlock();
-	return r;
 }
 
 #else /* BufStats */
 
-static void raw_malloc_save_max_alloced_size(void)
+static void raw_malloc_return_hook(void *p __unused, size_t requested_size __unused)
 {
 }
 
-void malloc_reset_max_allocated(void)
-{
-}
-
-size_t malloc_get_max_allocated(void)
-{
-	return 0;
-}
-
-size_t malloc_get_allocated(void)
-{
-	return 0;
-}
 #endif /* BufStats */
-
-size_t malloc_get_heap_size(void)
-{
-	size_t n;
-	size_t s = 0;
-
-	malloc_lock();
-
-	for (n = 0; n < malloc_pool_len; n++)
-		s += malloc_pool[n].len;
-
-	malloc_unlock();
-
-	return s;
-}
 
 #ifdef BufValid
 static void raw_malloc_validate_pools(void)
@@ -299,7 +287,7 @@ static bool bpool_foreach(struct bpool_iterator *iterator, void **buf)
 
 static void *raw_malloc(size_t hdr_size, size_t ftr_size, size_t pl_size)
 {
-	void *ptr;
+	void *ptr = NULL;
 	size_t s = hdr_size + ftr_size + pl_size;
 
 	/*
@@ -313,14 +301,15 @@ static void *raw_malloc(size_t hdr_size, size_t ftr_size, size_t pl_size)
 
 	/* Check wrapping */
 	if (s < pl_size)
-		return NULL;
+		goto out;
 
 	/* BGET doesn't like 0 sized allocations */
 	if (!s)
 		s++;
 
 	ptr = bget(s);
-	raw_malloc_save_max_alloced_size();
+out:
+	raw_malloc_return_hook(ptr, pl_size);
 
 	return ptr;
 }
@@ -337,20 +326,21 @@ static void *raw_calloc(size_t hdr_size, size_t ftr_size, size_t pl_nmemb,
 		size_t pl_size)
 {
 	size_t s = hdr_size + ftr_size + pl_nmemb * pl_size;
-	void *ptr;
+	void *ptr = NULL;
 
 	raw_malloc_validate_pools();
 
 	/* Check wrapping */
 	if (s < pl_nmemb || s < pl_size)
-		return NULL;
+		goto out;
 
 	/* BGET doesn't like 0 sized allocations */
 	if (!s)
 		s++;
 
 	ptr = bgetz(s);
-	raw_malloc_save_max_alloced_size();
+out:
+	raw_malloc_return_hook(ptr, pl_nmemb * pl_size);
 
 	return ptr;
 }
@@ -359,11 +349,11 @@ static void *raw_realloc(void *ptr, size_t hdr_size, size_t ftr_size,
 		size_t pl_size)
 {
 	size_t s = hdr_size + ftr_size + pl_size;
-	void *p;
+	void *p = NULL;
 
 	/* Check wrapping */
 	if (s < pl_size)
-		return NULL;
+		goto out;
 
 	raw_malloc_validate_pools();
 
@@ -372,7 +362,8 @@ static void *raw_realloc(void *ptr, size_t hdr_size, size_t ftr_size,
 		s++;
 
 	p = bgetr(ptr, s);
-	raw_malloc_save_max_alloced_size();
+out:
+	raw_malloc_return_hook(p, pl_size);
 
 	return p;
 }
@@ -550,7 +541,7 @@ static void *raw_memalign(size_t hdr_size, size_t ftr_size, size_t alignment,
 
 	b = (uintptr_t)bget(s);
 	if (!b)
-		return NULL;
+		goto out;
 
 	if ((b + hdr_size) & (alignment - 1)) {
 		/*
@@ -584,14 +575,14 @@ static void *raw_memalign(size_t hdr_size, size_t ftr_size, size_t alignment,
 	 * the buffer.
 	 */
 	brel_after((void *)b, hdr_size + ftr_size + size);
-
-	raw_malloc_save_max_alloced_size();
+out:
+	raw_malloc_return_hook((void *)b, size);
 
 	return (void *)b;
 }
 
 /* Most of the stuff in this function is copied from bgetr() in bget.c */
-static bufsize bget_buf_size(void *buf)
+static __maybe_unused bufsize bget_buf_size(void *buf)
 {
 	bufsize osize;          /* Old size of buffer */
 	struct bhead *b;
@@ -684,7 +675,7 @@ void *mdbg_malloc(const char *fname, int lineno, size_t size)
 	return hdr;
 }
 
-static void assert_header(struct mdbg_hdr *hdr)
+static void assert_header(struct mdbg_hdr *hdr __maybe_unused)
 {
 	assert(hdr->magic == MDBG_HEADER_MAGIC);
 	assert(*mdbg_get_footer(hdr) == MDBG_FOOTER_MAGIC);
@@ -801,7 +792,7 @@ void mdbg_check(int bufdump)
 			if (!fname)
 				fname = "unknown";
 
-			DMSG("buffer: %d bytes %s:%d\n",
+			IMSG("buffer: %d bytes %s:%d\n",
 				hdr->pl_size, fname, hdr->line);
 		}
 	}
@@ -877,12 +868,22 @@ void malloc_add_pool(void *buf, size_t len)
 	size_t l;
 	uintptr_t start = (uintptr_t)buf;
 	uintptr_t end = start + len;
+	const size_t min_len = ((sizeof(struct malloc_pool) + (SizeQuant - 1)) &
+					(~(SizeQuant - 1))) +
+				sizeof(struct bhead) * 2;
+
 
 	start = ROUNDUP(start, SizeQuant);
 	end = ROUNDDOWN(end, SizeQuant);
 	assert(start < end);
 
+	if ((end - start) < min_len) {
+		DMSG("Skipping too small pool");
+		return;
+	}
+
 	malloc_lock();
+	tag_asan_free((void *)start, end - start);
 	bpool((void *)start, end - start);
 	l = malloc_pool_len + 1;
 	p = realloc_unlocked(malloc_pool, sizeof(struct malloc_pool) * l);
@@ -890,6 +891,9 @@ void malloc_add_pool(void *buf, size_t len)
 	malloc_pool = p;
 	malloc_pool[malloc_pool_len].buf = (void *)start;
 	malloc_pool[malloc_pool_len].len = end - start;
+#ifdef BufStats
+	mstats.size += malloc_pool[malloc_pool_len].len;
+#endif
 	malloc_pool_len = l;
 	malloc_unlock();
 }

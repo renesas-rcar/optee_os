@@ -84,7 +84,8 @@
 #define SS_ERROR_SIGNATURE_INVALID	  0x000000001BU
 #define SS_ERROR_TIME_NOT_SET		  0x000000001CU
 #define SS_ERROR_TIME_NEEDS_RESET	  0x000000001DU
-#define SS_ERROR_LAST_NUM		  0x000000001FU
+#define SS_ERROR_LCS_CHECK		  0x000000001EU
+#define SS_ERROR_LAST_NUM		  0x0000000020U
 
 /******************************************************************************/
 /* Typedefs                                                                   */

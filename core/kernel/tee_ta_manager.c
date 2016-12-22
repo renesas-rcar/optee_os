@@ -24,12 +24,14 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+
 #include <types_ext.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <arm.h>
+#include <assert.h>
 #include <kernel/mutex.h>
 #include <kernel/panic.h>
 #include <kernel/static_ta.h>
@@ -49,10 +51,9 @@
 #include <trace.h>
 #include <utee_types.h>
 #include <util.h>
-#include <assert.h>
 
 /* This mutex protects the critical section in tee_ta_init_session */
-static struct mutex tee_ta_mutex = MUTEX_INITIALIZER;
+struct mutex tee_ta_mutex = MUTEX_INITIALIZER;
 static struct condvar tee_ta_cv = CONDVAR_INITIALIZER;
 static int tee_ta_single_instance_thread = THREAD_ID_INVALID;
 static size_t tee_ta_single_instance_count;
@@ -349,7 +350,9 @@ TEE_Result tee_ta_close_session(struct tee_ta_session *csess,
 
 	mutex_lock(&tee_ta_mutex);
 
-	TEE_ASSERT(ctx->ref_count > 0);
+	if (ctx->ref_count <= 0)
+		panic();
+
 	ctx->ref_count--;
 	if (!ctx->ref_count && !(ctx->flags & TA_FLAG_INSTANCE_KEEP_ALIVE)) {
 		DMSG("   ... Destroy TA ctx");
@@ -359,6 +362,7 @@ TEE_Result tee_ta_close_session(struct tee_ta_session *csess,
 
 		condvar_destroy(&ctx->busy_cv);
 
+		pgt_flush_ctx(ctx);
 		ctx->ops->destroy(ctx);
 	} else
 		mutex_unlock(&tee_ta_mutex);
@@ -602,39 +606,68 @@ bool tee_ta_session_is_cancelled(struct tee_ta_session *s, TEE_Time *curr_time)
 	return false;
 }
 
-TEE_Result tee_ta_get_current_session(struct tee_ta_session **sess)
+static void update_current_ctx(struct thread_specific_data *tsd)
 {
-	struct thread_specific_data *tsd = thread_get_tsd();
-
-	if (!tsd->sess)
-		return TEE_ERROR_BAD_STATE;
-	*sess = tsd->sess;
-	return TEE_SUCCESS;
-}
-
-void tee_ta_set_current_session(struct tee_ta_session *sess)
-{
-	struct thread_specific_data *tsd = thread_get_tsd();
 	struct tee_ta_ctx *ctx = NULL;
+	struct tee_ta_session *s = TAILQ_FIRST(&tsd->sess_stack);
 
-	if (sess) {
-		if (sess->calling_sess)
-			ctx = sess->calling_sess->ctx;
-		else
-			ctx = sess->ctx;
+	if (s) {
+		if (is_static_ta_ctx(s->ctx))
+			s = TAILQ_NEXT(s, link_tsd);
+
+		if (s)
+			ctx = s->ctx;
 	}
 
-	if (tsd->sess != sess) {
-		tsd->sess = sess;
+	if (tsd->ctx != ctx)
 		tee_mmu_set_ctx(ctx);
-	}
 	/*
 	 * If ctx->mmu == NULL we must not have user mapping active,
 	 * if ctx->mmu != NULL we must have user mapping active.
 	 */
-	assert(((ctx && (ctx->flags & TA_FLAG_USER_MODE) ?
+	if (((ctx && is_user_ta_ctx(ctx) ?
 			to_user_ta_ctx(ctx)->mmu : NULL) == NULL) ==
-		!core_mmu_user_mapping_is_active());
+					core_mmu_user_mapping_is_active())
+		panic("unexpected active mapping");
+}
+
+void tee_ta_push_current_session(struct tee_ta_session *sess)
+{
+	struct thread_specific_data *tsd = thread_get_tsd();
+
+	TAILQ_INSERT_HEAD(&tsd->sess_stack, sess, link_tsd);
+	update_current_ctx(tsd);
+}
+
+struct tee_ta_session *tee_ta_pop_current_session(void)
+{
+	struct thread_specific_data *tsd = thread_get_tsd();
+	struct tee_ta_session *s = TAILQ_FIRST(&tsd->sess_stack);
+
+	if (s) {
+		TAILQ_REMOVE(&tsd->sess_stack, s, link_tsd);
+		update_current_ctx(tsd);
+	}
+	return s;
+}
+
+TEE_Result tee_ta_get_current_session(struct tee_ta_session **sess)
+{
+	struct tee_ta_session *s = TAILQ_FIRST(&thread_get_tsd()->sess_stack);
+
+	if (!s)
+		return TEE_ERROR_BAD_STATE;
+	*sess = s;
+	return TEE_SUCCESS;
+}
+
+struct tee_ta_session *tee_ta_get_calling_session(void)
+{
+	struct tee_ta_session *s = TAILQ_FIRST(&thread_get_tsd()->sess_stack);
+
+	if (s)
+		s = TAILQ_NEXT(s, link_tsd);
+	return s;
 }
 
 TEE_Result tee_ta_get_client_id(TEE_Identity *id)

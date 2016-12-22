@@ -29,7 +29,7 @@
 #define COMPILER_H
 
 /*
- * Macros that should be used instead of using __attributue__ directly to
+ * Macros that should be used instead of using __attribute__ directly to
  * ease portability and make the code easier to read.
  */
 
@@ -52,6 +52,7 @@
 #define __bss		__section(".bss")
 #define __rodata	__section(".rodata")
 #define __rodata_unpaged __section(".rodata.__unpaged")
+#define __early_bss	__section(".early_bss")
 
 #define __compiler_bswap64(x)	__builtin_bswap64((x))
 #define __compiler_bswap32(x)	__builtin_bswap32((x))

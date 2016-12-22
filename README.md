@@ -11,23 +11,26 @@
     4. [Allwinner A80](#45-allwinner-a80)
     4. [Freescale MX6UL EVK](#46-freescale-mx6ul-evk)
 5. [repo manifests](#5-repo-manifests)
-	5. [Install repo](#51-install-repo)
-	5. [Get the source code](#52-get-the-source-code)
-		5. [Targets](#521-targets)
-		5. [Branches](#522-branches)
-		5. [Get the toolchains](#523-get-the-toolchains)
-	5. [QEMU](#53-qemu)
-	5. [FVP](#54-fvp)
-	5. [HiKey](#55-hikey)
-	5. [MT8173-EVB](#56-mt8173-evb)
-	5. [Juno](#57-juno)
-		5. [Update flash and its layout](#571-update-flash-and-its-layout)
-	5. [Tips and tricks](#57-tips-and-tricks)
-		5. [Reference existing project to speed up repo sync](#571-reference-existing-project-to-speed-up-repo-sync)
-		5. [Use ccache](#572-use-ccache)
+    5. [Install repo](#51-install-repo)
+    5. [Get the source code](#52-get-the-source-code)
+        5. [Targets](#521-targets)
+        5. [Branches](#522-branches)
+        5. [Get the toolchains](#523-get-the-toolchains)
+    5. [QEMU](#53-qemu)
+    5. [FVP](#54-fvp)
+    5. [HiKey](#55-hikey)
+    5. [MT8173-EVB](#56-mt8173-evb)
+    5. [Juno](#57-juno)
+        5. [Update flash and its layout](#571-update-flash-and-its-layout)
+        5. [GlobalPlatform testsuite support](#572-globalplatform-testsuite-support)
+        5. [GCC5 support](#573-gcc5-support)
+    5. [Raspberry Pi 3](#58-raspberry-pi-3)
+    5. [Tips and tricks](#59-tips-and-tricks)
+        5. [Reference existing project to speed up repo sync](#581-reference-existing-project-to-speed-up-repo-sync)
+        5. [Use ccache](#582-use-ccache)
 6. [Load driver, tee-supplicant and run xtest](#6-load-driver-tee-supplicant-and-run-xtest)
 7. [Coding standards](#7-coding-standards)
-	7. [checkpatch](#71-checkpatch)
+    7. [checkpatch](#71-checkpatch)
 
 # 1. Introduction
 The `optee_os git`, contains the source code for the TEE in Linux using the
@@ -69,14 +72,23 @@ platforms have different sub-maintainers, please refer to the file
 | [Allwinner A80 Board](http://www.allwinnertech.com/en/clq/processora/A80.html)|`PLATFORM=sunxi`| No |
 | [ARM Juno Board](http://www.arm.com/products/tools/development-boards/versatile-express/juno-arm-development-platform.php) |`PLATFORM=vexpress-juno`| Yes |
 | [FSL ls1021a](http://www.freescale.com/tools/embedded-software-and-tools/hardware-development-tools/tower-development-boards/mcu-and-processor-modules/powerquicc-and-qoriq-modules/qoriq-ls1021a-tower-system-module:TWR-LS1021A?lang_cd=en)|`PLATFORM=ls-ls1021atwr`| Yes |
+| [FSL i.MX6 Quad SABRE Lite Board](https://boundarydevices.com/product/sabre-lite-imx6-sbc/) |`PLATFORM=imx`| Yes |
+| [FSL i.MX6 Quad SABRE SD Board](http://www.nxp.com/products/software-and-tools/hardware-development-tools/sabre-development-system/sabre-board-for-smart-devices-based-on-the-i.mx-6quad-applications-processors:RD-IMX6Q-SABRE) |`PLATFORM=imx`| Yes |
 | [FSL i.MX6 UltraLite EVK Board](http://www.freescale.com/products/arm-processors/i.mx-applications-processors-based-on-arm-cores/i.mx-6-processors/i.mx6qp/i.mx6ultralite-evaluation-kit:MCIMX6UL-EVK) |`PLATFORM=imx`| Yes |
 | [ARM Foundation FVP](http://www.arm.com/fvp) |`PLATFORM=vexpress-fvp`| Yes |
+| [HiSilicon D02](http://open-estuary.org/d02-2)|`PLATFORM=d02`| No |
 | [HiKey Board (HiSilicon Kirin 620)](https://www.96boards.org/products/hikey)|`PLATFORM=hikey`| Yes |
 | [MediaTek MT8173 EVB Board](http://www.mediatek.com/en/products/mobile-communications/tablet/mt8173)|`PLATFORM=mediatek-mt8173`| No |
 | [QEMU](http://wiki.qemu.org/Main_Page) |`PLATFORM=vexpress-qemu_virt`| Yes |
+| [QEMUv8](http://wiki.qemu.org/Main_Page) |`PLATFORM=vexpress-qemu_armv8a`| Yes |
+| [Raspberry Pi 3](https://www.raspberrypi.org/products/raspberry-pi-3-model-b) |`PLATFORM=rpi3`| Yes |
+| [Renesas RCAR](https://www.renesas.com/en-sg/solutions/automotive/products/rcar-h3.html)|`PLATFORM=rcar`| No |
+| [STMicroelectronics b2260 - h410 (96boards fmt)](http://www.st.com/web/en/catalog/mmc/FM131/SC999/SS1628/PF258776) |`PLATFORM=stm-b2260`| No |
 | [STMicroelectronics b2120 - h310 / h410](http://www.st.com/web/en/catalog/mmc/FM131/SC999/SS1628/PF258776) |`PLATFORM=stm-cannes`| No |
 | [STMicroelectronics b2020-h416](http://www.st.com/web/catalog/mmc/FM131/SC999/SS1633/PF253155?sc=internet/imag_video/product/253155.jsp)|`PLATFORM=stm-orly2`| No |
 | [Texas Instruments DRA7xx](http://www.ti.com/product/DRA746)|`PLATFORM=ti-dra7xx`| Yes |
+| [Xilinx Zynq UltraScale+ MPSOC](http://www.xilinx.com/products/silicon-devices/soc/zynq-ultrascale-mpsoc.html)|`PLATFORM=zynqmp-zcu102`| Yes |
+| [Spreadtrum SC9860](http://www.spreadtrum.com/en/SC9860GV.html)|`PLATFORM=sprd-sc9860`| No |
 
 ### 3.1 Development board for community user
 For community users, we suggest using [HiKey board](https://www.96boards.org/products/ce/hikey/)
@@ -106,11 +118,11 @@ able to build and run OP-TEE there are a few packages that needs to be installed
 to start with. Therefore install the following packages regardless of what
 target you will use in the end.
 ```
-$ sudo apt-get install android-tools-adb android-tools-fastboot autoconf bison \
-		       cscope curl flex gdisk libc6:i386 libfdt-dev \
-		       libglib2.0-dev libpixman-1-dev libstdc++6:i386 \
-		       libz1:i386 netcat python-crypto python-serial uuid-dev \
-		       xdg-utils xz-utils zlib1g-dev
+$ sudo apt-get install android-tools-adb android-tools-fastboot autoconf bc \
+	bison cscope curl flex gdisk libc6:i386 libfdt-dev libftdi-dev \
+	libglib2.0-dev libhidapi-dev libncurses5-dev libpixman-1-dev \
+	libstdc++6:i386 libtool libz1:i386 mtools netcat python-crypto \
+	python-serial python-wand unzip uuid-dev xdg-utils xz-utils zlib1g-dev
 ```
 
 ---
@@ -126,10 +138,10 @@ to find out where the respective toolchain will be used. For example in the
 [QEMU makefile](https://github.com/OP-TEE/build/blob/master/qemu.mk#L12-L15) you
 will see:
 ```
-CROSS_COMPILE_NS_USER		?= "$(CCACHE)$(AARCH32_CROSS_COMPILE)"
-CROSS_COMPILE_NS_KERNEL		?= "$(CCACHE)$(AARCH32_CROSS_COMPILE)"
-CROSS_COMPILE_S_USER		?= "$(CCACHE)$(AARCH32_CROSS_COMPILE)"
-CROSS_COMPILE_S_KERNEL		?= "$(CCACHE)$(AARCH32_CROSS_COMPILE)"
+CROSS_COMPILE_NS_USER       ?= "$(CCACHE)$(AARCH32_CROSS_COMPILE)"
+CROSS_COMPILE_NS_KERNEL     ?= "$(CCACHE)$(AARCH32_CROSS_COMPILE)"
+CROSS_COMPILE_S_USER        ?= "$(CCACHE)$(AARCH32_CROSS_COMPILE)"
+CROSS_COMPILE_S_KERNEL      ?= "$(CCACHE)$(AARCH32_CROSS_COMPILE)"
 ```
 
 However, if you only want to compile optee_os, then you can do like this:
@@ -177,24 +189,27 @@ $ make CFG_TEE_CORE_LOG_LEVEL=4
 
 ---
 ### 4.4 STMicroelectronics boards
-Currently OP-TEE is supported on Orly-2 (`b2020-h416`) and Cannes family
-(`b2120` both `h310` and `h410` chip).
+Currently OP-TEE is supported on Orly-2 (`b2020-h416`), Cannes family
+(`b2120` both `h310` and `h410` chip) and 96boards/cannes board (`b2260-h410`).
 
-#### 4.4.1 Get the compiler for Orly-2
-Will be written soon.
+#### 4.4.1 Get the compiler
+Follow the instructions in the "4.2 Basic setup".
 
 #### 4.4.2 Download the source code
 See section "4.2.2 Download the source code".
 
-#### 4.4.3 Build for Orly-2
-For Orly-2 do as follows
+#### 4.4.3 Build the images and files
+For the 96boards/cannes:
 ```
-$ PLATFORM=stm-orly2 CROSS_COMPILE=arm-linux-gnueabihf- make
+$ make PLATFORM=stm-b2260
 ```
-
-For Cannes family do as follows
+For the legacy cannes family:
 ```
-$ PLATFORM=stm-cannes CROSS_COMPILE=arm-linux-gnueabihf- make
+$ make PLATFORM=stm-cannes
+```
+For the orly2 family
+```
+$ make PLATFORM=stm-orly2
 ```
 
 #### 4.4.4 Prepare and install the images
@@ -289,12 +304,60 @@ $ /system/bin/tee-helloworld
 
 ---
 ### 4.6 Freescale MX6UL EVK
-Build:
+
+Get U-Boot source:
+https://github.com/MrVan/uboot/commit/4f016adae573aaadd7bf6a37f8c58a882b391ae6
+
+Build U-Boot:
+```
+    make ARCH=arm mx6ul_14x14_evk_optee_defconfig
+    make ARCH=arm
+    Burn u-boot.imx to offset 0x400 of SD card
+```
+
+Get Kernel source: https://github.com/linaro-swg/linux/tree/optee
+
+Patch kernel:
+```c
+    diff --git a/arch/arm/boot/dts/imx6ul-14x14-evk.dts b/arch/arm/boot/dts/imx6ul-14x14-evk.dts
+    index 6aaa5ec..2ac9c80 100644
+    --- a/arch/arm/boot/dts/imx6ul-14x14-evk.dts
+    +++ b/arch/arm/boot/dts/imx6ul-14x14-evk.dts
+    @@ -23,6 +23,13 @@
+		reg = <0x80000000 0x20000000>;
+	 };
+
+    +	firmware {
+    +		optee {
+    +			compatible = "linaro,optee-tz";
+    +			method = "smc";
+    +		};
+    +	};
+    +
+	regulators {
+		compatible = "simple-bus";
+		#address-cells = <1>;
+```
+
+Compile the Kernel:
+
+```
+make ARCH=arm imx_v6_v7_defconfig
+make menuconfig
+select the two entries
+	CONFIG_TEE=y
+	CONFIG_OPTEE
+make ARCH=arm
+```
+Copy zImage and imx6ul_14x14_evk.dtb to SD card.
+
+OPTEE OS Build:
 ```
     PLATFORM_FLAVOR=mx6ulevk make PLATFORM=imx
     ${CROSS_COMPILE}-objcopy -O binary out/arm-plat-imx/core/tee.elf optee.bin
     copy optee.bin to the first partition of SD card which is used for boot.
 ```
+
 Run using U-Boot:
 ```
     run loadfdt;
@@ -306,6 +369,8 @@ Run using U-Boot:
 
 Note:
     CAAM is not implemented now, this will be added later.
+
+More steps: http://mrvan.github.io/optee-imx6ul
 
 ---
 ## 5. repo manifests
@@ -338,11 +403,13 @@ $ repo sync
 | Target | Latest | Stable |
 |--------|--------|--------|
 | QEMU | `default.xml` | `default_stable.xml` |
+| QEMUv8 | `qemu_v8.xml` | `qemu_v8_stable.xml` |
 | FVP | `fvp.xml` | `fvp_stable.xml` |
 | HiKey | `hikey.xml` | `hikey_stable.xml` |
-| HiKey Debian (experimental) | `hikey_debian.xml` | Not available |
+| HiKey Debian | `hikey_debian.xml` | `hikey_debian_stable.xml` |
 | MediaTek MT8173 EVB Board | `mt8173-evb.xml` | `mt8173-evb_stable.xml` |
 | ARM Juno board| `juno.xml` | `juno_stable.xml` |
+| Raspberry Pi 3 | `rpi3.xml` | `rpi3_stable.xml` |
 
 #### 5.2.2 Branches
 Currently we are only using one branch, i.e, the `master` branch.
@@ -354,6 +421,9 @@ using repo.
 $ cd build
 $ make toolchains
 ```
+
+##### Note :
+If you have been using GCC4.9 and are upgrading to GCC5 via [this commit] (https://github.com/OP-TEE/build/commit/69a8a37bc417d28d62ae57e7ca2a8df4bdec93c8), please make sure that you delete the `toolchains` directory before running `make toolchains` again, or else the toolchain binaries can get mixed up or corrupted, and generate errors during builds.
 
 ---
 ### 5.3. QEMU
@@ -391,7 +461,7 @@ $ make flash
 [here](https://github.com/96boards/documentation/wiki/HiKeyUEFI#flash-binaries-to-emmc-))
 
 The board is ready to be booted.
-#### 5.5.2 Debian based / 96boards RPB (experimental)
+#### 5.5.2 Debian based / 96boards RPB
 Start by getting the source and toolchain (see above), then continue by
 downloading the system image (root fs). Note that this step is something you
 only should do once.
@@ -555,9 +625,62 @@ NOR4LOAD: 00000000               ;Image Load Address
 NOR4ENTRY: 00000000              ;Image Entry Point
 ```
 
+#### 5.7.3 GCC5 support
+##### Note :
+In case you are using the **Latest version** of the ARM Juno board (this is
+`juno.xml` manifest), the built `ramdisk.img` size with GCC5 compiler, at
+the moment, exceeds its pre-defined Juno flash memory reserved location
+(`image.txt` file).
+
+To solve this problem you will need to extend the Juno flash block size
+reserved location for the `ramdisk.img` and decrease the size for other
+images in the `image.txt` file accordingly and then follow the instructions
+under "5.7.1 Update flash and its layout".
+
+##### Example with juno-latest-busybox-uboot.zip:
+The current `ramdisk.img` size with GCC5 compiler is 29.15 MBytes we will
+extend it to  32 MBytes. The only changes that you need to do are those in
+**bold**
+
+###### File to update is /JUNO/SITE1/HBI0262B/images.txt
+<pre>
+NOR2UPDATE: AUTO                 ;Image Update:NONE/AUTO/FORCE
+NOR2ADDRESS: <b>0x00100000</b>          ;Image Flash Address
+NOR2FILE: \SOFTWARE\Image        ;Image File Name
+NOR2NAME: norkern                ;Rename kernel to norkern
+NOR2LOAD: 00000000               ;Image Load Address
+NOR2ENTRY: 00000000              ;Image Entry Point
+
+NOR3UPDATE: AUTO                 ;Image Update:NONE/AUTO/FORCE
+NOR3ADDRESS: <b>0x02C00000</b>          ;Image Flash Address
+NOR3FILE: \SOFTWARE\juno.dtb     ;Image File Name
+NOR3NAME: board.dtb              ;Specify target filename to preserve file extension
+NOR3LOAD: 00000000               ;Image Load Address
+NOR3ENTRY: 00000000              ;Image Entry Point
+
+NOR4UPDATE: AUTO                 ;Image Update:NONE/AUTO/FORCE
+NOR4ADDRESS: <b>0x00D00000</b>          ;Image Flash Address
+NOR4FILE: \SOFTWARE\ramdisk.img  ;Image File Name
+NOR4NAME: ramdisk.img
+NOR4LOAD: 00000000               ;Image Load Address
+NOR4ENTRY: 00000000              ;Image Entry Point
+
+NOR5UPDATE: AUTO                 ;Image Update:NONE/AUTO/FORCE
+NOR5ADDRESS: <b>0x02D00000</b>          ;Image Flash Address
+NOR5FILE: \SOFTWARE\hdlcdclk.dat ;Image File Name
+NOR5LOAD: 00000000               ;Image Load Address
+NOR5ENTRY: 00000000              ;Image Entry Point
+</pre>
+
 ---
-### 5.8 Tips and tricks
-#### 5.8.1 Reference existing project to speed up repo sync
+### 5.8 Raspberry Pi 3
+There is a separate document for Raspberry Pi 3 [here](documentation/rpi3.md).
+That document will tell you how to flash, how to debug, known problems and
+things still to be done.
+
+---
+### 5.9 Tips and tricks
+#### 5.9.1 Reference existing project to speed up repo sync
 Doing a `repo init`, `repo sync` from scratch can take a fair amount of time.
 The main reason for that is simply because of the size of some of the gits we
 are using, like for the Linux kernel and EDK2. With repo you can reference an
@@ -583,7 +706,7 @@ Normally step 1 and 2 above is something you will only do once. Also if you
 ignore step 2, then you will still get the latest from official git trees, since
 repo will also check for updates that aren't at the local reference.
 
-#### 5.8.2. Use ccache
+#### 5.9.2. Use ccache
 ccache is a tool that caches build object-files etc locally on the disc and can
 speed up build time significantly in subsequent builds. On Debian-based systems
 (Ubuntu, Mint etc) you simply install it by running:
@@ -637,9 +760,8 @@ written the Makefile so you need to explicitly point to the script by exporting
 an environment variable, namely CHECKPATCH. So, suppose that the source code for
 the Linux kernel is at `$HOME/devel/linux`, then you have to export like follows:
 
-	$ export CHECKPATCH=$HOME/devel/linux/scripts/checkpatch.pl
+    $ export CHECKPATCH=$HOME/devel/linux/scripts/checkpatch.pl
 thereafter it should be possible to use one of the different checkpatch targets
 in the [Makefile](Makefile). There are targets for checking all files, checking
 against latest commit, against a certain base-commit etc. For the details, read
 the [Makefile](Makefile).
-

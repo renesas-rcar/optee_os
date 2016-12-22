@@ -36,7 +36,6 @@
 
 const char trace_ext_prefix[] = "TEE-CORE";
 int trace_level = TRACE_LEVEL;
-static uint32_t interrupt_ctx_log_flag = INTCTX_LOG_DEFAULT;
 
 void trace_ext_puts(const char *str)
 {
@@ -46,7 +45,7 @@ void trace_ext_puts(const char *str)
 	TEE_Result ret;
 	int32_t res;
 	struct msg_block_t msg_block[MSG_BLK_MAX_NUM];
-	int32_t msg_block_num = 0;
+	int32_t msg_block_num;
 	uint32_t cpsr;
 #ifdef RCAR_DEBUG_LOG
 	const int8_t TERM_LOG_PREFIX[] = "[OP-TEE]";
@@ -58,35 +57,30 @@ void trace_ext_puts(const char *str)
 	if ((str != NULL) && (log_secram_header != NULL)) {
 		cpu_spin_lock_irqsave(&log_spin_lock, &cpsr);
 
-		if ((interrupt_ctx_log_flag != INTCTX_LOG_NOT_OUTPUT) ||
-		    ((cpsr & ARM32_CPSR_F) == 0U)) {
-			ret = arm_cntpct_get_sys_time(&sys_time);
-			if (ret == TEE_SUCCESS) {
-				res = snprintf((char *)time_buf,
-					sizeof(time_buf),
-					"[%u.%06u][%d]",
-					sys_time.seconds,
-					sys_time.millis * 1000U,
-					(int32_t)get_core_pos());
-				if (0 < res) {
-					time_len = (size_t)res;
-				}
+		ret = arm_cntpct_get_sys_time(&sys_time);
+		if (ret == TEE_SUCCESS) {
+			res = snprintf((char *)time_buf, sizeof(time_buf),
+				"[%u.%06u][%d]",
+				sys_time.seconds,
+				sys_time.millis * 1000U,
+				(int32_t)get_core_pos());
+			if (0 < res) {
+				time_len = (size_t)res;
 			}
-
-			msg_block[SECRAM_IDX_TIME].addr = time_buf;
-			msg_block[SECRAM_IDX_TIME].size = time_len;
-			msg_block[SECRAM_IDX_MESG].addr = (const int8_t *)str;
-			msg_block[SECRAM_IDX_MESG].size = strlen(str);
-			msg_block_num = SECRAM_MSG_BLK_NUM;
-
-			log_buf_write(msg_block, msg_block_num);
 		}
+
+		msg_block[SECRAM_IDX_TIME].addr = time_buf;
+		msg_block[SECRAM_IDX_TIME].size = time_len;
+		msg_block[SECRAM_IDX_MESG].addr = (const int8_t *)str;
+		msg_block[SECRAM_IDX_MESG].size = strlen(str);
+		msg_block_num = SECRAM_MSG_BLK_NUM;
+
+		log_buf_write(msg_block, msg_block_num);
 
 		cpu_spin_unlock_irqrestore(&log_spin_lock, cpsr);
 
 #ifdef RCAR_DEBUG_LOG
-		if ((is_normal_world_initialized != 0) &&
-		    (msg_block_num > 0)) {
+		if (is_normal_world_initialized != 0) {
 			msg_block[TRMLOG_IDX_PRFX].addr = TERM_LOG_PREFIX;
 			msg_block[TRMLOG_IDX_PRFX].size = TERM_LOG_PREFIX_LEN;
 			msg_block[TRMLOG_IDX_TIME].addr = time_buf;

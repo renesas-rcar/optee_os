@@ -193,8 +193,8 @@ FUNC thread_std_smc_entry , :
 	load_xregs sp, THREAD_SMC_ARGS_X0, 20, 23
 	add	sp, sp, #THREAD_SMC_ARGS_SIZE
 
-	/* Disable interrupts before switching to temporary stack */
-	msr	daifset, #(DAIFBIT_FIQ | DAIFBIT_IRQ)
+	/* Mask all maskable exceptions before switching to temporary stack */
+	msr	daifset, #DAIFBIT_ALL
 	bl	thread_get_tmp_sp
 	mov	sp, x0
 
@@ -215,6 +215,7 @@ FUNC thread_rpc , :
 	mrs	x1, daif
 	orr	x1, x1, #(SPSR_64_MODE_EL1 << SPSR_64_MODE_EL_SHIFT)
 
+	/* Mask all maskable exceptions before switching to temporary stack */
 	msr	daifset, #DAIFBIT_ALL
 	push	x0, xzr
 	push	x1, x30
@@ -416,7 +417,7 @@ el0_irq_a64:
 	.align	7
 el0_fiq_a64:
 	store_xregs sp, THREAD_CORE_LOCAL_X0, 0, 3
-	b	elx_irq
+	b	elx_fiq
 	check_vector_size el0_fiq_a64
 
 	.align	7

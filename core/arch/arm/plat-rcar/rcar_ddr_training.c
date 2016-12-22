@@ -27,10 +27,52 @@
 
 #include <io.h>
 #include <trace.h>
-#include "rcar_ddr_training.h"
+#include <initcall.h>
+#include <keep.h>
 #include "rcar_common.h"
+#include "rcar_suspend_to_ram.h"
 
-void ddr_training_timer_init(void)
+#define DDR_TRAINING_SCMT_START		0
+
+#if DDR_TRAINING_SCMT_START
+static void ddr_training_timer_init(void);
+static void ddr_training_timer_start(void);
+static void ddr_training_timer_stop(void);
+#endif
+static void ddr_training_execute(void);
+static enum itr_return ddr_training_fiq_cb(struct itr_handler *h);
+static TEE_Result ddr_training_init(void);
+
+#if DDR_TRAINING_SCMT_START
+
+static struct itr_handler scmt_itr;
+
+static struct reg_backup_info ddr_training_reg_backup[] = {
+	/* reg_paddr	, reg_rsize, reg_wsize */
+	{ CMSSTR	, 2, 2 },
+	{ CMSCSR	, 2, 2 },
+	{ CMSCOR	, 4, 4 }
+};
+
+suspend_to_ram_backup(ddr_training_reg_backup);
+
+static void ddr_training_backup_cb(enum suspend_to_ram_state state,
+			uint32_t cpu_id __unused)
+{
+	if (state == SUS2RAM_STATE_SUSPEND) {
+		ddr_training_timer_stop();
+		itr_disable(&scmt_itr);
+		itr_del(&scmt_itr);
+	} else if (state == SUS2RAM_STATE_RESUME) {
+		itr_add(&scmt_itr);
+		itr_enable(&scmt_itr);
+		ddr_training_timer_start();
+	}
+}
+
+suspend_to_ram_cbfunc(ddr_training_backup_cb);
+
+static void ddr_training_timer_init(void)
 {
 	uint16_t sr;
 	uint32_t interval_ms;
@@ -73,7 +115,7 @@ void ddr_training_timer_init(void)
 	write32(count, CMSCOR);
 }
 
-void ddr_training_timer_start(void)
+static void ddr_training_timer_start(void)
 {
 	/* Counter reset */
 	write32(0x00000000U, CMSCNT);
@@ -82,7 +124,15 @@ void ddr_training_timer_start(void)
 	write16(CMSSTR_BIT_STR5, CMSSTR);
 }
 
-void ddr_training_execute(void)
+static void ddr_training_timer_stop(void)
+{
+	/* Timer stop */
+	write16(0x0000U, CMSSTR);
+}
+
+#endif /* DDR_TRAINING_SCMT_START */
+
+static void ddr_training_execute(void)
 {
 	uint16_t sr;
 	const uint16_t clear_mask = (uint16_t)~(
@@ -98,3 +148,46 @@ void ddr_training_execute(void)
 
 	/* T.B.D. */
 }
+
+static enum itr_return ddr_training_fiq_cb(struct itr_handler *h)
+{
+	FMSG("enter id=%zu", h->it);
+
+	switch (h->it) {
+	/* System Timer */
+	case INTID_SCMT:
+		ddr_training_execute();
+		break;
+
+	default:
+		EMSG("Unexpected fiq. id=%zu", h->it);
+		panic();
+		break;
+	}
+
+	return ITRR_HANDLED;
+}
+
+static struct itr_handler scmt_itr = {
+	.it = INTID_SCMT,
+	.flags = ITRF_TRIGGER_LEVEL,
+	.handler = ddr_training_fiq_cb
+};
+KEEP_PAGER(scmt_itr);
+
+static TEE_Result ddr_training_init(void)
+{
+	/* Enable GIC */
+	itr_add(&scmt_itr);
+	itr_enable(&scmt_itr);
+
+#if DDR_TRAINING_SCMT_START
+	/* Initialize DDR training */
+	ddr_training_timer_init();
+	ddr_training_timer_start();
+#endif
+
+	return TEE_SUCCESS;
+}
+
+driver_init(ddr_training_init);

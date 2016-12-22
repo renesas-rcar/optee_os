@@ -31,6 +31,9 @@
 #include <types_ext.h>
 #include <kernel/interrupt.h>
 
+#define GIC_DIST_REG_SIZE	0x10000
+#define GIC_CPU_REG_SIZE	0x10000
+
 struct gic_data {
 	vaddr_t gicc_base;
 	vaddr_t gicd_base;
@@ -53,7 +56,4 @@ void gic_cpu_init(struct gic_data *gd);
 void gic_it_handle(struct gic_data *gd);
 
 void gic_dump_state(struct gic_data *gd);
-
-void gic_it_set_cpu_mask(struct gic_data *gd, size_t it, uint8_t cpu_mask);
-
 #endif /*__DRIVERS_GIC_H*/

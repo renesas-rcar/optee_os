@@ -34,6 +34,7 @@
 #include <sm/teesmc_opteed_macros.h>
 #include <sm/teesmc_opteed.h>
 #include <kernel/unwind.h>
+#include <kernel/asan.h>
 
 .section .data
 .balign 4
@@ -153,6 +154,7 @@ UNWIND(	.fnstart)
 UNWIND(	.cantunwind)
 	mov	r4, r0		/* Save pageable part address */
 	mov	r5, lr		/* Save ns-entry address */
+	mov	r6, r2		/* Save DT address */
 
 #ifdef CFG_TEE_GDB_BOOT
 	/*
@@ -163,12 +165,14 @@ UNWIND(	.cantunwind)
 	mov	r6, r0
 	mov	r7, r1
 	mov	r8, r2
-#ifdef CFG_WITH_PAGER
+
+#if !defined(CFG_BUILT_IN_ARGS) && (defined(CFG_WITH_PAGER) || defined (CFG_DT))
 	/*
-	 * r0 is used for different purposes when pager or GDB boot are enabled
-	 * so they are incompatible
+	 * r0/r2 are used for different purposes by GDB boot and pager/DT
+	 * so these configurations are incompatible. however, if built-in
+	 * argumements are used, r0/r2 are free for GDB boot use.
 	 */
-#error CFG_WITH_PAGER and CFG_TEE_GDB_BOOT cannot be enabled simultaneously
+#error CFG_TEE_GDB_BOOT and (CFG_WITH_PAGER || CFG_DT) are incompatible
 #endif
 #endif
 
@@ -196,6 +200,23 @@ UNWIND(	.cantunwind)
 #endif
 UNWIND(	.fnend)
 END_FUNC reset
+
+	/*
+	 * Setup sp to point to the top of the tmp stack for the current CPU:
+	 * sp is assigned stack_tmp + (cpu_id + 1) * stack_tmp_stride
+	 */
+	.macro set_sp
+		bl	get_core_pos
+		cmp	r0, #CFG_TEE_CORE_NB_CORE
+		/* Unsupported CPU, park it before it breaks something */
+		bge	unhandled_cpu
+		add	r0, r0, #1
+		ldr	r2, =stack_tmp_stride
+		ldr	r1, [r2]
+		mul	r2, r0, r1
+		ldr	r1, =stack_tmp
+		add	sp, r1, r2
+	.endm
 
 LOCAL_FUNC reset_primary , :
 UNWIND(	.fnstart)
@@ -226,19 +247,39 @@ UNWIND(	.cantunwind)
 	add	r1, r1, r2
 	ldr	r2, =__text_init_start
 copy_init:
-	ldmdb	r1!, {r6-r12}
-	stmdb	r0!, {r6-r12}
+	ldmdb	r1!, {r3, r7-r13}
+	stmdb	r0!, {r3, r7-r13}
 	cmp	r0, r2
 	bgt	copy_init
 #endif
 
-	bl	get_core_pos
-	cmp	r0, #CFG_TEE_CORE_NB_CORE
-	/* Unsupported CPU, park it before it breaks something */
-	bge	unhandled_cpu
-	lsl	r0, #2
-	ldr	r1, =stack_tmp_top
-	ldr	sp, [r1, r0]
+
+#ifdef CFG_CORE_SANITIZE_KADDRESS
+	/* First initialize the entire shadow area with no access */
+	ldr	r0, =__asan_shadow_start	/* start */
+	ldr	r1, =__asan_shadow_end	/* limit */
+	mov	r2, #ASAN_DATA_RED_ZONE
+shadow_no_access:
+	str	r2, [r0], #4
+	cmp	r0, r1
+	bls	shadow_no_access
+
+	/* Mark the entire stack area as OK */
+	ldr	r2, =CFG_ASAN_SHADOW_OFFSET
+	ldr	r0, =__nozi_stack_start	/* start */
+	lsr	r0, r0, #ASAN_BLOCK_SHIFT
+	add	r0, r0, r2
+	ldr	r1, =__nozi_stack_end	/* limit */
+	lsr	r1, r1, #ASAN_BLOCK_SHIFT
+	add	r1, r1, r2
+	mov	r2, #0
+shadow_stack_access_ok:
+	strb	r2, [r0], #1
+	cmp	r0, r1
+	bls	shadow_stack_access_ok
+#endif
+
+	set_sp
 
 	/* complete ARM secure MP common configuration */
 	bl	plat_cpu_reset_late
@@ -247,6 +288,7 @@ copy_init:
 	bl	console_init
 
 #ifdef CFG_PL310
+	ldr	r0, =PL310_BASE
 	bl	arm_cl2_config
 #endif
 
@@ -262,21 +304,23 @@ copy_init:
 #ifdef CFG_WITH_PAGER
 	ldr	r1, =__tmp_hashes_end
 #else
-	ldr	r1, =_end
+	ldr	r1, =__end
 #endif
 	sub	r1, r1, #1
 	bl	arm_cl1_d_invbyva
 
 #ifdef CFG_PL310
-	ldr	r0, =__text_start
+	ldr	r0, =PL310_BASE
+	ldr	r1, =__text_start
 #ifdef CFG_WITH_PAGER
-	ldr	r1, =__init_end
+	ldr	r2, =__init_end
 #else
-	ldr	r1, =_end
+	ldr	r2, =__end
 #endif
-	sub	r1, r1, #1
+	sub	r2, r2, #1
 	bl	arm_cl2_invbypa
 
+	ldr	r0, =PL310_BASE
 	bl	arm_cl2_enable
 #endif
 
@@ -286,8 +330,15 @@ copy_init:
 	bl	cpu_mmu_enable_icache
 	bl	cpu_mmu_enable_dcache
 
+#if defined (CFG_BUILT_IN_ARGS)
+    ldr r0, =CFG_PAGEABLE_ADDR
+    ldr r1, =CFG_NS_ENTRY_ADDR
+    ldr r2, =CFG_DT_ADDR
+#else
 	mov	r0, r4		/* pageable part address */
 	mov	r1, r5		/* ns-entry address */
+	mov	r2, r6		/* DT address */
+#endif
 	bl	generic_boot_init_primary
 	mov	r4, r0		/* save entry test vector */
 
@@ -303,25 +354,28 @@ copy_init:
 #ifdef CFG_WITH_PAGER
 	ldr	r1, =__init_end
 #else
-	ldr	r1, =_end
+	ldr	r1, =__end
 #endif
 	sub	r1, r1, #1
 	bl	arm_cl1_d_cleaninvbyva
 
 #ifdef CFG_PL310
-	ldr	r0, =__text_start
+	bl	pl310_base
+	ldr	r1, =__text_start
 #ifdef CFG_WITH_PAGER
-	ldr	r1, =__init_end
+	ldr	r2, =__init_end
 #else
-	ldr	r1, =_end
+	ldr	r2, =__end
 #endif
-	sub	r1, r1, #1
+	sub	r2, r2, #1
 	bl	arm_cl2_cleaninvbypa
 
 #endif
 
 #ifdef CFG_PL310_LOCKED
+	bl	pl310_base
 	bl	arm_cl2_lockallways
+	bl	pl310_base
 	bl	arm_cl2_invbyway
 #endif
 
@@ -379,13 +433,7 @@ UNWIND(	.cantunwind)
 	write_vbar r0
 
 	mov	r4, lr
-	bl	get_core_pos
-	cmp	r0, #CFG_TEE_CORE_NB_CORE
-	/* Unsupported CPU, park it before it breaks something */
-	bge	unhandled_cpu
-	lsl	r0, #2
-	ldr	r1, =stack_tmp_top
-	ldr	sp, [r1, r0]
+	set_sp
 
 	bl	core_init_mmu_regs
 	bl	cpu_mmu_enable
@@ -407,15 +455,14 @@ UNWIND(	.fnstart)
 UNWIND(	.cantunwind)
 	bl	wait_primary
 
-	bl	get_core_pos
-	cmp	r0, #CFG_TEE_CORE_NB_CORE
-	/* Unsupported CPU, park it before it breaks something */
-	bge	unhandled_cpu
-	lsl	r0, #2
-	ldr	r1, =stack_tmp_top
-	ldr	sp, [r1, r0]
+	set_sp
 
 	bl	plat_cpu_reset_late
+
+#if defined (CFG_BOOT_SECONDARY_REQUEST)
+	/* if L1 is not invalidated before, do it here */
+	bl	arm_cl1_d_invbysetway
+#endif
 
 	bl	core_init_mmu_regs
 	bl	cpu_mmu_enable
@@ -425,7 +472,15 @@ UNWIND(	.cantunwind)
 	bl	get_core_pos
 	bl	cpu_is_ready
 
+#if defined (CFG_BOOT_SECONDARY_REQUEST)
+	/* get ns entry from ns_entry_addrs array */
+	bl  get_core_pos
+	ldr r1, =ns_entry_addrs
+	add r1, r1, r0, lsl #2	/* size of uint32_t */
+	ldr r0, [r1]
+#else
 	mov	r0, r5		/* ns-entry address */
+#endif
 	bl	generic_boot_init_secondary
 
 	mov	r0, #TEESMC_OPTEED_RETURN_ENTRY_DONE

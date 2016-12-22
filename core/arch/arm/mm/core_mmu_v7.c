@@ -27,15 +27,16 @@
  */
 #include <platform_config.h>
 
-#include <stdlib.h>
-#include <assert.h>
 #include <arm.h>
-#include <mm/core_mmu.h>
-#include <mm/tee_mmu_defs.h>
-#include <mm/pgt_cache.h>
-#include <trace.h>
+#include <assert.h>
 #include <kernel/panic.h>
 #include <kernel/thread.h>
+#include <mm/core_mmu.h>
+#include <mm/core_memprot.h>
+#include <mm/tee_mmu_defs.h>
+#include <mm/pgt_cache.h>
+#include <stdlib.h>
+#include <trace.h>
 #include <util.h>
 #include "core_mmu_private.h"
 
@@ -166,7 +167,8 @@ static paddr_t core_mmu_get_main_ttb_pa(void)
 	/* Note that this depends on flat mapping of TEE Core */
 	paddr_t pa = (paddr_t)core_mmu_get_main_ttb_va();
 
-	TEE_ASSERT(!(pa & ~TEE_MMU_TTB_L1_MASK));
+	if (pa & ~TEE_MMU_TTB_L1_MASK)
+		panic("invalid core l1 table");
 	return pa;
 }
 
@@ -180,7 +182,8 @@ static paddr_t core_mmu_get_ul1_ttb_pa(void)
 	/* Note that this depends on flat mapping of TEE Core */
 	paddr_t pa = (paddr_t)core_mmu_get_ul1_ttb_va();
 
-	TEE_ASSERT(!(pa & ~TEE_MMU_TTB_UL1_MASK));
+	if (pa & ~TEE_MMU_TTB_UL1_MASK)
+		panic("invalid user l1 table");
 	return pa;
 }
 
@@ -395,26 +398,21 @@ void core_mmu_set_info_table(struct core_mmu_table_info *tbl_info,
 	}
 }
 
-void core_mmu_create_user_map(struct tee_mmu_info *mmu, uint32_t asid,
-		struct core_mmu_user_map *map)
+void core_mmu_create_user_map(struct user_ta_ctx *utc,
+			      struct core_mmu_user_map *map)
 {
+	struct core_mmu_table_info dir_info;
+	void *tbl = (void *)core_mmu_get_ul1_ttb_va();
+
 	COMPILE_TIME_ASSERT(sizeof(uint32_t) * TEE_MMU_L2_NUM_ENTRIES ==
 			    PGT_SIZE);
 
-	if (mmu) {
-		struct core_mmu_table_info dir_info;
-		void *tbl = (void *)core_mmu_get_ul1_ttb_va();
-
-		core_mmu_set_info_table(&dir_info, 1, 0, tbl);
-		dir_info.num_entries = TEE_MMU_UL1_NUM_ENTRIES;
-		memset(tbl, 0, sizeof(uint32_t) * TEE_MMU_UL1_NUM_ENTRIES);
-		core_mmu_populate_user_map(&dir_info, mmu);
-		map->ttbr0 = core_mmu_get_ul1_ttb_pa() | TEE_MMU_DEFAULT_ATTRS;
-		map->ctxid = asid & 0xff;
-	} else {
-		map->ttbr0 = read_ttbr1();
-		map->ctxid = 0;
-	}
+	core_mmu_set_info_table(&dir_info, 1, 0, tbl);
+	dir_info.num_entries = TEE_MMU_UL1_NUM_ENTRIES;
+	memset(tbl, 0, sizeof(uint32_t) * TEE_MMU_UL1_NUM_ENTRIES);
+	core_mmu_populate_user_map(&dir_info, utc);
+	map->ttbr0 = core_mmu_get_ul1_ttb_pa() | TEE_MMU_DEFAULT_ATTRS;
+	map->ctxid = utc->context & 0xff;
 }
 
 bool core_mmu_find_table(vaddr_t va, unsigned max_level,
@@ -426,23 +424,24 @@ bool core_mmu_find_table(vaddr_t va, unsigned max_level,
 	if (max_level == 1 || (tbl[n] & 0x3) != 0x1) {
 		core_mmu_set_info_table(tbl_info, 1, 0, tbl);
 	} else {
-		uintptr_t ntbl = tbl[n] & ~((1 << 10) - 1);
+		paddr_t ntbl = tbl[n] & ~((1 << 10) - 1);
+		void *l2tbl = phys_to_virt(ntbl, MEM_AREA_TEE_RAM);
 
-		core_mmu_set_info_table(tbl_info, 2, n << SECTION_SHIFT,
-					(void *)ntbl);
+		if (!l2tbl)
+			return false;
+
+		core_mmu_set_info_table(tbl_info, 2, n << SECTION_SHIFT, l2tbl);
 	}
 	return true;
 }
 
-void core_mmu_set_entry(struct core_mmu_table_info *tbl_info, unsigned idx,
-		paddr_t pa, uint32_t attr)
+void core_mmu_set_entry_primitive(void *table, size_t level, size_t idx,
+				  paddr_t pa, uint32_t attr)
 {
-	uint32_t *table = tbl_info->table;
-	uint32_t desc = mattr_to_desc(tbl_info->level, attr);
+	uint32_t *tbl = table;
+	uint32_t desc = mattr_to_desc(level, attr);
 
-	assert(idx < tbl_info->num_entries);
-
-	table[idx] = desc | pa;
+	tbl[idx] = desc | pa;
 }
 
 static paddr_t desc_to_pa(unsigned level, uint32_t desc)
@@ -473,18 +472,16 @@ static paddr_t desc_to_pa(unsigned level, uint32_t desc)
 	return desc & ~((1 << shift_mask) - 1);
 }
 
-void core_mmu_get_entry(struct core_mmu_table_info *tbl_info, unsigned idx,
-		paddr_t *pa, uint32_t *attr)
+void core_mmu_get_entry_primitive(const void *table, size_t level,
+				  size_t idx, paddr_t *pa, uint32_t *attr)
 {
-	uint32_t *table = tbl_info->table;
-
-	assert(idx < tbl_info->num_entries);
+	const uint32_t *tbl = table;
 
 	if (pa)
-		*pa = desc_to_pa(tbl_info->level, table[idx]);
+		*pa = desc_to_pa(level, tbl[idx]);
 
 	if (attr)
-		*attr = desc_to_mattr(tbl_info->level, table[idx]);
+		*attr = desc_to_mattr(level, tbl[idx]);
 }
 
 void core_mmu_get_user_va_range(vaddr_t *base, size_t *size)
@@ -497,8 +494,6 @@ void core_mmu_get_user_va_range(vaddr_t *base, size_t *size)
 	if (size)
 		*size = (TEE_MMU_UL1_NUM_ENTRIES - 1) << SECTION_SHIFT;
 }
-
-
 
 void core_mmu_get_user_map(struct core_mmu_user_map *map)
 {
@@ -543,7 +538,8 @@ static paddr_t map_page_memarea(struct tee_mmap_region *mm)
 	size_t pg_idx;
 	uint32_t attr;
 
-	TEE_ASSERT(l2);
+	if (!l2)
+		panic("no l2 table");
 
 	attr = mattr_to_desc(2, mm->attr);
 
@@ -582,7 +578,7 @@ static void map_memarea(struct tee_mmap_region *mm, uint32_t *ttb)
 	paddr_t pa;
 	uint32_t region_size;
 
-	TEE_ASSERT(mm && ttb);
+	assert(mm && ttb);
 
 	/*
 	 * If mm->va is smaller than 32M, then mm->va will conflict with
@@ -597,11 +593,8 @@ static void map_memarea(struct tee_mmap_region *mm, uint32_t *ttb)
 	 * TODO: support mapping devices at a virtual address which isn't
 	 * the same as the physical address.
 	 */
-	if (mm->va < (TEE_MMU_UL1_NUM_ENTRIES * SECTION_SIZE)) {
-		EMSG("va 0x%" PRIxVA " conflicts with user ta address!",
-		     mm->va);
-		panic();
-	}
+	if (mm->va < (TEE_MMU_UL1_NUM_ENTRIES * SECTION_SIZE))
+		panic("va conflicts with user ta address");
 
 	if ((mm->va | mm->pa | mm->size) & SECTION_MASK) {
 		region_size = SMALL_PAGE_SIZE;
@@ -610,11 +603,8 @@ static void map_memarea(struct tee_mmap_region *mm, uint32_t *ttb)
 		 * Need finer grained mapping, if small pages aren't
 		 * good enough, panic.
 		 */
-		if ((mm->va | mm->pa | mm->size) & SMALL_PAGE_MASK) {
-			EMSG("va 0x%" PRIxVA " pa 0x%" PRIxPA " size 0x%x can't be mapped",
-				mm->va, mm->pa, mm->size);
-			panic();
-		}
+		if ((mm->va | mm->pa | mm->size) & SMALL_PAGE_MASK)
+			panic("memarea can't be mapped");
 
 		attr = mattr_to_desc(1, mm->attr | TEE_MATTR_TABLE);
 		pa = map_page_memarea(mm);
@@ -647,6 +637,11 @@ void core_init_mmu_tables(struct tee_mmap_region *mm)
 
 	for (n = 0; mm[n].size; n++)
 		map_memarea(mm + n, ttb1);
+}
+
+bool core_mmu_place_tee_ram_at_top(paddr_t paddr)
+{
+	return paddr > 0x80000000;
 }
 
 void core_init_mmu_regs(void)
@@ -688,11 +683,13 @@ void core_init_mmu_regs(void)
 enum core_mmu_fault core_mmu_get_fault_type(uint32_t fsr)
 {
 	assert(!(fsr & FSR_LPAE));
+
 	switch (fsr & FSR_FS_MASK) {
 	case 0x1: /* DFSR[10,3:0] 0b00001 Alignment fault (DFSR only) */
 		return CORE_MMU_FAULT_ALIGNMENT;
 	case 0x2: /* DFSR[10,3:0] 0b00010 Debug event */
 		return CORE_MMU_FAULT_DEBUG_EVENT;
+	case 0x4: /* DFSR[10,3:0] b00100 Fault on instr cache maintenance */
 	case 0x5: /* DFSR[10,3:0] b00101 Translation fault first level */
 	case 0x7: /* DFSR[10,3:0] b00111 Translation fault second level */
 		return CORE_MMU_FAULT_TRANSLATION;

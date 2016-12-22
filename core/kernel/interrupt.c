@@ -59,7 +59,7 @@ void itr_handle(size_t it)
 	struct itr_handler *h = find_handler(it);
 
 	if (!h) {
-		EMSG("Disabling unhandled interrupt %zu", it);
+		FMSG("Disabling unhandled interrupt %zu", it);
 		itr_chip->ops->disable(itr_chip, it);
 		return;
 	}
@@ -74,6 +74,11 @@ void itr_add(struct itr_handler *h)
 {
 	itr_chip->ops->add(itr_chip, h->it, h->flags);
 	SLIST_INSERT_HEAD(&handlers, h, link);
+}
+
+void itr_del(struct itr_handler *h)
+{
+	SLIST_REMOVE(&handlers, h, itr_handler, link);
 }
 
 void itr_enable(struct itr_handler *h)

@@ -30,6 +30,7 @@
 #include <kernel/interrupt.h>
 #include <initcall.h>
 #include <drivers/swdt_driver.h>
+#include "rcar_suspend_to_ram.h"
 
 /******************************************************************************/
 /* Defines                                                                    */
@@ -62,17 +63,43 @@
 /******************************************************************************/
 /* Prototype                                                                  */
 /******************************************************************************/
+static void swdt_backup_cb(enum suspend_to_ram_state state, uint32_t cpu_id);
 static void swdt_is_ready(void);
 static enum itr_return swdt_handler(struct itr_handler *h);
 static TEE_Result swdt_init(void);
+static void swdt_itr_del(void);
 
 /******************************************************************************/
 /* Global                                                                     */
 /******************************************************************************/
 static uint16_t		swdt_initial_count = 0U;
-static uint32_t		swdt_state = 0U;
+static uint32_t		swdt_state = SWDT_STATE_NOACTIVE;
+static uint16_t		swdt_count = 0U;
+static uint8_t		swdt_clk = 0U;
+static uint8_t		swdt_expanded_clk = 0U;
+static uint32_t		swdt_suspend_flag = 0U;
 static void		(*user_cb)(void) = NULL;
 
+static void swdt_backup_cb(enum suspend_to_ram_state state,
+			uint32_t cpu_id __unused)
+{
+	if ((SUS2RAM_STATE_SUSPEND == state) && (SWDT_STATE_NOACTIVE != swdt_state)) {
+		(void)swdt_stop();
+		swdt_suspend_flag = 1U;
+	} else if (SUS2RAM_STATE_RESUME == state) {
+		swdt_itr_del();
+		(void)swdt_init();
+		if (1U == swdt_suspend_flag) {
+			(void)swdt_start(swdt_count, swdt_clk, swdt_expanded_clk, user_cb);
+			swdt_suspend_flag = 0U;
+		}
+	} else {
+		/* Nothing. Because state is a suspend request to the driver but the driver is not running. */
+		;
+	}
+}
+
+suspend_to_ram_cbfunc(swdt_backup_cb);
 
 static void swdt_is_ready(void)
 {
@@ -125,6 +152,11 @@ int32_t swdt_start(uint16_t count, uint8_t clk,
 
 	if (SWDT_SUCCESS == ret) {
 		swdt_is_ready();
+		
+		swdt_count = count;
+		swdt_clk = clk;
+		swdt_expanded_clk = expanded_clk;
+		user_cb = cb;
 
 		/* counter setting */
 		swdt_initial_count = (0xFFFFU - count) + 1U;
@@ -142,7 +174,6 @@ int32_t swdt_start(uint16_t count, uint8_t clk,
 			reg |= RST_WDTRSTCR_RSTMSK;
 			write32(reg | SWDT_WDTRSTCR_UPPER_BYTE, RST_WDTRSTCR);
 
-			user_cb = cb;
 			itr_enable(swdt_itr);
 
 			/* enable interrupt */
@@ -180,7 +211,6 @@ int32_t swdt_stop(void)
 	} else {
 
 		itr_disable(swdt_itr);
-		user_cb = NULL;
 
 		reg = read8(SWDT_SWTCSRA);
 		reg &= ~SWDT_SWTCSRA_TME;
@@ -217,6 +247,11 @@ static TEE_Result swdt_init(void)
 	itr_add(swdt_itr);
 
 	return TEE_SUCCESS;
+}
+
+static void swdt_itr_del(void)
+{
+	itr_del(swdt_itr);
 }
 
 driver_init(swdt_init);

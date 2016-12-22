@@ -31,20 +31,26 @@
 #include <kernel/tee_ta_manager.h>
 #include <kernel/thread.h>
 #include <kernel/tz_proc_def.h>
+#include <kernel/generic_boot.h>
+#include <kernel/static_ta.h>
 #include <optee_msg.h>
 #include <mm/core_mmu.h>
+#include <initcall.h>
+#include <trace.h>
 #include "rcar_log_func.h"
 #include "rcar_common.h"
 #include "rcar_version.h"
 
-struct log_buf_header_t *log_secram_header;
+struct log_buf_header_t *log_secram_header __data;
 static int8_t *log_nonsec_ptr;
 uint32_t log_spin_lock;
 int32_t is_normal_world_initialized;
 const int8_t version_of_renesas[] __attribute__((__section__(".version"))) =
 	VERSION_OF_RENESAS;
 
-void log_buf_init(void)
+static TEE_Result log_buf_init(void);
+
+static TEE_Result log_buf_init(void)
 {
 	const int8_t secram_prefix[] = LOG_SEC_PREFIX;
 	int32_t i;
@@ -68,7 +74,12 @@ void log_buf_init(void)
 		(void)memcpy(log_secram_header->prefix,
 			secram_prefix, sizeof(log_secram_header->prefix));
 	}
+
+	IMSG("Logging RAM initialized. (%s)", core_v_str);
+	return TEE_SUCCESS;
 }
+
+service_init(log_buf_init);
 
 void log_buf_write(const struct msg_block_t *msg_block, int32_t msg_block_num)
 {
@@ -133,6 +144,9 @@ void log_debug_send(const struct msg_block_t *msg_block, int32_t msg_block_num)
 	size_t log_offs = 0U;
 	size_t memcpy_size;
 	int32_t i;
+	struct thread_specific_data *tsd;
+	struct tee_ta_session *s;
+	int32_t send_flag = 1;
 
 	if (log_nonsec_ptr != NULL) {
 		cpu_id = get_core_pos();
@@ -151,18 +165,32 @@ void log_debug_send(const struct msg_block_t *msg_block, int32_t msg_block_num)
 
 		tee_ta_get_current_session(&sess);
 		if (sess != NULL) {
-			tee_ta_set_current_session(NULL);
+			tsd = thread_get_tsd();
+			s = tsd->sess_stack.tqh_first;
+			if ((s != NULL) && (s->ctx != NULL) &&
+			    (!is_static_ta_ctx(s->ctx)) &&
+			    (sess->link_tsd.tqe_next != NULL) &&
+			    (sess->ctx != sess->link_tsd.tqe_next->ctx) &&
+			    (sess->ctx == s->ctx)) {
+				/* Do not send the log message */
+				send_flag = 0;
+			}
+			if (send_flag == 1) {
+				tee_ta_push_current_session(sess);
+			}
 		}
 
-		memset(&params, 0, sizeof(params));
-		params.attr = OPTEE_MSG_ATTR_TYPE_VALUE_INPUT;
-		params.u.value.a = cpu_id;
-		params.u.value.b = 0U;
+		if (send_flag == 1) {
+			(void)memset(&params, 0, sizeof(params));
+			params.attr = OPTEE_MSG_ATTR_TYPE_VALUE_INPUT;
+			params.u.value.a = cpu_id;
+			params.u.value.b = 0U;
 
-		thread_rpc_cmd(TEE_RPC_DEBUG_LOG, 1, &params);
+			(void)thread_rpc_cmd(TEE_RPC_DEBUG_LOG, 1, &params);
 
-		if (sess != NULL) {
-			tee_ta_set_current_session(sess);
+			if (sess != NULL) {
+				(void)tee_ta_pop_current_session();
+			}
 		}
 	}
 }

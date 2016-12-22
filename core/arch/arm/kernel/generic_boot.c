@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2015, Linaro Limited
- * Copyright (c) 2015-2016, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -34,8 +33,10 @@
 #include <kernel/thread.h>
 #include <kernel/panic.h>
 #include <kernel/misc.h>
+#include <kernel/asan.h>
 #include <malloc.h>
 #include <mm/core_mmu.h>
+#include <mm/core_memprot.h>
 #include <mm/tee_mm.h>
 #include <mm/tee_mmu.h>
 #include <mm/tee_pager.h>
@@ -44,6 +45,7 @@
 #include <tee/tee_cryp_provider.h>
 #include <utee_defines.h>
 #include <util.h>
+#include <stdio.h>
 
 #include <platform_config.h>
 
@@ -55,14 +57,24 @@
 #include <kernel/vfp.h>
 #endif
 
-#ifdef PLATFORM_RCAR
-#include "rcar_common.h"
-#include "rcar_log_func.h"
-#include "rcar_ddr_training.h"
-#include "rcar_maskrom.h"
+#if defined(CFG_DT)
+#include <libfdt.h>
 #endif
 
-#define PADDR_INVALID		0xffffffff
+/*
+ * In this file we're using unsigned long to represent physical pointers as
+ * they are received in a single register when OP-TEE is initially entered.
+ * This limits 32-bit systems to only use make use of the lower 32 bits
+ * of a physical address for initial parameters.
+ *
+ * 64-bit systems on the other hand can use full 64-bit physical pointers.
+ */
+
+#define PADDR_INVALID		ULONG_MAX
+
+#ifdef CFG_BOOT_SECONDARY_REQUEST
+uint32_t ns_entry_addrs[CFG_TEE_CORE_NB_CORE] __data;
+#endif
 
 #ifdef CFG_BOOT_SYNC_CPU
 /*
@@ -70,7 +82,7 @@
  * When 0, the cpu has not started.
  * When 1, it has started
  */
-uint32_t sem_cpu_sync[CFG_TEE_CORE_NB_CORE] __data;
+uint32_t sem_cpu_sync[CFG_TEE_CORE_NB_CORE] __early_bss;
 #endif
 
 /* May be overridden in plat-$(PLATFORM)/main.c */
@@ -79,14 +91,14 @@ __weak void main_init_gic(void)
 }
 
 #if defined(CFG_WITH_ARM_TRUSTED_FW)
-void init_sec_mon(uint32_t nsec_entry __maybe_unused)
+void init_sec_mon(unsigned long nsec_entry __maybe_unused)
 {
 	assert(nsec_entry == PADDR_INVALID);
 	/* Do nothing as we don't have a secure monitor */
 }
 #else
 /* May be overridden in plat-$(PLATFORM)/main.c */
-__weak void init_sec_mon(uint32_t nsec_entry)
+__weak void init_sec_mon(unsigned long nsec_entry)
 {
 	struct sm_nsec_ctx *nsec_ctx;
 
@@ -159,14 +171,16 @@ static size_t get_block_size(void)
 	unsigned l;
 
 	if (!core_mmu_find_table(CFG_TEE_RAM_START, UINT_MAX, &tbl_info))
-		panic();
+		panic("can't find mmu tables");
+
 	l = tbl_info.level - 1;
 	if (!core_mmu_find_table(CFG_TEE_RAM_START, l, &tbl_info))
-		panic();
+		panic("can't find mmu table upper level");
+
 	return 1 << tbl_info.shift;
 }
 
-static void init_runtime(uint32_t pageable_part)
+static void init_runtime(unsigned long pageable_part)
 {
 	size_t n;
 	size_t init_size = (size_t)__init_size;
@@ -178,8 +192,8 @@ static void init_runtime(uint32_t pageable_part)
 	uint8_t *hashes;
 	size_t block_size;
 
-	TEE_ASSERT(pageable_size % SMALL_PAGE_SIZE == 0);
-	TEE_ASSERT(hash_size == (size_t)__tmp_hashes_size);
+	assert(pageable_size % SMALL_PAGE_SIZE == 0);
+	assert(hash_size == (size_t)__tmp_hashes_size);
 
 	/*
 	 * Zero BSS area. Note that globals that would normally would go
@@ -188,14 +202,26 @@ static void init_runtime(uint32_t pageable_part)
 	 */
 	memset(__bss_start, 0, __bss_end - __bss_start);
 
+	core_mmu_linear_map_end = (vaddr_t)__heap2_end;
+	/*
+	 * This needs to be initialized early to support address lookup
+	 * in MEM_AREA_TEE_RAM
+	 */
+	if (!core_mmu_find_table(CFG_TEE_RAM_START, UINT_MAX,
+				 &tee_pager_tbl_info))
+		panic("can't find mmu tables");
+
+	if (tee_pager_tbl_info.shift != SMALL_PAGE_SHIFT)
+		panic("Unsupported page size in translation table");
+
 	thread_init_boot_thread();
 
 	malloc_add_pool(__heap1_start, __heap1_end - __heap1_start);
 	malloc_add_pool(__heap2_start, __heap2_end - __heap2_start);
 
 	hashes = malloc(hash_size);
-	EMSG("hash_size %zu", hash_size);
-	TEE_ASSERT(hashes);
+	IMSG("Pager is enabled. Hashes: %zu bytes", hash_size);
+	assert(hashes);
 	memcpy(hashes, __tmp_hashes_start, hash_size);
 
 	/*
@@ -205,12 +231,14 @@ static void init_runtime(uint32_t pageable_part)
 	teecore_init_ta_ram();
 
 	mm = tee_mm_alloc(&tee_mm_sec_ddr, pageable_size);
-	TEE_ASSERT(mm);
-	paged_store = (uint8_t *)tee_mm_get_smem(mm);
+	assert(mm);
+	paged_store = phys_to_virt(tee_mm_get_smem(mm), MEM_AREA_TA_RAM);
 	/* Copy init part into pageable area */
 	memcpy(paged_store, __init_start, init_size);
 	/* Copy pageable part after init part into pageable area */
-	memcpy(paged_store + init_size, (void *)pageable_part,
+	memcpy(paged_store + init_size,
+	       phys_to_virt(pageable_part,
+			    core_mmu_get_type_by_pa(pageable_part)),
 		__pageable_part_end - __pageable_part_start);
 
 	/* Check that hashes of what's in pageable area is OK */
@@ -224,7 +252,7 @@ static void init_runtime(uint32_t pageable_part)
 		res = hash_sha256_check(hash, page, SMALL_PAGE_SIZE);
 		if (res != TEE_SUCCESS) {
 			EMSG("Hash failed for page %zu at %p: res 0x%x",
-				n, page, res);
+			     n, page, res);
 			panic();
 		}
 	}
@@ -259,7 +287,7 @@ static void init_runtime(uint32_t pageable_part)
 			ROUNDUP(CFG_TEE_RAM_START + CFG_TEE_RAM_VA_SIZE,
 				block_size),
 			SMALL_PAGE_SHIFT, 0))
-		panic();
+		panic("tee_mm_vcore init failed");
 
 	/*
 	 * Assign alias area for pager end of the small page block the rest
@@ -269,8 +297,8 @@ static void init_runtime(uint32_t pageable_part)
 	 */
 	mm = tee_mm_alloc2(&tee_mm_vcore,
 		(vaddr_t)tee_mm_vcore.hi - TZSRAM_SIZE, TZSRAM_SIZE);
-	TEE_ASSERT(mm);
-	tee_pager_set_alias_area(mm);
+	assert(mm);
+	tee_pager_init(mm);
 
 	/*
 	 * Claim virtual memory which isn't paged, note that there migth be
@@ -279,7 +307,7 @@ static void init_runtime(uint32_t pageable_part)
 	 */
 	mm = tee_mm_alloc2(&tee_mm_vcore, tee_mm_vcore.lo,
 			(vaddr_t)(__text_init_start - tee_mm_vcore.lo));
-	TEE_ASSERT(mm);
+	assert(mm);
 
 	/*
 	 * Allocate virtual memory for the pageable area and let the pager
@@ -287,10 +315,11 @@ static void init_runtime(uint32_t pageable_part)
 	 */
 	mm = tee_mm_alloc2(&tee_mm_vcore, (vaddr_t)__pageable_start,
 			   pageable_size);
-	TEE_ASSERT(mm);
-	if (!tee_pager_add_area(mm, TEE_PAGER_AREA_RO | TEE_PAGER_AREA_X,
-				paged_store, hashes))
-		panic();
+	assert(mm);
+	if (!tee_pager_add_core_area(tee_mm_get_smem(mm), tee_mm_get_bytes(mm),
+				     TEE_MATTR_PRX, paged_store, hashes))
+		panic("failed to add pageable to vcore");
+
 	tee_pager_add_pages((vaddr_t)__pageable_start,
 		ROUNDUP(init_size, SMALL_PAGE_SIZE) / SMALL_PAGE_SIZE, false);
 	tee_pager_add_pages((vaddr_t)__pageable_start +
@@ -300,7 +329,66 @@ static void init_runtime(uint32_t pageable_part)
 
 }
 #else
-static void init_runtime(uint32_t pageable_part __unused)
+
+#ifdef CFG_CORE_SANITIZE_KADDRESS
+static void init_run_constructors(void)
+{
+	vaddr_t *ctor;
+
+	for (ctor = &__ctor_list; ctor < &__ctor_end; ctor++)
+		((void (*)(void))(*ctor))();
+}
+
+static void init_asan(void)
+{
+
+	/*
+	 * CFG_ASAN_SHADOW_OFFSET is also supplied as
+	 * -fasan-shadow-offset=$(CFG_ASAN_SHADOW_OFFSET) to the compiler.
+	 * Since all the needed values to calculate the value of
+	 * CFG_ASAN_SHADOW_OFFSET isn't available in to make we need to
+	 * calculate it in advance and hard code it into the platform
+	 * conf.mk. Here where we have all the needed values we double
+	 * check that the compiler is supplied the correct value.
+	 */
+
+#define __ASAN_SHADOW_START \
+	ROUNDUP(CFG_TEE_RAM_START + (CFG_TEE_RAM_VA_SIZE * 8) / 9 - 8, 8)
+	assert(__ASAN_SHADOW_START == (vaddr_t)&__asan_shadow_start);
+#define __CFG_ASAN_SHADOW_OFFSET \
+	(__ASAN_SHADOW_START - (CFG_TEE_RAM_START / 8))
+	COMPILE_TIME_ASSERT(CFG_ASAN_SHADOW_OFFSET == __CFG_ASAN_SHADOW_OFFSET);
+#undef __ASAN_SHADOW_START
+#undef __CFG_ASAN_SHADOW_OFFSET
+
+	/*
+	 * Assign area covered by the shadow area, everything from start up
+	 * to the beginning of the shadow area.
+	 */
+	asan_set_shadowed((void *)CFG_TEE_LOAD_ADDR, &__asan_shadow_start);
+
+	/*
+	 * Add access to areas that aren't opened automatically by a
+	 * constructor.
+	 */
+	asan_tag_access(&__initcall_start, &__initcall_end);
+	asan_tag_access(&__ctor_list, &__ctor_end);
+	asan_tag_access(__rodata_start, __rodata_end);
+	asan_tag_access(__early_bss_start, __early_bss_end);
+	asan_tag_access(__nozi_start, __nozi_end);
+
+	init_run_constructors();
+
+	/* Everything is tagged correctly, let's start address sanitizing. */
+	asan_start();
+}
+#else /*CFG_CORE_SANITIZE_KADDRESS*/
+static void init_asan(void)
+{
+}
+#endif /*CFG_CORE_SANITIZE_KADDRESS*/
+
+static void init_runtime(unsigned long pageable_part __unused)
 {
 	/*
 	 * Zero BSS area. Note that globals that would normally would go
@@ -311,6 +399,7 @@ static void init_runtime(uint32_t pageable_part __unused)
 
 	thread_init_boot_thread();
 
+	init_asan();
 	malloc_add_pool(__heap1_start, __heap1_end - __heap1_start);
 
 	/*
@@ -321,7 +410,180 @@ static void init_runtime(uint32_t pageable_part __unused)
 }
 #endif
 
-static void init_primary_helper(uint32_t pageable_part, uint32_t nsec_entry)
+#ifdef CFG_DT
+static int add_optee_dt_node(void *fdt)
+{
+	int offs;
+	int ret;
+
+	if (fdt_path_offset(fdt, "/firmware/optee") >= 0) {
+		IMSG("OP-TEE Device Tree node already exists!\n");
+		return 0;
+	}
+
+	offs = fdt_path_offset(fdt, "/firmware");
+	if (offs < 0) {
+		offs = fdt_path_offset(fdt, "/");
+		if (offs < 0)
+			return -1;
+		offs = fdt_add_subnode(fdt, offs, "firmware");
+		if (offs < 0)
+			return -1;
+	}
+
+	offs = fdt_add_subnode(fdt, offs, "optee");
+	if (offs < 0)
+		return -1;
+
+	ret = fdt_setprop_string(fdt, offs, "compatible", "linaro,optee-tz");
+	if (ret < 0)
+		return -1;
+	ret = fdt_setprop_string(fdt, offs, "method", "smc");
+	if (ret < 0)
+		return -1;
+	return 0;
+}
+
+static int get_dt_cell_size(void *fdt, int offs, const char *cell_name,
+			    uint32_t *cell_size)
+{
+	int len;
+	const uint32_t *cell = fdt_getprop(fdt, offs, cell_name, &len);
+
+	if (len != sizeof(*cell))
+		return -1;
+	*cell_size = fdt32_to_cpu(*cell);
+	if (*cell_size != 1 && *cell_size != 2)
+		return -1;
+	return 0;
+}
+
+static void set_dt_val(void *data, uint32_t cell_size, uint64_t val)
+{
+	if (cell_size == 1) {
+		uint32_t v = cpu_to_fdt32((uint32_t)val);
+
+		memcpy(data, &v, sizeof(v));
+	} else {
+		uint64_t v = cpu_to_fdt64(val);
+
+		memcpy(data, &v, sizeof(v));
+	}
+}
+
+static int add_optee_res_mem_dt_node(void *fdt)
+{
+	int offs;
+	int ret;
+	uint32_t addr_size = 2;
+	uint32_t len_size = 2;
+	vaddr_t shm_va_start;
+	vaddr_t shm_va_end;
+	paddr_t shm_pa;
+	char subnode_name[80];
+
+	offs = fdt_path_offset(fdt, "/reserved-memory");
+	if (offs >= 0) {
+		ret = get_dt_cell_size(fdt, offs, "#address-cells", &addr_size);
+		if (ret < 0)
+			return -1;
+		ret = get_dt_cell_size(fdt, offs, "#size-cells", &len_size);
+		if (ret < 0)
+			return -1;
+	} else {
+		offs = fdt_path_offset(fdt, "/");
+		if (offs < 0)
+			return -1;
+		offs = fdt_add_subnode(fdt, offs, "reserved-memory");
+		if (offs < 0)
+			return -1;
+		ret = fdt_setprop_cell(fdt, offs, "#address-cells", addr_size);
+		if (ret < 0)
+			return -1;
+		ret = fdt_setprop_cell(fdt, offs, "#size-cells", len_size);
+		if (ret < 0)
+			return -1;
+		ret = fdt_setprop(fdt, offs, "ranges", NULL, 0);
+		if (ret < 0)
+			return -1;
+	}
+
+	core_mmu_get_mem_by_type(MEM_AREA_NSEC_SHM, &shm_va_start, &shm_va_end);
+	shm_pa = virt_to_phys((void *)shm_va_start);
+	snprintf(subnode_name, sizeof(subnode_name),
+		 "optee@0x%" PRIxPA, shm_pa);
+	offs = fdt_add_subnode(fdt, offs, subnode_name);
+	if (offs >= 0) {
+		uint32_t data[addr_size + len_size] ;
+
+		set_dt_val(data, addr_size, shm_pa);
+		set_dt_val(data + addr_size, len_size,
+			   shm_va_end - shm_va_start);
+		ret = fdt_setprop(fdt, offs, "reg", data, sizeof(data));
+		if (ret < 0)
+			return -1;
+		ret = fdt_setprop(fdt, offs, "no-map", NULL, 0);
+		if (ret < 0)
+			return -1;
+	} else {
+		return -1;
+	}
+	return 0;
+}
+
+static void init_fdt(unsigned long phys_fdt)
+{
+	void *fdt;
+	int ret;
+
+	if (!phys_fdt) {
+		EMSG("Device Tree missing");
+		/*
+		 * No need to panic as we're not using the DT in OP-TEE
+		 * yet, we're only adding some nodes for normal world use.
+		 * This makes the switch to using DT easier as we can boot
+		 * a newer OP-TEE with older boot loaders. Once we start to
+		 * initialize devices based on DT we'll likely panic
+		 * instead of returning here.
+		 */
+		return;
+	}
+
+	if (!core_mmu_add_mapping(MEM_AREA_IO_NSEC, phys_fdt, CFG_DTB_MAX_SIZE))
+		panic("failed to map fdt");
+
+	fdt = phys_to_virt(phys_fdt, MEM_AREA_IO_NSEC);
+	if (!fdt)
+		panic();
+
+	ret = fdt_open_into(fdt, fdt, CFG_DTB_MAX_SIZE);
+	if (ret < 0) {
+		EMSG("Invalid Device Tree at 0x%" PRIxPA ": error %d",
+		     phys_fdt, ret);
+		panic();
+	}
+
+	if (add_optee_dt_node(fdt))
+		panic("Failed to add OP-TEE Device Tree node");
+
+	if (add_optee_res_mem_dt_node(fdt))
+		panic("Failed to add OP-TEE reserved memory DT node");
+
+	ret = fdt_pack(fdt);
+	if (ret < 0) {
+		EMSG("Failed to pack Device Tree at 0x%" PRIxPA ": error %d",
+		     phys_fdt, ret);
+		panic();
+	}
+}
+#else
+static void init_fdt(unsigned long phys_fdt __unused)
+{
+}
+#endif /*!CFG_DT*/
+
+static void init_primary_helper(unsigned long pageable_part,
+				unsigned long nsec_entry, unsigned long fdt)
 {
 	/*
 	 * Mask asynchronous exceptions before switch to the thread vector
@@ -333,34 +595,22 @@ static void init_primary_helper(uint32_t pageable_part, uint32_t nsec_entry)
 	init_vfp_sec();
 
 	init_runtime(pageable_part);
-#ifdef PLATFORM_RCAR
-	/* Log buffer clear */
-	log_buf_init();
-#endif
+
 	IMSG("Initializing (%s)\n", core_v_str);
 
 	thread_init_primary(generic_boot_get_handlers());
 	thread_init_per_cpu();
 	init_sec_mon(nsec_entry);
-
-
+	init_fdt(fdt);
 	main_init_gic();
 	init_vfp_nsec();
 
 	if (init_teecore() != TEE_SUCCESS)
 		panic();
-#ifdef PLATFORM_RCAR
-	/* LSI Product setup */
-	product_setup();
-
-	/* Initialize DDR training */
-	ddr_training_timer_init();
-	ddr_training_timer_start();
-#endif
 	DMSG("Primary CPU switching to normal world boot\n");
 }
 
-static void init_secondary_helper(uint32_t nsec_entry)
+static void init_secondary_helper(unsigned long nsec_entry)
 {
 	/*
 	 * Mask asynchronous exceptions before switch to the thread vector
@@ -379,26 +629,29 @@ static void init_secondary_helper(uint32_t nsec_entry)
 }
 
 #if defined(CFG_WITH_ARM_TRUSTED_FW)
-uint32_t *generic_boot_init_primary(uint32_t pageable_part)
+uint32_t *generic_boot_init_primary(unsigned long pageable_part,
+				    unsigned long u __unused,
+				    unsigned long fdt)
 {
-	init_primary_helper(pageable_part, PADDR_INVALID);
+	init_primary_helper(pageable_part, PADDR_INVALID, fdt);
 	return thread_vector_table;
 }
 
-uint32_t generic_boot_cpu_on_handler(uint32_t a0 __maybe_unused,
-				     uint32_t a1 __unused)
+unsigned long generic_boot_cpu_on_handler(unsigned long a0 __maybe_unused,
+				     unsigned long a1 __unused)
 {
-	DMSG("cpu %zu: a0 0x%x", get_core_pos(), a0);
+	DMSG("cpu %zu: a0 0x%lx", get_core_pos(), a0);
 	init_secondary_helper(PADDR_INVALID);
 	return 0;
 }
 #else
-void generic_boot_init_primary(uint32_t pageable_part, uint32_t nsec_entry)
+void generic_boot_init_primary(unsigned long pageable_part,
+			       unsigned long nsec_entry, unsigned long fdt)
 {
-	init_primary_helper(pageable_part, nsec_entry);
+	init_primary_helper(pageable_part, nsec_entry, fdt);
 }
 
-void generic_boot_init_secondary(uint32_t nsec_entry)
+void generic_boot_init_secondary(unsigned long nsec_entry)
 {
 	init_secondary_helper(nsec_entry);
 }

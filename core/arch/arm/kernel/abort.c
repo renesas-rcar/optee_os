@@ -336,11 +336,9 @@ static void handle_user_ta_panic(struct abort_info *ai)
 #ifdef CFG_WITH_VFP
 static void handle_user_ta_vfp(void)
 {
-	TEE_Result res;
 	struct tee_ta_session *s;
 
-	res = tee_ta_get_current_session(&s);
-	if (res != TEE_SUCCESS)
+	if (tee_ta_get_current_session(&s) != TEE_SUCCESS)
 		panic();
 
 	thread_user_enable_vfp(&to_user_ta_ctx(s->ctx)->vfp);
@@ -350,7 +348,7 @@ static void handle_user_ta_vfp(void)
 #ifdef CFG_WITH_USER_TA
 #ifdef ARM32
 /* Returns true if the exception originated from user mode */
-static bool is_user_exception(struct abort_info *ai)
+bool abort_is_user_exception(struct abort_info *ai)
 {
 	return (ai->regs->spsr & ARM32_CPSR_MODE_MASK) == ARM32_CPSR_MODE_USR;
 }
@@ -358,7 +356,7 @@ static bool is_user_exception(struct abort_info *ai)
 
 #ifdef ARM64
 /* Returns true if the exception originated from user mode */
-static bool is_user_exception(struct abort_info *ai)
+bool abort_is_user_exception(struct abort_info *ai)
 {
 	uint32_t spsr = ai->regs->spsr;
 
@@ -371,7 +369,7 @@ static bool is_user_exception(struct abort_info *ai)
 }
 #endif /*ARM64*/
 #else /*CFG_WITH_USER_TA*/
-static bool is_user_exception(struct abort_info *ai __unused)
+bool abort_is_user_exception(struct abort_info *ai __unused)
 {
 	return false;
 }
@@ -417,20 +415,21 @@ static bool is_abort_in_abort_handler(struct abort_info *ai __unused)
 
 #define A32_INSTR(x)		((uint32_t)(x))
 
-#define A32_VTRANS32_MASK	A32_INSTR((0xf << 24) | (7 << 9) | (1 << 4))
-#define A32_VTRANS32_VAL	A32_INSTR((0xe << 24) | (5 << 9) | (1 << 4))
+#define A32_VTRANS32_MASK	A32_INSTR(SHIFT_U32(0xf, 24) | \
+					  SHIFT_U32(7, 9) | BIT32(4))
+#define A32_VTRANS32_VAL	A32_INSTR(SHIFT_U32(0xe, 24) | \
+					  SHIFT_U32(5, 9) | BIT32(4))
 
-#define A32_VTRANS64_MASK	A32_INSTR((0x7f << 21) | (7 << 9))
-#define A32_VTRANS64_VAL	A32_INSTR((0x62 << 21) | (5 << 9))
+#define A32_VTRANS64_MASK	A32_INSTR(SHIFT_U32(0x7f, 21) | SHIFT_U32(7, 9))
+#define A32_VTRANS64_VAL	A32_INSTR(SHIFT_U32(0x62, 21) | SHIFT_U32(5, 9))
 
-#define A32_VLDST_MASK		A32_INSTR((0xff  << 24) | (1 << 20))
-#define A32_VLDST_VAL		A32_INSTR((0xf4  << 24))
+#define A32_VLDST_MASK		A32_INSTR(SHIFT_U32(0xff, 24) | BIT32(20))
+#define A32_VLDST_VAL		A32_INSTR(SHIFT_U32(0xf4, 24))
+#define A32_VXLDST_MASK		A32_INSTR(SHIFT_U32(7, 25) | SHIFT_U32(7, 9))
+#define A32_VXLDST_VAL		A32_INSTR(SHIFT_U32(6, 25) | SHIFT_U32(5, 9))
 
-#define A32_VXLDST_MASK		A32_INSTR((7 << 25) | (7 << 9))
-#define A32_VXLDST_VAL		A32_INSTR((6 << 25) | (5 << 9))
-
-#define A32_VPROC_MASK		A32_INSTR(0x7f << 25)
-#define A32_VPROC_VAL		A32_INSTR(0x79 << 25)
+#define A32_VPROC_MASK		A32_INSTR(SHIFT_U32(0x7f, 25))
+#define A32_VPROC_VAL		A32_INSTR(SHIFT_U32(0x79, 25))
 
 static bool is_vfp_fault(struct abort_info *ai)
 {
@@ -440,8 +439,7 @@ static bool is_vfp_fault(struct abort_info *ai)
 	if ((ai->abort_type != ABORT_TYPE_UNDEF) || vfp_is_enabled())
 		return false;
 
-	res = tee_svc_copy_from_user(NULL, &instr, (void *)ai->pc,
-				     sizeof(instr));
+	res = tee_svc_copy_from_user(&instr, (void *)ai->pc, sizeof(instr));
 	if (res != TEE_SUCCESS)
 		return false;
 
@@ -485,37 +483,39 @@ static bool is_vfp_fault(struct abort_info *ai __unused)
 
 static enum fault_type get_fault_type(struct abort_info *ai)
 {
-	if (is_user_exception(ai)) {
+	if (abort_is_user_exception(ai)) {
 		if (is_vfp_fault(ai))
 			return FAULT_TYPE_USER_TA_VFP;
-		print_user_abort(ai);
-		DMSG("[abort] abort in User mode (TA will panic)");
+#ifndef CFG_WITH_PAGER
 		return FAULT_TYPE_USER_TA_PANIC;
+#endif
 	}
 
 	if (is_abort_in_abort_handler(ai)) {
 		abort_print_error(ai);
-		EMSG("[abort] abort in abort handler (trap CPU)");
-		panic();
+		panic("[abort] abort in abort handler (trap CPU)");
 	}
 
 	if (ai->abort_type == ABORT_TYPE_UNDEF) {
+		if (abort_is_user_exception(ai))
+			return FAULT_TYPE_USER_TA_PANIC;
 		abort_print_error(ai);
-		EMSG("[abort] undefined abort (trap CPU)");
-		panic();
+		panic("[abort] undefined abort (trap CPU)");
 	}
 
 	switch (core_mmu_get_fault_type(ai->fault_descr)) {
 	case CORE_MMU_FAULT_ALIGNMENT:
+		if (abort_is_user_exception(ai))
+			return FAULT_TYPE_USER_TA_PANIC;
 		abort_print_error(ai);
-		EMSG("[abort] alignement fault!  (trap CPU)");
-		panic();
+		panic("[abort] alignement fault!  (trap CPU)");
 		break;
 
 	case CORE_MMU_FAULT_ACCESS_BIT:
+		if (abort_is_user_exception(ai))
+			return FAULT_TYPE_USER_TA_PANIC;
 		abort_print_error(ai);
-		EMSG("[abort] access bit fault!  (trap CPU)");
-		panic();
+		panic("[abort] access bit fault!  (trap CPU)");
 		break;
 
 	case CORE_MMU_FAULT_DEBUG_EVENT:
@@ -544,6 +544,7 @@ static enum fault_type get_fault_type(struct abort_info *ai)
 void abort_handler(uint32_t abort_type, struct thread_abort_regs *regs)
 {
 	struct abort_info ai;
+	bool handled;
 
 	set_abort_info(abort_type, regs, &ai);
 
@@ -551,6 +552,8 @@ void abort_handler(uint32_t abort_type, struct thread_abort_regs *regs)
 	case FAULT_TYPE_IGNORE:
 		break;
 	case FAULT_TYPE_USER_TA_PANIC:
+		DMSG("[abort] abort in User mode (TA will panic)");
+		print_user_abort(&ai);
 		vfp_disable();
 		handle_user_ta_panic(&ai);
 		break;
@@ -562,8 +565,18 @@ void abort_handler(uint32_t abort_type, struct thread_abort_regs *regs)
 	case FAULT_TYPE_PAGEABLE:
 	default:
 		thread_kernel_save_vfp();
-		tee_pager_handle_fault(&ai);
+		handled = tee_pager_handle_fault(&ai);
 		thread_kernel_restore_vfp();
+		if (!handled) {
+			if (!abort_is_user_exception(&ai)) {
+				abort_print_error(&ai);
+				panic("unhandled pageable abort");
+			}
+			print_user_abort(&ai);
+			DMSG("[abort] abort in User mode (TA will panic)");
+			vfp_disable();
+			handle_user_ta_panic(&ai);
+		}
 		break;
 	}
 }

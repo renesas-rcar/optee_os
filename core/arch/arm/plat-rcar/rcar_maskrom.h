@@ -47,7 +47,6 @@ typedef uint32_t(*ROM_GETLCS_API)(uint32_t *pLcs);
 extern ROM_SECURE_API ROM_SecureBootAPI;
 extern ROM_GETLCS_API ROM_GetLcs;
 
-void product_setup(void);
 uint32_t asm_switch_stack_pointer(uintptr_t jump, uint32_t stack, void *arg);
 uint32_t switch_stack_pointer(void *func, uint8_t *data);
 uint32_t get_PRR_type(void);

@@ -33,7 +33,6 @@
 #include <tee_api_types.h>
 #include <utee_types.h>
 #include <kernel/tee_common.h>
-#include <kernel/tee_common_unpg.h>
 #include <kernel/mutex.h>
 #include <tee_api_types.h>
 #include <user_ta_header.h>
@@ -81,9 +80,8 @@ struct tee_ta_ctx {
 
 struct tee_ta_session {
 	TAILQ_ENTRY(tee_ta_session) link;
+	TAILQ_ENTRY(tee_ta_session) link_tsd;
 	struct tee_ta_ctx *ctx;	/* TA context */
-	/* session of calling TA if != NULL */
-	struct tee_ta_session *calling_sess;
 	TEE_Identity clnt_id;	/* Identify of client */
 	bool cancel;		/* True if TAF is cancelled */
 	bool cancel_mask;	/* True if cancel is masked */
@@ -98,6 +96,8 @@ struct tee_ta_session {
 
 /* Registered contexts */
 extern struct tee_ta_ctx_head tee_ctxes;
+
+extern struct mutex tee_ta_mutex;
 
 TEE_Result tee_ta_open_session(TEE_ErrorOrigin *err,
 			       struct tee_ta_session **sess,
@@ -132,7 +132,10 @@ TEE_Result tee_ta_close_session(struct tee_ta_session *sess,
 
 TEE_Result tee_ta_get_current_session(struct tee_ta_session **sess);
 
-void tee_ta_set_current_session(struct tee_ta_session *sess);
+void tee_ta_push_current_session(struct tee_ta_session *sess);
+struct tee_ta_session *tee_ta_pop_current_session(void);
+
+struct tee_ta_session *tee_ta_get_calling_session(void);
 
 TEE_Result tee_ta_get_client_id(TEE_Identity *id);
 

@@ -56,19 +56,21 @@
  */
 #include <platform_config.h>
 
-#include <types_ext.h>
-#include <inttypes.h>
-#include <string.h>
-#include <compiler.h>
+#include <arm.h>
 #include <assert.h>
-#include <trace.h>
-#include <mm/tee_mmu_defs.h>
-#include <mm/pgt_cache.h>
+#include <compiler.h>
+#include <inttypes.h>
 #include <kernel/thread.h>
 #include <kernel/panic.h>
 #include <kernel/misc.h>
-#include <arm.h>
+#include <mm/core_memprot.h>
+#include <mm/tee_mmu_defs.h>
+#include <mm/pgt_cache.h>
+#include <string.h>
+#include <trace.h>
+#include <types_ext.h>
 #include <util.h>
+
 #include "core_mmu_private.h"
 
 #ifndef DEBUG_XLAT_TABLE
@@ -187,8 +189,8 @@ static uint64_t xlat_tables_ul1[CFG_NUM_THREADS][XLAT_TABLE_ENTRIES]
 	__aligned(XLAT_TABLE_SIZE) __section(".nozi.mmu.l2");
 
 
-static unsigned next_xlat __data;
-static uint64_t tcr_ps_bits __data;
+static unsigned next_xlat __early_bss;
+static uint64_t tcr_ps_bits __early_bss;
 static int user_va_idx = -1;
 
 static uint32_t desc_to_mattr(uint64_t desc)
@@ -340,10 +342,11 @@ static int mmap_region_attr(struct tee_mmap_region *mm, uint64_t base_va,
 static struct tee_mmap_region *init_xlation_table(struct tee_mmap_region *mm,
 			uint64_t base_va, uint64_t *table, unsigned level)
 {
-	unsigned level_size_shift = L1_XLAT_ADDRESS_SHIFT - (level - 1) *
+	unsigned int level_size_shift = L1_XLAT_ADDRESS_SHIFT - (level - 1) *
 						XLAT_TABLE_ENTRIES_SHIFT;
-	unsigned level_size = 1 << level_size_shift;
-	uint64_t level_index_mask = XLAT_TABLE_ENTRIES_MASK << level_size_shift;
+	unsigned int level_size = BIT32(level_size_shift);
+	uint64_t level_index_mask = SHIFT_U64(XLAT_TABLE_ENTRIES_MASK,
+					      level_size_shift);
 
 	assert(level <= 3);
 
@@ -392,9 +395,10 @@ static struct tee_mmap_region *init_xlation_table(struct tee_mmap_region *mm,
 			/* Area not covered by a region so need finer table */
 			uint64_t *new_table = xlat_tables[next_xlat++];
 			/* Clear table before use */
+			if (next_xlat > MAX_XLAT_TABLES)
+				panic("running out of xlat tables");
 			memset(new_table, 0, XLAT_TABLE_SIZE);
 
-			assert(next_xlat <= MAX_XLAT_TABLES);
 			desc = TABLE_DESC | (uint64_t)(uintptr_t)new_table;
 
 			/* Recurse to fill in new table */
@@ -412,7 +416,7 @@ static struct tee_mmap_region *init_xlation_table(struct tee_mmap_region *mm,
 static unsigned int calc_physical_addr_size_bits(uint64_t max_addr)
 {
 	/* Physical address can't exceed 48 bits */
-	assert((max_addr & ADDR_MASK_48_TO_63) == 0);
+	assert(!(max_addr & ADDR_MASK_48_TO_63));
 
 	/* 48 bits address */
 	if (max_addr & ADDR_MASK_44_TO_47)
@@ -450,8 +454,8 @@ void core_init_mmu_tables(struct tee_mmap_region *mm)
 		debug_print(" %010" PRIxVA " %010" PRIxPA " %10zx %x",
 			    mm[n].va, mm[n].pa, mm[n].size, mm[n].attr);
 
-		assert(IS_PAGE_ALIGNED(mm[n].pa));
-		assert(IS_PAGE_ALIGNED(mm[n].size));
+		if (!IS_PAGE_ALIGNED(mm[n].pa) || !IS_PAGE_ALIGNED(mm[n].size))
+			panic("unaligned region");
 
 		pa_end = mm[n].pa + mm[n].size - 1;
 		va_end = mm[n].va + mm[n].size - 1;
@@ -481,6 +485,13 @@ void core_init_mmu_tables(struct tee_mmap_region *mm)
 	assert(max_va < ADDR_SPACE_SIZE);
 }
 
+bool core_mmu_place_tee_ram_at_top(paddr_t paddr)
+{
+	size_t l1size = (1 << L1_XLAT_ADDRESS_SHIFT);
+	paddr_t l1mask = l1size - 1;
+
+	return (paddr & l1mask) > (l1size / 2);
+}
 
 #ifdef ARM32
 void core_init_mmu_regs(void)
@@ -553,27 +564,21 @@ void core_mmu_set_info_table(struct core_mmu_table_info *tbl_info,
 		tbl_info->num_entries = XLAT_TABLE_ENTRIES;
 }
 
-void core_mmu_create_user_map(struct tee_mmu_info *mmu, uint32_t asid,
-		struct core_mmu_user_map *map)
+void core_mmu_create_user_map(struct user_ta_ctx *utc,
+			      struct core_mmu_user_map *map)
 {
+	struct core_mmu_table_info dir_info;
+	vaddr_t va_range_base;
+	void *tbl = xlat_tables_ul1[thread_get_id()];
 
 	COMPILE_TIME_ASSERT(sizeof(uint64_t) * XLAT_TABLE_ENTRIES == PGT_SIZE);
 
-	if (mmu) {
-		struct core_mmu_table_info dir_info;
-		vaddr_t va_range_base;
-		void *tbl = xlat_tables_ul1[thread_get_id()];
-
-		core_mmu_get_user_va_range(&va_range_base, NULL);
-		core_mmu_set_info_table(&dir_info, 2, va_range_base, tbl);
-		memset(tbl, 0, PGT_SIZE);
-		core_mmu_populate_user_map(&dir_info, mmu);
-		map->user_map = (paddr_t)dir_info.table | TABLE_DESC;
-		map->asid = asid & TTBR_ASID_MASK;
-	} else {
-		map->user_map = 0;
-		map->asid = 0;
-	}
+	core_mmu_get_user_va_range(&va_range_base, NULL);
+	core_mmu_set_info_table(&dir_info, 2, va_range_base, tbl);
+	memset(tbl, 0, PGT_SIZE);
+	core_mmu_populate_user_map(&dir_info, utc);
+	map->user_map = (paddr_t)dir_info.table | TABLE_DESC;
+	map->asid = utc->context & TTBR_ASID_MASK;
 }
 
 bool core_mmu_find_table(vaddr_t va, unsigned max_level,
@@ -611,7 +616,9 @@ bool core_mmu_find_table(vaddr_t va, unsigned max_level,
 		/* Copy bits 39:12 from tbl[n] to ntbl */
 		ntbl = (tbl[n] & ((1ULL << 40) - 1)) & ~((1 << 12) - 1);
 
-		tbl = (uint64_t *)ntbl;
+		tbl = phys_to_virt(ntbl, MEM_AREA_TEE_RAM);
+		if (!tbl)
+			return false;
 
 		va_base += n << level_size_shift;
 		level++;
@@ -619,29 +626,25 @@ bool core_mmu_find_table(vaddr_t va, unsigned max_level,
 	}
 }
 
-void core_mmu_set_entry(struct core_mmu_table_info *tbl_info, unsigned idx,
-		paddr_t pa, uint32_t attr)
+void core_mmu_set_entry_primitive(void *table, size_t level, size_t idx,
+				  paddr_t pa, uint32_t attr)
 {
-	uint64_t *table = tbl_info->table;
-	uint64_t desc = mattr_to_desc(tbl_info->level, attr);
+	uint64_t *tbl = table;
+	uint64_t desc = mattr_to_desc(level, attr);
 
-	assert(idx < tbl_info->num_entries);
-
-	table[idx] = desc | pa;
+	tbl[idx] = desc | pa;
 }
 
-void core_mmu_get_entry(struct core_mmu_table_info *tbl_info, unsigned idx,
-		paddr_t *pa, uint32_t *attr)
+void core_mmu_get_entry_primitive(const void *table, size_t level __unused,
+				  size_t idx, paddr_t *pa, uint32_t *attr)
 {
-	uint64_t *table = tbl_info->table;
-
-	assert(idx < tbl_info->num_entries);
+	const uint64_t *tbl = table;
 
 	if (pa)
-		*pa = (table[idx] & ((1ull << 40) - 1)) & ~((1 << 12) - 1);
+		*pa = (tbl[idx] & ((1ull << 40) - 1)) & ~((1 << 12) - 1);
 
 	if (attr)
-		*attr = desc_to_mattr(table[idx]);
+		*attr = desc_to_mattr(tbl[idx]);
 }
 
 void core_mmu_get_user_va_range(vaddr_t *base, size_t *size)
@@ -707,6 +710,7 @@ void core_mmu_set_user_map(struct core_mmu_user_map *map)
 enum core_mmu_fault core_mmu_get_fault_type(uint32_t fault_descr)
 {
 	assert(fault_descr & FSR_LPAE);
+
 	switch (fault_descr & FSR_STATUS_MASK) {
 	case 0x21: /* b100001 Alignment fault */
 		return CORE_MMU_FAULT_ALIGNMENT;

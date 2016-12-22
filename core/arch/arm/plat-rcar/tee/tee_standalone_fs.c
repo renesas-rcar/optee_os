@@ -68,6 +68,9 @@ static TEE_Result spi_read_term_info(uint32_t sector_addr,
 			struct spif_term_info *term_info);
 static void spi_update_write_count(uint8_t *write_count);
 static uint32_t spi_ceil_ek_size(uint32_t not_align_size);
+static TEE_Result spi_check_sector_range(
+			const struct spim_record_descriptor *rdesc,
+			uint32_t inc_path_len, uint32_t inc_data_len);
 static uint32_t spi_get_record_info_size(
 			const struct spim_record_descriptor *rdesc);
 static TEE_Result spi_assign_record_info(uint32_t assign_size,
@@ -338,11 +341,13 @@ static TEE_Result spi_check_path(const char **ppath, size_t *len_out,
 {
 	TEE_Result res;
 	size_t lpath_len;
+	size_t len;
 	const char *lpath;
 	uint32_t i;
 
 	lpath = *ppath;
 	lpath_len = strlen(lpath);
+	len = lpath_len;
 
 	if (lpath_len <= PATH_MAX_LEN) {
 		if ((ftype == SAFS_ATTR_DATA_FILE) &&
@@ -353,7 +358,7 @@ static TEE_Result spi_check_path(const char **ppath, size_t *len_out,
 			for (i = 0; i < lpath_len; i++) {
 				if (lpath[i] == '/') {
 					if ((i + 1) == lpath_len) {
-						lpath_len--;
+						len--;
 					} else if (lpath[i + 1] == '/') {
 						res = TEE_ERROR_BAD_PARAMETERS;
 						break;
@@ -361,15 +366,15 @@ static TEE_Result spi_check_path(const char **ppath, size_t *len_out,
 						/* no operation */
 					}
 					if (i == 0) {
-						if (lpath_len > 0) {
-							lpath_len--;
+						if (len > 0) {
+							len--;
+							*ppath += 1;
 						}
-						lpath++;
 					}
 				}
 			}
 			if (res == TEE_SUCCESS) {
-				*len_out = lpath_len;
+				*len_out = len;
 			}
 		}
 	} else {
@@ -467,6 +472,41 @@ static uint32_t spi_ceil_ek_size(uint32_t not_align_size)
 	}
 
 	return ceil_size;
+}
+
+static TEE_Result spi_check_sector_range(
+			const struct spim_record_descriptor *rdesc,
+			uint32_t inc_path_len, uint32_t inc_data_len)
+{
+	TEE_Result res;
+	const struct spif_record_head *lrecord_head;
+	struct spim_sector_info *sector;
+	uint32_t empty_size;
+	uint32_t old_size;
+	uint32_t new_size;
+	uint32_t increment_size;
+
+	lrecord_head = &rdesc->record_info.record_head;
+	sector = spi_get_current_sector(rdesc->sector_idx);
+
+	empty_size = TERM_INFO_OFFSET - sector->term_info.empty_offset;
+	old_size = spi_ceil_ek_size(lrecord_head->path_len) +
+		spi_ceil_ek_size(lrecord_head->data_len);
+	new_size = spi_ceil_ek_size(lrecord_head->path_len + inc_path_len) +
+		spi_ceil_ek_size(lrecord_head->data_len + inc_data_len);
+	if ((lrecord_head->data_len == 0U) && (inc_data_len > 0U)) {
+		new_size += RECORD_DATA_FIXED_SIZE;
+	}
+	increment_size = new_size - old_size;
+
+	if (increment_size <= empty_size) {
+		res = TEE_SUCCESS;
+	} else {
+		res = TEE_ERROR_STORAGE_NO_SPACE;
+		EMSG("Sector out of range");
+	}
+
+	return res;
 }
 
 static uint32_t spi_get_record_info_size(
@@ -681,10 +721,18 @@ static TEE_Result spi_update_record_info(struct spim_record_descriptor *rdesc,
 {
 	TEE_Result res;
 	uint32_t new_size;
+	struct spim_sector_info *sector;
 
-	new_size = spi_get_record_info_size(rdesc);
+	sector = spi_get_current_sector(rdesc->sector_idx);
 
-	res = spi_write_record_info(rdesc, new_size, old_size);
+	if (rdesc->record_offset < sector->term_info.empty_offset) {
+		new_size = spi_get_record_info_size(rdesc);
+
+		res = spi_write_record_info(rdesc, new_size, old_size);
+	} else {
+		res = TEE_ERROR_MAC_INVALID;
+		EMSG("Sector destruction error!");
+	}
 
 	return res;
 }
@@ -1125,6 +1173,7 @@ static TEE_Result spi_search_flash_for_record_info(
 		RINFO_END_OF_SEARCH	/* error case */
 	};
 	enum search_state search_flag = RINFO_NOT_FOUND;
+	uint32_t record_cnt;
 
 	first_record_offset = *search_record_offset;
 	lsector_idx = *search_sector_idx;
@@ -1137,6 +1186,8 @@ static TEE_Result spi_search_flash_for_record_info(
 			flash_addr += first_record_offset;
 			first_record_offset = 0;
 		}
+		next_addr = flash_addr;
+		record_cnt = 0U;
 		while ((search_flag == RINFO_NOT_FOUND) &&
 		       ((flash_addr - sector->sector_addr) <
 		        sector->term_info.empty_offset)) {
@@ -1147,12 +1198,24 @@ static TEE_Result spi_search_flash_for_record_info(
 			} else if (resi == TEE_ERROR_ITEM_NOT_FOUND) {
 				/* Find the next Record Information */
 				flash_addr = next_addr;
-			} else if (resi == TEE_ERROR_MAC_INVALID) {
-				/* Skip the search for the sector */
-				flash_addr = sector->term_info.empty_offset;
+			} else if ((resi == TEE_ERROR_MAC_INVALID) &&
+				   (flash_addr == next_addr)) {
+				EMSG("Delete record_info num=%d sectorIdx=%d",
+					sector->term_info.record_num -
+					record_cnt, lsector_idx);
+				sector->term_info.empty_offset = flash_addr -
+						sector->sector_addr;
+				sector->term_info.record_num = record_cnt;
+			} else if ((resi == TEE_ERROR_MAC_INVALID) &&
+				   (flash_addr < next_addr)) {
+				EMSG("Skip record_info ofs=%d sectorIdx=%d",
+					flash_addr - sector->sector_addr,
+					lsector_idx);
+				flash_addr = next_addr;
 			} else {
 				search_flag = RINFO_END_OF_SEARCH;
 			}
+			record_cnt++;
 		}
 		if (search_flag == RINFO_EXIST) {
 			break;
@@ -1366,7 +1429,7 @@ static void spi_free_rdesc(struct spim_record_descriptor *rdesc)
 			if (res == TEE_SUCCESS) {
 				DMSG("tee file unlink success.");
 			} else {
-				EMSG("tee file unlink failure. r=%d", res);
+				EMSG("tee file unlink failure. r=0x%x", res);
 			}
 		}
 		(void)handle_put(&g_rd_handle_db, rdesc->rd);
@@ -1471,7 +1534,11 @@ static struct tee_fs_dir *spi_alloc_dirst(const char *dir, size_t dir_len)
 		(void)memset(dirst, 0, sizeof(struct tee_fs_dir));
 		(void)memcpy(dirst->dir, dir, dir_len);
 		dirst->finfo.path	= dirst->dir;
-		dirst->finfo.path_len	= dir_len;
+		if ((dir[0] == '/') && (dir_len == 1U)) {
+			dirst->finfo.path_len	= 0U;	/* root directory */
+		} else {
+			dirst->finfo.path_len	= dir_len;
+		}
 		dirst->finfo.attr_mask	= 0;	/* file and directory */
 		dirst->finfo.attr	= 0;
 		dirst->finfo.match_flag	= FORWARD_MATCHING;
@@ -1733,6 +1800,10 @@ static TEE_Result tee_standalone_write(struct spim_file_descriptor *fdp,
 		} else {
 			res = TEE_SUCCESS;
 		}
+		if ((res == TEE_SUCCESS) && (old_data_len < new_data_len)) {
+			res = spi_check_sector_range(rdesc,
+				0U, new_data_len - old_data_len);
+		}
 		if (res == TEE_SUCCESS) {
 			if (old_data_len < pos) {
 				/* hole area */
@@ -1837,6 +1908,10 @@ static TEE_Result tee_standalone_rename(const char *old_file, size_t old_len,
 				EMSG("find file error!");
 			}
 		}
+		if ((res == TEE_SUCCESS) && (old_len < new_len)) {
+			res = spi_check_sector_range(rdesc,
+				new_len - old_len, 0U);
+		}
 
 		if (res == TEE_SUCCESS) {
 			lrecord_info = &rdesc->record_info;
@@ -1910,10 +1985,14 @@ static TEE_Result tee_standalone_ftruncate(struct spim_file_descriptor *fdp,
 				}
 				if ((res == TEE_SUCCESS) &&
 				    (old_dlen < length)) {
-					/* hole area */
-					(void)memset(
-						&lrecord_data->data[old_dlen],
-						0, length - old_dlen);
+					res = spi_check_sector_range(rdesc,
+						0U, length - old_dlen);
+					if (res == TEE_SUCCESS) {
+						/* hole area */
+						(void)memset(&lrecord_data->
+							data[old_dlen],
+							0, length - old_dlen);
+					}
 				}
 			} else {
 				res = TEE_SUCCESS;
@@ -2002,7 +2081,15 @@ static struct tee_fs_dir *tee_standalone_opendir(const char *name,
 	struct tee_fs_dir *dirst = NULL;
 	TEE_Result res;
 
-	res = spi_find_dir(name, name_len);
+	if (name_len > 0U) {
+		res = spi_find_dir(name, name_len);
+	} else {
+		/* root directory */
+		name = "/";
+		name_len = 1U;
+		res = TEE_SUCCESS;
+	}
+
 	if (res == TEE_SUCCESS) {
 		dirst = spi_alloc_dirst(name, name_len);
 		if (dirst == NULL) {
@@ -2052,7 +2139,9 @@ static struct tee_fs_dirent *tee_standalone_readdir(
 					rdesc->record_info.record_head.path_len,
 					&parent_dir, &dir_len);
 
-			if (dirst->finfo.path_len == dir_len) {
+			if (((parent_dir[0] == '/') &&
+			     (dirst->finfo.path_len == 0U)) ||
+			    (dirst->finfo.path_len == dir_len)) {
 				spi_get_filename(
 					rdesc->record_info.record_meta.path,
 					rdesc->record_info.record_head.path_len,
@@ -2437,7 +2526,7 @@ static int standalone_fs_closedir(struct tee_fs_dir *d)
 			}
 		}
 	} else {
-		EMSG("Invalid argument provided.");
+		rc = 0;
 	}
 
 	DMSG("OUT rc=%d", rc);
@@ -2477,7 +2566,7 @@ static int standalone_fs_rmdir(const char *pathname)
 
 	if (pathname != NULL) {
 		res = spi_get_status_and_check_dir(&pathname, &len);
-		if (res == TEE_SUCCESS) {
+		if ((res == TEE_SUCCESS) && (len > 0U)) {
 			spi_lock();
 			res = tee_standalone_rmdir(pathname, len);
 			spi_unlock();

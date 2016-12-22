@@ -91,8 +91,6 @@
 /* device id */
 /* QSPI_ONBOARD : S25FS128S */
 #define QSPI_ONBOARD 0x00182001U
-/* QSPI_QUAD : S25FL512S */
-#define QSPI_QUAD 0x00200201U
 /* HyperFlash : S26KS512S */
 #define HYPER_FLASH 0x007E0001U
 /* Unsupport device */
@@ -107,7 +105,7 @@
 #define HF_READ_WAIT		10U
 #define HF_WRITE_WAIT		10U
 
-/* QSPI onboard,quad : S25FS128S,S25FL512S */
+/* QSPI onboard : S25FS128S */
 #define QSPI_ERASE_TIMEOUT	3000U
 #define QSPI_READ_TIMEOUT	100U
 #define QSPI_WRITE_TIMEOUT	100U

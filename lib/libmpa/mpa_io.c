@@ -24,8 +24,10 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#include "mpa.h"
-#include "assert.h"
+
+#include <assert.h>
+#include <mpa.h>
+#include <trace.h>
 
 /*
  * Big #ifdef to get rid of string conversion routines
@@ -194,7 +196,7 @@ static mpa_word_t __mpa_count_leading_zero_bits(mpa_word_t w)
 
 	if (w == 0)
 		return MPA_WORD_SIZE;
-	mask = (1 << (MPA_WORD_SIZE - 1));
+	mask = ((mpa_word_t)1 << (MPA_WORD_SIZE - 1));
 	zeros = 0;
 	while (!(w & mask)) {
 		zeros++;
@@ -318,7 +320,12 @@ int mpa_set_str(mpanum dest, const char *digitstr)
 
 	/* + 1 since we have one character in 'c' */
 	dlen = (int)(endp - digitstr) + 1;
-	assert(dlen <= MPA_STR_MAX_SIZE);
+	if (dlen > MPA_STR_MAX_SIZE) {
+		EMSG("data len (%d) > max size (%d)", dlen, MPA_STR_MAX_SIZE);
+		retval = -1;
+		goto cleanup;
+	}
+
 	/* convert to a buffer of bytes */
 	bufidx = 0;
 	while (__mpa_is_char_in_base(16, c)) {
@@ -331,9 +338,14 @@ int mpa_set_str(mpanum dest, const char *digitstr)
 		retval = -1;
 		goto cleanup;
 	}
-
-	assert((__mpa_digitstr_to_binary_wsize_base_16(bufidx) <=
-		__mpanum_alloced(dest)));
+	if (__mpa_digitstr_to_binary_wsize_base_16(bufidx) >
+						__mpanum_alloced(dest)) {
+		EMSG("binary buffer (%d) > alloced buffer (%d)",
+				__mpa_digitstr_to_binary_wsize_base_16(bufidx),
+				__mpanum_alloced(dest));
+		retval = -1;
+		goto cleanup;
+	}
 
 	retval = bufidx;
 	w = dest->d;
@@ -344,9 +356,8 @@ int mpa_set_str(mpanum dest, const char *digitstr)
 	dest->size = 1;
 	bufidx--;		/* dec to get inside buf range */
 	while (bufidx > 1) {
-		*w ^=
-		    (((buf[bufidx - 1] << 4) ^ (buf[bufidx])) <<
-		     ((BYTES_PER_WORD - i) << 3));
+		*w ^= ((((mpa_word_t)buf[bufidx - 1] << 4) ^ (buf[bufidx])) <<
+			((mpa_word_t)(BYTES_PER_WORD - i) << 3));
 		i--;
 		bufidx -= 2;
 		if (i == 0) {
@@ -357,11 +368,11 @@ int mpa_set_str(mpanum dest, const char *digitstr)
 		}
 	}
 	if (bufidx == 1)
-		*w ^=
-		    (((buf[bufidx - 1] << 4) ^ (buf[bufidx])) <<
-		     ((BYTES_PER_WORD - i) << 3));
+		*w ^= ((((mpa_word_t)buf[bufidx - 1] << 4) ^ (buf[bufidx])) <<
+			((mpa_word_t)(BYTES_PER_WORD - i) << 3));
 	if (bufidx == 0)
-		*w ^= (buf[bufidx] << ((BYTES_PER_WORD - i) << 3));
+		*w ^= ((mpa_word_t)buf[bufidx] <<
+			((mpa_word_t)(BYTES_PER_WORD - i) << 3));
 
 	if (negative)
 		__mpanum_neg(dest);
@@ -387,7 +398,7 @@ char *mpa_get_str(char *str, int mode, const mpanum n)
 {
 	char *s = str;
 
-	assert(str != 0);
+	assert(str);
 
 	/* insert a minus sign */
 	if (__mpanum_sign(n) == MPA_NEG_SIGN) {
@@ -417,7 +428,7 @@ static mpa_word_t set_word(const uint8_t *in, size_t in_len)
 
 	out = 0;
 	for (i = in_len - 1; i >= 0; i--)
-		out |= in[i] << ((in_len - i - 1) * 8);
+		out |= (mpa_word_t)in[i] << ((in_len - i - 1) * 8);
 	return out;
 }
 

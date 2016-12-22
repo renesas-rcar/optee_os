@@ -35,11 +35,12 @@ WARNS ?= 3
 # Define NOWERROR=1 so that warnings are not treated as errors
 # NOWERROR=1
 
-# Define DEBUG=1 to compile with -g option
+# Define DEBUG=1 to compile without optimization (forces -O0)
 # DEBUG=1
 
-# If 1, debug mode of the tee firmware (CPU restart, Core Status)
-CFG_TEE_CORE_DEBUG ?= 0
+# If y, enable debug mode of the tee firmware (CPU restart, Core Status
+# verbose, panic & assert verbose). When disable, NDEBUG directive is defined.
+CFG_TEE_CORE_DEBUG ?= n
 
 # Max level of the tee core traces. 0 means disable, 4 is max.
 # Supported values: 0 (no traces) to 4 (all traces)
@@ -101,7 +102,7 @@ TEE_IMPL_VERSION ?= $(shell git describe --always --dirty=-dev 2>/dev/null || ec
 # with limited depth not including any tag, so there is really no guarantee
 # that TEE_IMPL_VERSION contains the major and minor revision numbers.
 CFG_OPTEE_REVISION_MAJOR ?= 2
-CFG_OPTEE_REVISION_MINOR ?= 0
+CFG_OPTEE_REVISION_MINOR ?= 1
 
 # Trusted OS implementation manufacturer name
 CFG_TEE_MANUFACTURER ?= LINARO
@@ -129,13 +130,12 @@ CFG_RPMB_FS ?= n
 # tee-supplicant process will open /dev/mmcblk<id>rpmb
 CFG_RPMB_FS_DEV_ID ?= 0
 
-# File encryption support
-# Applies to both the REE and the RPMB filesystems
-CFG_ENC_FS ?= y
+# SQL FS stores its data in a SQLite database, accessed by normal world
+CFG_SQL_FS ?= n
 
-ifeq (,$(filter y,$(CFG_REE_FS) $(CFG_RPMB_FS) $(CFG_STANDALONE_FS)))
-$(error At least one filesystem must be enabled)
-endif
+# File encryption support
+# Applies to all filesystems
+CFG_ENC_FS ?= y
 
 # Embed public part of this key in OP-TEE OS
 TA_SIGN_KEY ?= keys/default_ta.pem
@@ -157,7 +157,7 @@ CFG_TA_FLOAT_SUPPORT ?= y
 
 # Enable stack unwinding for aborts from kernel mode if CFG_TEE_CORE_DEBUG
 # is enabled
-ifeq ($(CFG_TEE_CORE_DEBUG),1)
+ifeq ($(CFG_TEE_CORE_DEBUG),y)
 CFG_CORE_UNWIND ?= y
 endif
 
@@ -166,3 +166,50 @@ CFG_WITH_USER_TA ?= y
 
 # Use small pages to map user TAs
 CFG_SMALL_PAGE_USER_TA ?= y
+
+# Enable paging, requires SRAM, can't be enabled by default
+CFG_WITH_PAGER ?= n
+
+# Use the pager for user TAs
+CFG_PAGED_USER_TA ?= $(CFG_WITH_PAGER)
+
+# Enable support for detected undefined behavior in C
+# Uses a lot of memory, can't be enabled by default
+CFG_CORE_SANITIZE_UNDEFINED ?= n
+
+# Enable Kernel Address sanitizer, has a huge performance impact, uses a
+# lot of memory and need platform specific adaptations, can't be enabled by
+# default
+CFG_CORE_SANITIZE_KADDRESS ?= n
+
+# Device Tree support
+# When enabled, the TEE _start function expects to find the address of a
+# Device Tree Blob (DTB) in register r2. The DT parsing code relies on
+# libfdt.  Currently only used to add the optee node and a reserved-memory
+# node for shared memory.
+CFG_DT ?= n
+
+# Maximum size of the Device Tree Blob, has to be large enough to allow
+# editing of the supplied DTB.
+CFG_DTB_MAX_SIZE ?= 0x10000
+
+# Enable static TA and core self tests
+CFG_TEE_CORE_EMBED_INTERNAL_TESTS ?= y
+
+# This option enables OP-TEE to respond to SMP boot request: the Rich OS
+# issues this to request OP-TEE to release secondaries cores out of reset,
+# with specific core number and non-secure entry address.
+CFG_BOOT_SECONDARY_REQUEST ?= n
+
+# For firmwares that do not pass arguments to OP-TEE, this option enables the
+# built-in arguments which are specified as CFG items in the build time:
+# CFG_PAGEABLE_ADDR: pageable data address, normally passed in R0;
+# CFG_NS_ENTRY_ADDR: NS World entry address, normally passed in LR;
+# CFG_DT_ADDR: Device Tree data address, normally passed in R2;
+CFG_BUILT_IN_ARGS ?= n
+CFG_PAGEABLE_ADDR ?= 0x0
+CFG_NS_ENTRY_ADDR ?=0x0
+CFG_DT_ADDR ?= 0x0
+
+# Default heap size for Core, 64 kB
+CFG_CORE_HEAP_SIZE ?= 65536

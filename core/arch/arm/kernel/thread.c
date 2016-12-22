@@ -25,39 +25,47 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+
 #include <platform_config.h>
+
+#include <arm.h>
+#include <assert.h>
+#include <keep.h>
+#include <kernel/misc.h>
 #include <kernel/panic.h>
+#include <kernel/tee_ta_manager.h>
 #include <kernel/thread.h>
 #include <kernel/thread_defs.h>
-#include "thread_private.h"
-#include <sm/sm_defs.h>
-#include <sm/sm.h>
+#include <kernel/tz_proc.h>
+#include <kernel/tz_proc_def.h>
+#include <mm/core_memprot.h>
+#include <mm/tee_mm.h>
+#include <mm/tee_mmu.h>
+#include <mm/tee_mmu_defs.h>
+#include <mm/tee_pager.h>
 #include <optee_msg.h>
 #include <sm/optee_smc.h>
-#include <arm.h>
-#include <kernel/tz_proc_def.h>
-#include <kernel/tz_proc.h>
-#include <kernel/misc.h>
-#include <mm/tee_mmu.h>
-#include <mm/core_memprot.h>
-#include <mm/tee_mmu_defs.h>
-#include <mm/tee_mm.h>
-#include <mm/tee_pager.h>
-#include <kernel/tee_ta_manager.h>
-#include <util.h>
+#include <sm/sm_defs.h>
+#include <sm/sm.h>
 #include <trace.h>
-#include <assert.h>
+#include <util.h>
+
+#include "thread_private.h"
 
 #ifdef ARM32
-#ifndef ENABLE_CRYPTOENGINE
-#define STACK_TMP_SIZE		1024
+#ifdef CFG_CORE_SANITIZE_KADDRESS
+#define STACK_TMP_SIZE		3072
 #else
-#define STACK_TMP_SIZE		1024*4
+#define STACK_TMP_SIZE		1024
 #endif
 #define STACK_THREAD_SIZE	8192
 
 #if TRACE_LEVEL > 0
+#ifdef CFG_CORE_SANITIZE_KADDRESS
+#define STACK_ABT_SIZE		3072
+#else
 #define STACK_ABT_SIZE		2048
+#endif
 #else
 #define STACK_ABT_SIZE		1024
 #endif
@@ -101,52 +109,31 @@ static struct thread_core_local thread_core_local[CFG_TEE_CORE_NB_CORE];
 #define STACK_CANARY_SIZE	0
 #endif
 
-#define DECLARE_STACK(name, num_stacks, stack_size) \
-	static uint32_t name[num_stacks][ \
-		ROUNDUP(stack_size + STACK_CANARY_SIZE, STACK_ALIGNMENT) / \
+#define DECLARE_STACK(name, num_stacks, stack_size, linkage) \
+linkage uint32_t name[num_stacks] \
+		[ROUNDUP(stack_size + STACK_CANARY_SIZE, STACK_ALIGNMENT) / \
 		sizeof(uint32_t)] \
-		__attribute__((section(".nozi.stack"), \
+		__attribute__((section(".nozi_stack"), \
 			       aligned(STACK_ALIGNMENT)))
 
-#define GET_STACK(stack) \
-	((vaddr_t)(stack) + sizeof(stack) - STACK_CANARY_SIZE / 2)
+#define STACK_SIZE(stack) (sizeof(stack) - STACK_CANARY_SIZE / 2)
 
-DECLARE_STACK(stack_tmp,	CFG_TEE_CORE_NB_CORE,	STACK_TMP_SIZE);
-DECLARE_STACK(stack_abt,	CFG_TEE_CORE_NB_CORE,	STACK_ABT_SIZE);
+#define GET_STACK(stack) \
+	((vaddr_t)(stack) + STACK_SIZE(stack))
+
+DECLARE_STACK(stack_tmp, CFG_TEE_CORE_NB_CORE, STACK_TMP_SIZE, /* global */);
+DECLARE_STACK(stack_abt, CFG_TEE_CORE_NB_CORE, STACK_ABT_SIZE, static);
 #if !defined(CFG_WITH_ARM_TRUSTED_FW)
-DECLARE_STACK(stack_sm,		CFG_TEE_CORE_NB_CORE,	SM_STACK_SIZE);
+DECLARE_STACK(stack_sm, CFG_TEE_CORE_NB_CORE, SM_STACK_SIZE, static);
 #endif
 #ifndef CFG_WITH_PAGER
-DECLARE_STACK(stack_thread,	CFG_NUM_THREADS,	STACK_THREAD_SIZE);
+DECLARE_STACK(stack_thread, CFG_NUM_THREADS, STACK_THREAD_SIZE, static);
 #endif
 
-const vaddr_t stack_tmp_top[CFG_TEE_CORE_NB_CORE] = {
-	GET_STACK(stack_tmp[0]),
-#if CFG_TEE_CORE_NB_CORE > 1
-	GET_STACK(stack_tmp[1]),
-#endif
-#if CFG_TEE_CORE_NB_CORE > 2
-	GET_STACK(stack_tmp[2]),
-#endif
-#if CFG_TEE_CORE_NB_CORE > 3
-	GET_STACK(stack_tmp[3]),
-#endif
-#if CFG_TEE_CORE_NB_CORE > 4
-	GET_STACK(stack_tmp[4]),
-#endif
-#if CFG_TEE_CORE_NB_CORE > 5
-	GET_STACK(stack_tmp[5]),
-#endif
-#if CFG_TEE_CORE_NB_CORE > 6
-	GET_STACK(stack_tmp[6]),
-#endif
-#if CFG_TEE_CORE_NB_CORE > 7
-	GET_STACK(stack_tmp[7]),
-#endif
-#if CFG_TEE_CORE_NB_CORE > 8
-#error "Top of tmp stacks aren't defined for more than 8 CPUS"
-#endif
-};
+const uint32_t stack_tmp_stride = STACK_SIZE(stack_tmp[0]);
+
+KEEP_PAGER(stack_tmp);
+KEEP_PAGER(stack_tmp_stride);
 
 thread_smc_handler_t thread_std_smc_handler_ptr;
 static thread_smc_handler_t thread_fast_smc_handler_ptr;
@@ -189,30 +176,45 @@ static void init_canaries(void)
 #endif/*CFG_WITH_STACK_CANARIES*/
 }
 
+#define CANARY_DIED(stack, loc, n) \
+	do { \
+		EMSG_RAW("Dead canary at %s of '%s[%zu]'", #loc, #stack, n); \
+		panic(); \
+	} while (0)
+
 void thread_check_canaries(void)
 {
 #ifdef CFG_WITH_STACK_CANARIES
 	size_t n;
 
 	for (n = 0; n < ARRAY_SIZE(stack_tmp); n++) {
-		assert(GET_START_CANARY(stack_tmp, n) == START_CANARY_VALUE);
-		assert(GET_END_CANARY(stack_tmp, n) == END_CANARY_VALUE);
+		if (GET_START_CANARY(stack_tmp, n) != START_CANARY_VALUE)
+			CANARY_DIED(stack_tmp, start, n);
+		if (GET_END_CANARY(stack_tmp, n) != END_CANARY_VALUE)
+			CANARY_DIED(stack_tmp, end, n);
 	}
 
 	for (n = 0; n < ARRAY_SIZE(stack_abt); n++) {
-		assert(GET_START_CANARY(stack_abt, n) == START_CANARY_VALUE);
-		assert(GET_END_CANARY(stack_abt, n) == END_CANARY_VALUE);
+		if (GET_START_CANARY(stack_abt, n) != START_CANARY_VALUE)
+			CANARY_DIED(stack_abt, start, n);
+		if (GET_END_CANARY(stack_abt, n) != END_CANARY_VALUE)
+			CANARY_DIED(stack_abt, end, n);
+
 	}
 #if !defined(CFG_WITH_ARM_TRUSTED_FW)
 	for (n = 0; n < ARRAY_SIZE(stack_sm); n++) {
-		assert(GET_START_CANARY(stack_sm, n) == START_CANARY_VALUE);
-		assert(GET_END_CANARY(stack_sm, n) == END_CANARY_VALUE);
+		if (GET_START_CANARY(stack_sm, n) != START_CANARY_VALUE)
+			CANARY_DIED(stack_sm, start, n);
+		if (GET_END_CANARY(stack_sm, n) != END_CANARY_VALUE)
+			CANARY_DIED(stack_sm, end, n);
 	}
 #endif
 #ifndef CFG_WITH_PAGER
 	for (n = 0; n < ARRAY_SIZE(stack_thread); n++) {
-		assert(GET_START_CANARY(stack_thread, n) == START_CANARY_VALUE);
-		assert(GET_END_CANARY(stack_thread, n) == END_CANARY_VALUE);
+		if (GET_START_CANARY(stack_thread, n) != START_CANARY_VALUE)
+			CANARY_DIED(stack_thread, start, n);
+		if (GET_END_CANARY(stack_thread, n) != END_CANARY_VALUE)
+			CANARY_DIED(stack_thread, end, n);
 	}
 #endif
 #endif/*CFG_WITH_STACK_CANARIES*/
@@ -389,6 +391,9 @@ static void init_regs(struct thread_ctx *thread,
 	thread->regs.x[5] = args->a5;
 	thread->regs.x[6] = args->a6;
 	thread->regs.x[7] = args->a7;
+
+	/* Set up frame pointer as per the Aarch64 AAPCS */
+	thread->regs.x[29] = 0;
 }
 #endif /*ARM64*/
 
@@ -399,6 +404,7 @@ void thread_init_boot_thread(void)
 
 	for (n = 0; n < CFG_NUM_THREADS; n++) {
 		TAILQ_INIT(&threads[n].mutexes);
+		TAILQ_INIT(&threads[n].tsd.sess_stack);
 #ifdef CFG_SMALL_PAGE_USER_TA
 		SLIST_INIT(&threads[n].tsd.pgt_cache);
 #endif
@@ -621,6 +627,9 @@ void thread_state_free(void)
 	assert(TAILQ_EMPTY(&threads[ct].mutexes));
 
 	thread_lazy_restore_ns_vfp();
+	tee_pager_release_phys(
+		(void *)(threads[ct].stack_va_end - STACK_THREAD_SIZE),
+		STACK_THREAD_SIZE);
 
 	lock_global();
 
@@ -651,6 +660,21 @@ static bool is_from_user(uint32_t cpsr)
 }
 #endif
 
+#ifdef CFG_WITH_PAGER
+static void release_unused_kernel_stack(struct thread_ctx *thr)
+{
+	vaddr_t sp = thr->regs.svc_sp;
+	vaddr_t base = thr->stack_va_end - STACK_THREAD_SIZE;
+	size_t len = sp - base;
+
+	tee_pager_release_phys((void *)base, len);
+}
+#else
+static void release_unused_kernel_stack(struct thread_ctx *thr __unused)
+{
+}
+#endif
+
 int thread_state_suspend(uint32_t flags, uint32_t cpsr, vaddr_t pc)
 {
 	struct thread_core_local *l = thread_get_core_local();
@@ -659,6 +683,8 @@ int thread_state_suspend(uint32_t flags, uint32_t cpsr, vaddr_t pc)
 	assert(ct != -1);
 
 	thread_check_canaries();
+
+	release_unused_kernel_stack(threads + ct);
 
 	if (is_from_user(cpsr))
 		thread_user_save_vfp();
@@ -677,7 +703,6 @@ int thread_state_suspend(uint32_t flags, uint32_t cpsr, vaddr_t pc)
 		core_mmu_get_user_map(&threads[ct].user_map);
 		core_mmu_set_user_map(NULL);
 	}
-
 
 	l->curr_thread = -1;
 
@@ -740,7 +765,7 @@ int thread_get_id(void)
 {
 	int ct = thread_get_id_may_fail();
 
-	assert((ct >= 0) && (ct < CFG_NUM_THREADS));
+	assert(ct >= 0 && ct < CFG_NUM_THREADS);
 	return ct;
 }
 
@@ -757,7 +782,6 @@ static void init_handlers(const struct thread_handlers *handlers)
 	thread_system_reset_handler_ptr = handlers->system_reset;
 }
 
-
 #ifdef CFG_WITH_PAGER
 static void init_thread_stacks(void)
 {
@@ -773,28 +797,22 @@ static void init_thread_stacks(void)
 		/* Find vmem for thread stack and its protection gap */
 		mm = tee_mm_alloc(&tee_mm_vcore,
 				  SMALL_PAGE_SIZE + STACK_THREAD_SIZE);
-		TEE_ASSERT(mm);
+		assert(mm);
 
 		/* Claim eventual physical page */
 		tee_pager_add_pages(tee_mm_get_smem(mm), tee_mm_get_size(mm),
 				    true);
 
-		/* Realloc both protection vmem and stack vmem separately */
-		sp = tee_mm_get_smem(mm);
-		tee_mm_free(mm);
-		mm = tee_mm_alloc2(&tee_mm_vcore, sp, SMALL_PAGE_SIZE);
-		TEE_ASSERT(mm);
-		mm = tee_mm_alloc2(&tee_mm_vcore, sp + SMALL_PAGE_SIZE,
-						  STACK_THREAD_SIZE);
-		TEE_ASSERT(mm);
+		/* Add the area to the pager */
+		tee_pager_add_core_area(tee_mm_get_smem(mm) + SMALL_PAGE_SIZE,
+					tee_mm_get_bytes(mm) - SMALL_PAGE_SIZE,
+					TEE_MATTR_PRW | TEE_MATTR_LOCKED,
+					NULL, NULL);
 
 		/* init effective stack */
 		sp = tee_mm_get_smem(mm) + tee_mm_get_bytes(mm);
 		if (!thread_init_stack(n, sp))
-			panic();
-
-		/* Add the area to the pager */
-		tee_pager_add_area(mm, TEE_PAGER_AREA_RW, NULL, NULL);
+			panic("init stack failed");
 	}
 }
 #else
@@ -805,7 +823,7 @@ static void init_thread_stacks(void)
 	/* Assign the thread stacks */
 	for (n = 0; n < CFG_NUM_THREADS; n++) {
 		if (!thread_init_stack(n, GET_STACK(stack_thread[n])))
-			panic();
+			panic("thread_init_stack failed");
 	}
 }
 #endif /*CFG_WITH_PAGER*/
@@ -1156,7 +1174,7 @@ static uint32_t rpc_cmd_nolock(uint32_t cmd, size_t num_params,
 	const size_t params_size = sizeof(struct optee_msg_param) * num_params;
 	size_t n;
 
-	TEE_ASSERT(arg && carg && num_params <= RPC_MAX_NUM_PARAMS);
+	assert(arg && carg && num_params <= RPC_MAX_NUM_PARAMS);
 
 	memset(arg, 0, OPTEE_MSG_GET_ARG_SIZE(RPC_MAX_NUM_PARAMS));
 	arg->cmd = cmd;
@@ -1194,14 +1212,73 @@ uint32_t thread_rpc_cmd(uint32_t cmd, size_t num_params,
 	return ret;
 }
 
+static bool check_alloced_shm(paddr_t pa, size_t len, size_t align)
+{
+	if (pa & (align - 1))
+		return false;
+	return core_pbuf_is(CORE_MEM_NSEC_SHM, pa, len);
+}
+
+void thread_rpc_free_arg(uint64_t cookie)
+{
+	if (cookie) {
+		uint32_t rpc_args[THREAD_RPC_NUM_ARGS] = {
+			OPTEE_SMC_RETURN_RPC_FREE
+		};
+
+		reg_pair_from_64(cookie, rpc_args + 1, rpc_args + 2);
+		thread_rpc(rpc_args);
+	}
+}
+
 void thread_rpc_alloc_arg(size_t size, paddr_t *arg, uint64_t *cookie)
 {
+	paddr_t pa;
+	uint64_t co;
 	uint32_t rpc_args[THREAD_RPC_NUM_ARGS] = {
-		OPTEE_SMC_RETURN_RPC_ALLOC, size};
+		OPTEE_SMC_RETURN_RPC_ALLOC, size
+	};
 
 	thread_rpc(rpc_args);
-	*arg = reg_pair_to_64(rpc_args[1], rpc_args[2]);
-	*cookie = reg_pair_to_64(rpc_args[4], rpc_args[5]);
+
+	pa = reg_pair_to_64(rpc_args[1], rpc_args[2]);
+	co = reg_pair_to_64(rpc_args[4], rpc_args[5]);
+	if (!check_alloced_shm(pa, size, sizeof(uint64_t))) {
+		thread_rpc_free_arg(co);
+		pa = 0;
+		co = 0;
+	}
+
+	*arg = pa;
+	*cookie = co;
+}
+
+/**
+ * Free physical memory previously allocated with thread_rpc_alloc()
+ *
+ * @cookie:	cookie received when allocating the buffer
+ * @bt:		 must be the same as supplied when allocating
+ */
+static void thread_rpc_free(unsigned int bt, uint64_t cookie)
+{
+	uint32_t rpc_args[THREAD_RPC_NUM_ARGS] = { OPTEE_SMC_RETURN_RPC_CMD };
+	struct thread_ctx *thr = threads + thread_get_id();
+	struct optee_msg_arg *arg = thr->rpc_arg;
+	uint64_t carg = thr->rpc_carg;
+	struct optee_msg_param *params = OPTEE_MSG_GET_PARAMS(arg);
+
+	memset(arg, 0, OPTEE_MSG_GET_ARG_SIZE(1));
+	arg->cmd = OPTEE_MSG_RPC_CMD_SHM_FREE;
+	arg->ret = TEE_ERROR_GENERIC; /* in case value isn't updated */
+	arg->num_params = 1;
+
+	params[0].attr = OPTEE_MSG_ATTR_TYPE_VALUE_INPUT;
+	params[0].u.value.a = bt;
+	params[0].u.value.b = cookie;
+	params[0].u.value.c = 0;
+
+	reg_pair_from_64(carg, rpc_args + 1, rpc_args + 2);
+	thread_rpc(rpc_args);
 }
 
 /**
@@ -1214,7 +1291,7 @@ void thread_rpc_alloc_arg(size_t size, paddr_t *arg, uint64_t *cookie)
  *		failed.
  * @cookie:	returned cookie used when freeing the buffer
  */
-static void thread_rpc_alloc(size_t size, size_t align, unsigned bt,
+static void thread_rpc_alloc(size_t size, size_t align, unsigned int bt,
 			paddr_t *payload, uint64_t *cookie)
 {
 	uint32_t rpc_args[THREAD_RPC_NUM_ARGS] = { OPTEE_SMC_RETURN_RPC_CMD };
@@ -1244,52 +1321,17 @@ static void thread_rpc_alloc(size_t size, size_t align, unsigned bt,
 	if (params[0].attr != OPTEE_MSG_ATTR_TYPE_TMEM_OUTPUT)
 		goto fail;
 
+	if (!check_alloced_shm(params[0].u.tmem.buf_ptr, size, align)) {
+		thread_rpc_free(bt, params[0].u.tmem.shm_ref);
+		goto fail;
+	}
+
 	*payload = params[0].u.tmem.buf_ptr;
 	*cookie = params[0].u.tmem.shm_ref;
 	return;
 fail:
 	*payload = 0;
 	*cookie = 0;
-}
-
-/**
- * Free physical memory previously allocated with thread_rpc_alloc()
- *
- * @cookie:	cookie received when allocating the buffer
- * @bt:		 must be the same as supplied when allocating
- */
-static void thread_rpc_free(unsigned bt, uint64_t cookie)
-{
-	uint32_t rpc_args[THREAD_RPC_NUM_ARGS] = { OPTEE_SMC_RETURN_RPC_CMD };
-	struct thread_ctx *thr = threads + thread_get_id();
-	struct optee_msg_arg *arg = thr->rpc_arg;
-	uint64_t carg = thr->rpc_carg;
-	struct optee_msg_param *params = OPTEE_MSG_GET_PARAMS(arg);
-
-	memset(arg, 0, OPTEE_MSG_GET_ARG_SIZE(1));
-	arg->cmd = OPTEE_MSG_RPC_CMD_SHM_FREE;
-	arg->ret = TEE_ERROR_GENERIC; /* in case value isn't updated */
-	arg->num_params = 1;
-
-	params[0].attr = OPTEE_MSG_ATTR_TYPE_VALUE_INPUT;
-	params[0].u.value.a = bt;
-	params[0].u.value.b = cookie;
-	params[0].u.value.c = 0;
-
-	reg_pair_from_64(carg, rpc_args + 1, rpc_args + 2);
-	thread_rpc(rpc_args);
-}
-
-
-void thread_rpc_free_arg(uint64_t cookie)
-{
-	if (cookie) {
-		uint32_t rpc_args[THREAD_RPC_NUM_ARGS] = {
-			OPTEE_SMC_RETURN_RPC_FREE};
-
-		reg_pair_from_64(cookie, rpc_args + 1, rpc_args + 2);
-		thread_rpc(rpc_args);
-	}
 }
 
 void thread_rpc_alloc_payload(size_t size, paddr_t *payload, uint64_t *cookie)

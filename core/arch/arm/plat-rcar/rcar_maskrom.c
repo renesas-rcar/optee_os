@@ -29,6 +29,7 @@
 #include <io.h>
 #include <tee_api_types.h>
 #include <trace.h>
+#include <initcall.h>
 #include "platform_config.h"
 #include "rcar_common.h"
 #include "rcar_maskrom.h"
@@ -57,7 +58,9 @@ const int8_t *product_name = (const int8_t *)"H3";
 ROM_SECURE_API ROM_SecureBootAPI = (ROM_SECURE_API)ADDR_ROM_SECURE_API_H3;
 ROM_GETLCS_API ROM_GetLcs = (ROM_GETLCS_API)ADDR_ROM_GETLCS_API_H3;
 
-void product_setup(void)
+static TEE_Result product_setup(void);
+
+static TEE_Result product_setup(void)
 {
 	uint32_t reg;
 	uint32_t type;
@@ -81,7 +84,11 @@ void product_setup(void)
 		product_name = (const int8_t *)"unknown";
 		break;
 	}
+
+	return TEE_SUCCESS;
 }
+
+service_init(product_setup);
 
 uint32_t get_PRR_type(void)
 {

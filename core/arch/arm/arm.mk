@@ -1,4 +1,16 @@
 CFG_LTC_OPTEE_THREAD ?= y
+# Size of emulated TrustZone protected SRAM, 300 kB.
+# Only applicable when paging is enabled.
+CFG_CORE_TZSRAM_EMUL_SIZE ?= 307200
+
+# When used together with ARM Trusted FW, arguments shall
+# come from the Firwmware. Do not allow built-in arguments
+
+ifeq ($(CFG_BUILT_IN_ARGS),y)
+ifeq ($(CFG_WITH_ARM_TRUSTED_FW),y)
+$(error error: CFG_BUILD_IN_ARGS is incompatible with CFG_WITH_ARM_TRUSTED_FW)
+endif
+endif
 
 ifeq ($(CFG_ARM64_core),y)
 CFG_KERN_LINKER_FORMAT ?= elf64-littleaarch64
@@ -22,6 +34,11 @@ platform-hard-float-enabled := y
 endif
 endif
 
+ifeq ($(CFG_WITH_PAGER),y)
+ifeq ($(CFG_CORE_SANITIZE_KADDRESS),y)
+$(error Error: CFG_CORE_SANITIZE_KADDRESS not compatible with CFG_WITH_PAGER)
+endif
+endif
 
 core-platform-cppflags	+= -I$(arch-dir)/include
 core-platform-subdirs += \

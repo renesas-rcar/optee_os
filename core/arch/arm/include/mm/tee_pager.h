@@ -31,19 +31,9 @@
 
 #include <kernel/abort.h>
 #include <kernel/panic.h>
+#include <kernel/user_ta.h>
 #include <mm/tee_mm.h>
 #include <trace.h>
-
-/* Read-only mapping */
-#define TEE_PAGER_AREA_RO	(1 << 0)
-/*
- * Read/write mapping, pages will only be reused after explicit release of
- * the pages. A partial area can be release for instance when shrinking a
- * stack.
- */
-#define TEE_PAGER_AREA_RW	(1 << 1)
-/* Executable mapping */
-#define TEE_PAGER_AREA_X	(1 << 2)
 
 /*
  * Reference to translation table used to map the virtual memory range
@@ -51,40 +41,96 @@
  */
 extern struct core_mmu_table_info tee_pager_tbl_info;
 
+struct tee_pager_area_head;
+
 /*
- * tee_pager_set_alias_area() - Set aliased area
- * @mm:		The alias area
- *
- * All physical pages managed by the pager are aliased in this area
+ * tee_pager_init() - Initialized the pager
+ * @mm_alias:	The alias area where all physical pages managed by the
+ *		pager are aliased
  *
  * Panics if called twice or some other error occurs.
  */
-void tee_pager_set_alias_area(tee_mm_entry_t *mm);
+void tee_pager_init(tee_mm_entry_t *mm_alias);
 
 /*
- * tee_pager_add_area() - Adds a pageable area
- * @mm:		covered memory area
+ * tee_pager_add_core_area() - Adds a pageable core area
+ * @base:	base of covered memory area
+ * @size:	size of covered memory area
  * @flags:	describes attributes of mapping
  * @store:	backing store for the memory area
  * @hashes:	hashes of the pages in the backing store
  *
- * Exacly one of TEE_PAGER_AREA_RO and TEE_PAGER_AREA_RW has to be supplied
- * in flags.
+ * TEE_MATTR_PW		- read-write mapping else read-only mapping
+ * TEE_MATTR_PX		- executable mapping
+ * TEE_MATTR_LOCKED	- on demand locked mapping, requires TEE_MATTR_PW,
+ *			  will only be unmapped by a call to
+ *			  tee_pager_release_phys()
  *
- * If TEE_PAGER_AREA_X is supplied the area will be mapped as executable,
- * currently only supported together with TEE_PAGER_AREA_RO.
+ * !TEE_MATTR_PW requires store and hashes to be !NULL while
+ * TEE_MATTR_PW requires store and hashes to be NULL.
  *
- * TEE_PAGER_AREA_RO requires store and hashes to be !NULL while
- * TEE_PAGER_AREA_RW requires store and hashes to be NULL, pages will only
- * be reused after explicit release of the pages. A partial area can be
- * release for instance when releasing unused parts of a stack.
- *
- * Invalid use of flags will cause a panic.
+ * Invalid use of flags or non-page aligned base or size or size == 0 will
+ * cause a panic.
  *
  * Return true on success or false if area can't be added.
  */
-bool tee_pager_add_area(tee_mm_entry_t *mm, uint32_t flags, const void *store,
-		const void *hashes);
+bool tee_pager_add_core_area(vaddr_t base, size_t size, uint32_t flags,
+			const void *store, const void *hashes);
+
+/*
+ * tee_pager_add_uta_area() - Adds a pageable user ta area
+ * @utc:	user ta context of the area
+ * @base:	base of covered memory area
+ * @size:	size of covered memory area
+ *
+ * The mapping is created suitable to initialize the memory content while
+ * loading the TA. Once the TA is properly loaded the areas should be
+ * finalized with tee_pager_set_uta_area() to get more strict settings.
+ *
+ * Return true on success of false if the area can't be added
+ */
+bool tee_pager_add_uta_area(struct user_ta_ctx *utc, vaddr_t base, size_t size);
+
+/*
+ * tee_pager_set_uta_area() - Set attributes of a initialized memory area
+ * @utc:	user ta context of the area
+ * @base:	base of covered memory area
+ * @size:	size of covered memory area
+ * @flags:	TEE_MATTR_U* flags describing permissions of the area
+ *
+ * Return true on success of false if the area can't be updated
+ */
+bool tee_pager_set_uta_area(struct user_ta_ctx *utc, vaddr_t base, size_t size,
+			    uint32_t flags);
+
+/*
+ * tee_pager_rem_uta_areas() - Remove all user ta areas
+ * @utc:	user ta context
+ *
+ * This function is called when a user ta context is teared down.
+ */
+#ifdef CFG_PAGED_USER_TA
+void tee_pager_rem_uta_areas(struct user_ta_ctx *utc);
+#else
+static inline void tee_pager_rem_uta_areas(struct user_ta_ctx *utc __unused)
+{
+}
+#endif
+
+/*
+ * tee_pager_assign_uta_tables() - Assigns translation table to a user ta
+ * @utc:	user ta context
+ *
+ * This function is called to assign translation tables for the pageable
+ * areas of a user TA.
+ */
+#ifdef CFG_PAGED_USER_TA
+void tee_pager_assign_uta_tables(struct user_ta_ctx *utc);
+#else
+static inline void tee_pager_assign_uta_tables(struct user_ta_ctx *utc __unused)
+{
+}
+#endif
 
 /*
  * Adds physical pages to the pager to use. The supplied virtual address range
@@ -96,19 +142,50 @@ bool tee_pager_add_area(tee_mm_entry_t *mm, uint32_t flags, const void *store,
 void tee_pager_add_pages(vaddr_t vaddr, size_t npages, bool unmap);
 
 /*
- * Unmap vmem and free physical pages for the pager.
+ * tee_pager_alloc() - Allocate read-write virtual memory from pager.
+ * @size:	size of memory in bytes
+ * @flags:	flags for allocation
  *
- * vaddr is the first virtual address (must be page aligned)
- * size is the vmem size in bytes (must be page size aligned)
+ * Allocates read-write memory from pager, all flags but the optional
+ * TEE_MATTR_LOCKED is ignored.
+ *
+ * @return NULL on failure or a pointer to the virtual memory on success.
  */
-void tee_pager_release_zi(vaddr_t vaddr, size_t size);
+void *tee_pager_alloc(size_t size, uint32_t flags);
+
+#ifdef CFG_PAGED_USER_TA
+/*
+ * tee_pager_pgt_save_and_release_entries() - Save dirty pages to backing store
+ * and remove physical page from translation table
+ * @pgt: page table descriptor
+ *
+ * This function is called when a translation table needs to be recycled
+ */
+void tee_pager_pgt_save_and_release_entries(struct pgt *pgt);
+#endif
 
 /*
- * allocate RW vmem and register to the pager.
+ * tee_pager_release_phys() - Release physical pages used for mapping
+ * @addr:	virtual address of first page to release
+ * @size:	number of bytes to release
  *
- * size is the vmem size in bytes
+ * Only pages completely covered by the supplied range are affected.  This
+ * function only supplies a hint to the pager that the physical page can be
+ * reused. The caller can't expect a released memory range to hold a
+ * specific bit pattern when used next time.
+ *
+ * Note that the virtual memory allocation is still valid after this
+ * function has returned, it's just the content that may or may not have
+ * changed.
  */
-void *tee_pager_request_zi(size_t size);
+#ifdef CFG_WITH_PAGER
+void tee_pager_release_phys(void *addr, size_t size);
+#else
+static inline void tee_pager_release_phys(void *addr __unused,
+			size_t size __unused)
+{
+}
+#endif
 
 /*
  * Statistics on the pager
@@ -124,13 +201,11 @@ struct tee_pager_stats {
 
 #ifdef CFG_WITH_PAGER
 void tee_pager_get_stats(struct tee_pager_stats *stats);
-void tee_pager_handle_fault(struct abort_info *ai);
+bool tee_pager_handle_fault(struct abort_info *ai);
 #else /*CFG_WITH_PAGER*/
-static inline void __noreturn tee_pager_handle_fault(struct abort_info *ai)
+static inline bool tee_pager_handle_fault(struct abort_info *ai __unused)
 {
-	abort_print_error(ai);
-	EMSG("Unexpected page fault! Trap CPU");
-	panic();
+	return false;
 }
 
 static inline void tee_pager_get_stats(struct tee_pager_stats *stats)

@@ -43,32 +43,6 @@ typedef uintptr_t tee_vaddr_t;
 /* Virtual address valid in user mode */
 typedef uintptr_t tee_uaddr_t;
 
-
-#if (CFG_TEE_CORE_DEBUG == 0)
-
-#define TEE_ASSERT(expr) \
-	do { \
-		if (!(expr)) { \
-			DMSG("assertion failed"); \
-			while (1) \
-				; \
-		} \
-	} while (0)
-
-#else
-
-#define TEE_ASSERT(expr) \
-	do { \
-		if (!(expr)) { \
-			EMSG("assertion '%s' failed at %s:%d (func '%s')", \
-				#expr, __FILE__, __LINE__, __func__); \
-			while (1) \
-				; \
-		} \
-	} while (0)
-
-#endif
-
 /*-----------------------------------------------------------------------------
  * tee_ta_load_page - Loads a page at address va_addr
  * Parameters:

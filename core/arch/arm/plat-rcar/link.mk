@@ -28,11 +28,8 @@ link-script-cppflags := -DASM=1 \
 entries-unpaged += thread_init_vbar
 entries-unpaged += sm_init
 entries-unpaged += core_init_mmu_regs
-entries-unpaged += stack_tmp_top
 entries-unpaged += sem_cpu_sync
 entries-unpaged += generic_boot_get_handlers
-entries-unpaged += tee_pager_release_zi
-entries-unpaged += tee_pager_request_zi
 
 ldargs-all_objs := -i $(objs) $(link-ldadd) $(libgcccore)
 cleanfiles += $(link-out-dir)/all_objs.o

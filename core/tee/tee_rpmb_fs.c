@@ -29,6 +29,7 @@
 #include <kernel/tee_common.h>
 #include <kernel/handle.h>
 #include <kernel/mutex.h>
+#include <kernel/panic.h>
 #include <kernel/tee_common_otp.h>
 #include <kernel/thread.h>
 #include <optee_msg.h>
@@ -513,7 +514,9 @@ static TEE_Result decrypt(uint8_t *out, const struct rpmb_data_frame *frm,
 {
 	uint8_t *tmp __maybe_unused;
 
-	TEE_ASSERT(size + offset <= RPMB_DATA_SIZE);
+
+	if ((size + offset < size) || (size + offset > RPMB_DATA_SIZE))
+		panic("invalid size or offset");
 
 	if (!fek) {
 		/* Block is not encrypted (not a file data block) */
@@ -543,7 +546,6 @@ static TEE_Result decrypt(uint8_t *out, const struct rpmb_data_frame *frm,
 			memcpy(out, tmp + offset, size);
 			free(tmp);
 		} else {
-			TEE_ASSERT(!offset);
 			decrypt_block(out, frm->data, blk_idx, fek);
 		}
 #else
@@ -1160,9 +1162,17 @@ func_exit:
 	return res;
 }
 
-static TEE_Result tee_rpmb_read_unlocked(uint16_t dev_id, uint32_t addr,
-					 uint8_t *data, uint32_t len,
-					 uint8_t *fek)
+/*
+ * Read RPMB data in bytes.
+ *
+ * @dev_id     Device ID of the eMMC device.
+ * @addr       Byte address of data.
+ * @data       Pointer to the data.
+ * @len        Size of data in bytes.
+ * @fek        Encrypted File Encryption Key or NULL.
+ */
+static TEE_Result tee_rpmb_read(uint16_t dev_id, uint32_t addr, uint8_t *data,
+				uint32_t len, uint8_t *fek)
 {
 	TEE_Result res = TEE_ERROR_GENERIC;
 	struct tee_rpmb_mem mem = { 0 };
@@ -1361,27 +1371,6 @@ out:
 	return res;
 }
 
-/*
- * Read RPMB data in bytes.
- *
- * @dev_id     Device ID of the eMMC device.
- * @addr       Byte address of data.
- * @data       Pointer to the data.
- * @len        Size of data in bytes.
- * @fek        SSK-encrypted File Encryption Key or NULL.
- */
-static TEE_Result tee_rpmb_read(uint16_t dev_id, uint32_t addr, uint8_t *data,
-				uint32_t len, uint8_t *fek)
-{
-	TEE_Result res;
-
-	mutex_lock(&rpmb_mutex);
-	res = tee_rpmb_read_unlocked(dev_id, addr, data, len, fek);
-	mutex_unlock(&rpmb_mutex);
-
-	return res;
-}
-
 static bool tee_rpmb_write_is_atomic(uint16_t dev_id __unused, uint32_t addr,
 				     uint32_t len)
 {
@@ -1399,7 +1388,7 @@ static bool tee_rpmb_write_is_atomic(uint16_t dev_id __unused, uint32_t addr,
  * @addr       Byte address of data.
  * @data       Pointer to the data.
  * @len        Size of data in bytes.
- * @fek        SSK-encrypted File Encryption Key or NULL.
+ * @fek        Encrypted File Encryption Key or NULL.
  */
 static TEE_Result tee_rpmb_write(uint16_t dev_id, uint32_t addr,
 				 const uint8_t *data, uint32_t len,
@@ -1410,8 +1399,6 @@ static TEE_Result tee_rpmb_write(uint16_t dev_id, uint32_t addr,
 	uint16_t blk_idx;
 	uint16_t blkcnt;
 	uint8_t byte_offset;
-
-	mutex_lock(&rpmb_mutex);
 
 	blk_idx = addr / RPMB_DATA_SIZE;
 	byte_offset = addr % RPMB_DATA_SIZE;
@@ -1431,9 +1418,8 @@ static TEE_Result tee_rpmb_write(uint16_t dev_id, uint32_t addr,
 		}
 
 		/* Read the complete blocks */
-		res = tee_rpmb_read_unlocked(dev_id, blk_idx * RPMB_DATA_SIZE,
-					     data_tmp,
-					     blkcnt * RPMB_DATA_SIZE, fek);
+		res = tee_rpmb_read(dev_id, blk_idx * RPMB_DATA_SIZE, data_tmp,
+				    blkcnt * RPMB_DATA_SIZE, fek);
 		if (res != TEE_SUCCESS)
 			goto func_exit;
 
@@ -1449,7 +1435,6 @@ static TEE_Result tee_rpmb_write(uint16_t dev_id, uint32_t addr,
 	res = TEE_SUCCESS;
 
 func_exit:
-	mutex_unlock(&rpmb_mutex);
 	free(data_tmp);
 	return res;
 }
@@ -1468,8 +1453,6 @@ static TEE_Result tee_rpmb_get_write_counter(uint16_t dev_id,
 	if (!counter)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	mutex_lock(&rpmb_mutex);
-
 	if (!rpmb_ctx || !rpmb_ctx->wr_cnt_synced) {
 		res = tee_rpmb_init(dev_id);
 		if (res != TEE_SUCCESS)
@@ -1479,7 +1462,6 @@ static TEE_Result tee_rpmb_get_write_counter(uint16_t dev_id,
 	*counter = rpmb_ctx->wr_cnt;
 
 func_exit:
-	mutex_unlock(&rpmb_mutex);
 	return res;
 }
 
@@ -1496,8 +1478,6 @@ static TEE_Result tee_rpmb_get_max_block(uint16_t dev_id, uint32_t *max_block)
 	if (!max_block)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	mutex_lock(&rpmb_mutex);
-
 	if (!rpmb_ctx || !rpmb_ctx->dev_info_synced) {
 		res = tee_rpmb_init(dev_id);
 		if (res != TEE_SUCCESS)
@@ -1507,7 +1487,6 @@ static TEE_Result tee_rpmb_get_max_block(uint16_t dev_id, uint32_t *max_block)
 	*max_block = rpmb_ctx->max_blk_idx;
 
 func_exit:
-	mutex_unlock(&rpmb_mutex);
 	return res;
 }
 
@@ -1903,7 +1882,7 @@ static TEE_Result generate_fek(struct rpmb_fat_entry *fe)
 	TEE_Result res;
 
 again:
-	res = crypto_ops.prng.read(fe->fek, sizeof(fe->fek));
+	res = tee_fs_generate_fek(fe->fek, sizeof(fe->fek));
 	if (res != TEE_SUCCESS)
 		return res;
 
@@ -1928,6 +1907,8 @@ static int rpmb_fs_open_internal(const char *file, int flags, ...)
 	tee_mm_pool_t p;
 	bool pool_result;
 	TEE_Result res = TEE_ERROR_GENERIC;
+
+	mutex_lock(&rpmb_mutex);
 
 	if (!file) {
 		res = TEE_ERROR_BAD_PARAMETERS;
@@ -2028,6 +2009,7 @@ out:
 		fd = -1;
 	}
 
+	mutex_unlock(&rpmb_mutex);
 	return fd;
 }
 
@@ -2035,7 +2017,10 @@ static int rpmb_fs_close(int fd)
 {
 	struct rpmb_file_handle *fh;
 
+	mutex_lock(&rpmb_mutex);
 	fh = handle_put(&fs_handle_db, fd);
+	mutex_unlock(&rpmb_mutex);
+
 	if (fh) {
 		free(fh);
 		return 0;
@@ -2052,6 +2037,8 @@ static int rpmb_fs_read(TEE_Result *errno, int fd, void *buf, size_t size)
 
 	if (!size)
 		return 0;
+
+	mutex_lock(&rpmb_mutex);
 
 	if (!buf) {
 		*errno = TEE_ERROR_BAD_PARAMETERS;
@@ -2071,8 +2058,13 @@ static int rpmb_fs_read(TEE_Result *errno, int fd, void *buf, size_t size)
 		goto out;
 	}
 
+	if (fh->pos >= fh->fat_entry.data_size) {
+		read_size = 0;
+		goto out;
+	}
+
 	size = MIN(size, fh->fat_entry.data_size - fh->pos);
-	if (size > 0) {
+	if (size) {
 		res = tee_rpmb_read(CFG_RPMB_FS_DEV_ID,
 				    fh->fat_entry.start_address + fh->pos, buf,
 				    size, fh->fat_entry.fek);
@@ -2082,8 +2074,10 @@ static int rpmb_fs_read(TEE_Result *errno, int fd, void *buf, size_t size)
 		}
 	}
 	read_size = size;
+	fh->pos += size;
 
 out:
+	mutex_unlock(&rpmb_mutex);
 	return read_size;
 }
 
@@ -2103,6 +2097,8 @@ static int rpmb_fs_write(TEE_Result *errno, int fd, const void *buf,
 
 	if (!size)
 		return 0;
+
+	mutex_lock(&rpmb_mutex);
 
 	if (!buf) {
 		res = TEE_ERROR_BAD_PARAMETERS;
@@ -2136,7 +2132,8 @@ static int rpmb_fs_write(TEE_Result *errno, int fd, const void *buf,
 	if (res != TEE_SUCCESS)
 		goto out;
 
-	TEE_ASSERT(!(fh->fat_entry.flags & FILE_IS_LAST_ENTRY));
+	if (fh->fat_entry.flags & FILE_IS_LAST_ENTRY)
+		panic("invalid last entry flag");
 
 	end = fh->pos + size;
 	start_addr = fh->fat_entry.start_address + fh->pos;
@@ -2190,6 +2187,7 @@ static int rpmb_fs_write(TEE_Result *errno, int fd, const void *buf,
 
 	fh->pos += size;
 out:
+	mutex_unlock(&rpmb_mutex);
 	if (pool_result)
 		tee_mm_final(&p);
 	if (newbuf)
@@ -2210,9 +2208,14 @@ static tee_fs_off_t rpmb_fs_lseek(TEE_Result *errno, int fd,
 	tee_fs_off_t ret = -1;
 	tee_fs_off_t new_pos;
 
+	mutex_lock(&rpmb_mutex);
+
 	fh = handle_lookup(&fs_handle_db, fd);
-	if (!fh)
-		return TEE_ERROR_BAD_PARAMETERS;
+	if (!fh) {
+		res = TEE_ERROR_BAD_PARAMETERS;
+		goto out;
+	}
+
 
 	res = read_fat(fh, NULL);
 	if (res != TEE_SUCCESS) {
@@ -2249,6 +2252,7 @@ static tee_fs_off_t rpmb_fs_lseek(TEE_Result *errno, int fd,
 
 	ret = fh->pos = new_pos;
 out:
+	mutex_unlock(&rpmb_mutex);
 	return ret;
 }
 
@@ -2256,6 +2260,8 @@ static int rpmb_fs_unlink(const char *filename)
 {
 	TEE_Result res = TEE_ERROR_GENERIC;
 	struct rpmb_file_handle *fh = NULL;
+
+	mutex_lock(&rpmb_mutex);
 
 	if (!filename || strlen(filename) >= TEE_RPMB_FS_FILENAME_LENGTH - 1) {
 		res = TEE_ERROR_BAD_PARAMETERS;
@@ -2277,6 +2283,7 @@ static int rpmb_fs_unlink(const char *filename)
 	res = write_fat_entry(fh, false);
 
 out:
+	mutex_unlock(&rpmb_mutex);
 	free(fh);
 	return (res == TEE_SUCCESS ? 0 : -1);
 }
@@ -2288,6 +2295,8 @@ static  int rpmb_fs_rename(const char *old_name, const char *new_name)
 	struct rpmb_file_handle *fh_new = NULL;
 	uint32_t old_len;
 	uint32_t new_len;
+
+	mutex_lock(&rpmb_mutex);
 
 	if (!old_name || !new_name) {
 		res = TEE_ERROR_BAD_PARAMETERS;
@@ -2332,6 +2341,7 @@ static  int rpmb_fs_rename(const char *old_name, const char *new_name)
 	res = write_fat_entry(fh_old, false);
 
 out:
+	mutex_unlock(&rpmb_mutex);
 	free(fh_old);
 	free(fh_new);
 
@@ -2359,6 +2369,8 @@ static int rpmb_fs_ftruncate(TEE_Result *errno, int fd, tee_fs_off_t length)
 	uint8_t *newbuf = NULL;
 	uintptr_t newaddr;
 	TEE_Result res = TEE_ERROR_GENERIC;
+
+	mutex_lock(&rpmb_mutex);
 
 	if (length < 0 || length > INT32_MAX) {
 		res = TEE_ERROR_BAD_PARAMETERS;
@@ -2425,6 +2437,7 @@ static int rpmb_fs_ftruncate(TEE_Result *errno, int fd, tee_fs_off_t length)
 	res = write_fat_entry(fh, true);
 
 out:
+	mutex_unlock(&rpmb_mutex);
 	if (pool_result)
 		tee_mm_final(&p);
 	if (newbuf)
@@ -2468,6 +2481,8 @@ static TEE_Result rpmb_fs_dir_populate(const char *path,
 	TEE_Result res = TEE_ERROR_GENERIC;
 	uint32_t size;
 	char temp;
+
+	mutex_lock(&rpmb_mutex);
 
 	res = rpmb_fs_setup();
 	if (res != TEE_SUCCESS)
@@ -2543,6 +2558,7 @@ static TEE_Result rpmb_fs_dir_populate(const char *path,
 	res = TEE_SUCCESS;
 
 out:
+	mutex_unlock(&rpmb_mutex);
 	if (res != TEE_SUCCESS)
 		rpmb_fs_dir_free(dir);
 	if (fat_entries)
@@ -2680,6 +2696,8 @@ static int rpmb_fs_stat(const char *filename, struct tee_rpmb_fs_stat *stat)
 	TEE_Result res = TEE_ERROR_GENERIC;
 	struct rpmb_file_handle *fh = NULL;
 
+	mutex_lock(&rpmb_mutex);
+
 	if (!stat || !filename) {
 		res = TEE_ERROR_BAD_PARAMETERS;
 		goto out;
@@ -2699,6 +2717,7 @@ static int rpmb_fs_stat(const char *filename, struct tee_rpmb_fs_stat *stat)
 	stat->reserved = 0;
 
 out:
+	mutex_unlock(&rpmb_mutex);
 	free(fh);
 	return (res == TEE_SUCCESS ? 0 : -1);
 }

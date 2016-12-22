@@ -27,11 +27,11 @@
 #ifndef KERNEL_STATIC_TA_H
 #define KERNEL_STATIC_TA_H
 
+#include <assert.h>
 #include <compiler.h>
 #include <kernel/tee_ta_manager.h>
 #include <tee_api_types.h>
 #include <util.h>
-#include <assert.h>
 
 struct static_ta_head {
 	TEE_UUID uuid;
@@ -58,7 +58,7 @@ struct static_ta_ctx {
 
 static inline bool is_static_ta_ctx(struct tee_ta_ctx *ctx)
 {
-	return !(ctx->flags & TA_FLAG_USER_MODE);
+	return (ctx == NULL) ? false : !(ctx->flags & TA_FLAG_USER_MODE);
 }
 
 static inline struct static_ta_ctx *to_static_ta_ctx(struct tee_ta_ctx *ctx)

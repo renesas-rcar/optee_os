@@ -73,7 +73,24 @@ SECTIONS
 		__initcall_start = .;
 		KEEP(*(.initcall1))
 		KEEP(*(.initcall2))
+		KEEP(*(.initcall3))
+		KEEP(*(.initcall4))
 		__initcall_end = .;
+
+		. = ALIGN(8);
+		__suspend_to_ram_backup_start = .;
+		KEEP(*(.suspend_to_ram_backup))
+		__suspend_to_ram_backup_end = .;
+
+		. = ALIGN(8);
+		__suspend_to_ram_backup_num_start = .;
+		KEEP(*(.suspend_to_ram_backup_num))
+		__suspend_to_ram_backup_num_end = .;
+
+		. = ALIGN(8);
+		__suspend_to_ram_cbfunc_start = .;
+		KEEP(*(.suspend_to_ram_cbfunc))
+		__suspend_to_ram_cbfunc_end = .;
 
 #ifdef CFG_WITH_PAGER
 		*(.text)
@@ -83,6 +100,7 @@ SECTIONS
 		*(.text .text.*)
 #endif
 		*(.sram.text.glue_7* .gnu.linkonce.t.*)
+		. = ALIGN(8);
 		__text_end = .;
 	}
 
@@ -126,7 +144,7 @@ SECTIONS
 		__extab_end = .;
 	}
 
-	.rodata : ALIGN(4) {
+	.rodata : ALIGN(8) {
 		__rodata_start = .;
 		*(.gnu.linkonce.r.*)
 #ifdef CFG_WITH_PAGER
@@ -144,30 +162,42 @@ SECTIONS
 		__start_ta_head_section = . ;
 		KEEP(*(ta_head_section))
 		__stop_ta_head_section = . ;
+		. = ALIGN(8);
+		__start_phys_mem_map_section = . ;
+		KEEP(*(phys_mem_map_section))
+		__end_phys_mem_map_section = . ;
+		. = ALIGN(8);
+		__start_exec_attr_section = . ;
+		KEEP(*(exec_attr_section))
+		__end_exec_attr_section = . ;
 #endif
-		. = ALIGN(4);
+		. = ALIGN(8);
 		__rodata_end = .;
 	}
 
 
-	.data : ALIGN(4) {
+	.data : ALIGN(8) {
 		/* writable data  */
 		__data_start_rom = .;
 		/* in one segment binaries, the rom data address is on top
 		   of the ram data address */
+		__early_bss_start = .;
+		*(.early_bss .early_bss.*)
+		. = ALIGN(8);
+		__early_bss_end = .;
 		__data_start = .;
 		*(.data .data.* .gnu.linkonce.d.*)
-		. = ALIGN(4);
+		. = ALIGN(8);
 	}
 
-	.ctors : ALIGN(4) {
+	.ctors : ALIGN(8) {
 		__ctor_list = .;
-		*(.ctors)
+		KEEP(*(.ctors .ctors.* .init_array .init_array.*))
 		__ctor_end = .;
 	}
-	.dtors : ALIGN(4) {
+	.dtors : ALIGN(8) {
 		__dtor_list = .;
-		*(.dtors)
+		KEEP(*(.dtors .dtors.* .fini_array .fini_array.*))
 		__dtor_end = .;
 	}
 	.got : { *(.got.plt) *(.got) }
@@ -175,12 +205,12 @@ SECTIONS
 
 	__data_end = .;
 	/* unintialized data */
-	.bss : ALIGN(4) {
+	.bss : ALIGN(8) {
 		__bss_start = .;
 		*(.bss .bss.*)
 		*(.gnu.linkonce.b.*)
 		*(COMMON)
-		. = ALIGN(4);
+		. = ALIGN(8);
 		__bss_end = .;
 	}
 
@@ -192,7 +222,7 @@ SECTIONS
 		 */
 		__heap1_start = .;
 #ifndef CFG_WITH_PAGER
-		. += HEAP_SIZE;
+		. += CFG_CORE_HEAP_SIZE;
 #endif
 		. = ALIGN(16 * 1024);
 		__heap1_end = .;
@@ -205,18 +235,25 @@ SECTIONS
 	 * L1 mmu table requires 16 KiB alignment
 	 */
 	.nozi (NOLOAD) : ALIGN(16 * 1024) {
+		__nozi_start = .;
 		KEEP(*(.nozi .nozi.*))
+		. = ALIGN(16);
+		__nozi_end = .;
+		__nozi_stack_start = .;
+		KEEP(*(.nozi_stack))
+		. = ALIGN(8);
+		__nozi_stack_end = .;
 	}
 
 #ifdef CFG_WITH_PAGER
 	.heap2 (NOLOAD) : {
 		__heap2_start = .;
 		/*
-		 * Reserve additional memory for heap, the total should
-		 * be at least HEAP_SIZE, but count what has already been
-		 * reserved in .heap1
+		 * Reserve additional memory for heap, the total should be
+		 * at least CFG_CORE_HEAP_SIZE, but count what has already
+		 * been reserved in .heap1
 		 */
-		. += HEAP_SIZE - (__heap1_end - __heap1_start);
+		. += CFG_CORE_HEAP_SIZE - (__heap1_end - __heap1_start);
 		. = ALIGN(4 * 1024);
 		__heap2_end = .;
 	}
@@ -229,31 +266,40 @@ SECTIONS
  * sections will go into the unpaged area.
  */
 #include <text_init.ld.S>
-		. = ALIGN(4);
+		. = ALIGN(8);
 		__text_init_end = .;
 	}
 
-	.rodata_init : ALIGN(4) {
+	.rodata_init : ALIGN(8) {
 		__rodata_init_start = .;
 #include <rodata_init.ld.S>
-		. = ALIGN(4);
+		. = ALIGN(8);
+		__start_phys_mem_map_section = . ;
+		KEEP(*(phys_mem_map_section))
+		__end_phys_mem_map_section = . ;
+		. = ALIGN(8);
 		__rodata_init_end = .;
 	}
 	__init_start = __text_init_start;
 	__init_end = .;
 	__init_size = __init_end - __text_init_start;
 
-	.text_pageable : ALIGN(4) {
+	.text_pageable : ALIGN(8) {
 		__text_pageable_start = .;
 		*(.text*)
-		. = ALIGN(4);
+		. = ALIGN(8);
 		__text_pageable_end = .;
 	}
 
-	.rodata_pageable : ALIGN(4) {
+	.rodata_pageable : ALIGN(8) {
 		__rodata_pageable_start = .;
 		*(.rodata*)
-		. = ALIGN(4);
+		/*
+		 * 8 to avoid unwanted padding between __start_ta_head_section
+		 * and the first structure in ta_head_section, in 64-bit
+		 * builds
+		 */
+		. = ALIGN(8);
 		__start_ta_head_section = . ;
 		KEEP(*(ta_head_section))
 		__stop_ta_head_section = . ;
@@ -289,11 +335,21 @@ SECTIONS
 
 #endif /*CFG_WITH_PAGER*/
 
-	_end = .;
+#ifdef CFG_CORE_SANITIZE_KADDRESS
+	. = CFG_TEE_RAM_START + (CFG_TEE_RAM_VA_SIZE * 8) / 9 - 8;
+	. = ALIGN(8);
+	.asan_shadow : {
+		__asan_shadow_start = .;
+		. += CFG_TEE_RAM_VA_SIZE / 9;
+		__asan_shadow_end = .;
+	}
+#endif /*CFG_CORE_SANITIZE_KADDRESS*/
+
+	__end = .;
 
 #ifndef CFG_WITH_PAGER
 	__init_size = __data_end - CFG_TEE_LOAD_ADDR;
-	__init_mem_usage = _end - CFG_TEE_LOAD_ADDR;
+	__init_mem_usage = __end - CFG_TEE_LOAD_ADDR;
 #endif
 	. = CFG_TEE_RAM_START + CFG_TEE_RAM_VA_SIZE;
 	_end_of_ram = .;

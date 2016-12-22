@@ -32,7 +32,6 @@
 #include "qspi_hyper_flash_common.h"
 #include "qspi_flash_common.h"
 #include "qspi_onboard_control.h"
-#include "qspi_quad_control.h"
 
 static uint32_t qspi_common_read_device_id(uint32_t *read_device_id);
 static uint32_t qspi_common_erase_sector(uint32_t manual_set_addr);
@@ -53,11 +52,6 @@ uint32_t qspi_common_init(struct flash_control_operations *ops)
 		/* QSPI_ONBOARD : S25S128S */
 		case QSPI_ONBOARD:
 			qspi_onboard_set_control_ops(ops);
-			ret = FL_DRV_OK;
-			break;
-		/* QSPI_QUAD : S25FL512S */
-		case QSPI_QUAD:
-			qspi_quad_set_control_ops(ops);
 			ret = FL_DRV_OK;
 			break;
 		/* Unsupport device id */

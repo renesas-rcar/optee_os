@@ -27,6 +27,7 @@
 #include <platform_config.h>
 #include <drivers/gic.h>
 #include <tomcrypt.h>
+#include <rcar_suspend_to_ram.h>
 #include "tee_provider_common.h"
 #include "include_secure/crys.h"
 #include "include_secure/crys_rsa_types.h"
@@ -44,6 +45,9 @@
 #include "include_secure/dx_util_error.h"
 #include "include_secure/dx_util_rpmb.h"
 #include "include_secure/crys_aes_unwrap_rcar.h"
+#include "include_secure/crys_suspend_to_ram.h"
+#include "include_pka/crys_pka_suspend_to_ram.h"
+
 
 #ifdef CFG_CRYPT_ENABLE_CEPKA
 #include "tee_pka_provider.h"
@@ -112,7 +116,7 @@ do { \
 		(hashMode) = CRYS_RSA_HASH_SHA224_mode; \
 		break; \
 	case CRYS_RSA_After_SHA256_mode: \
-		(hashMode) = CRYS_RSA_HASH_SHA384_mode; \
+		(hashMode) = CRYS_RSA_HASH_SHA256_mode; \
 		break; \
 	case CRYS_RSA_After_SHA384_mode: \
 		(hashMode) = CRYS_RSA_HASH_SHA384_mode; \
@@ -330,6 +334,7 @@ static TEE_Result authenc_dec_final(void *ctx, uint32_t algo,
 		const uint8_t *src_data, size_t src_len, uint8_t *dst_data,
 		size_t *dst_len, const uint8_t *tag, size_t tag_len);
 static void authenc_final(void *ctx, uint32_t algo);
+static SSError_t ss_generate_random(uint8_t *outPtr, size_t outSize);
 static TEE_Result prng_read(void *buf, size_t blen);
 static TEE_Result prng_read_without_init(void *buf, size_t blen);
 static TEE_Result prng_add_entropy(const uint8_t *inbuf, size_t len);
@@ -406,6 +411,8 @@ static SSError_t ss_crys_hmac_update(void *ctx, uint8_t *dataIn_ptr,
 		uint32_t dataInSize, uint8_t *dataOut_ptr, CRYSError_t *crysRes);
 static SSError_t ss_crys_aesccm_update(void *ctx, uint8_t *dataIn_ptr,
 		uint32_t dataInSize, uint8_t *dataOut_ptr, CRYSError_t *crysRes);
+static void ss_backup_cb(enum suspend_to_ram_state state, uint32_t cpu_id);
+
 
 static SSError_t ss_crys_aes_update(void *ctx, uint8_t *dataIn_ptr,
 		uint32_t dataInSize, uint8_t *dataOut_ptr, CRYSError_t *crysRes)
@@ -535,6 +542,10 @@ static SSError_t ss_translate_error_crys2ss_rsa(CRYSError_t err)
 		PROV_DMSG("res = SS_ERROR_SHORT_BUFFER\n");
 		res = SS_ERROR_SHORT_BUFFER;
 		break;
+	case CRYS_RSA_ERROR_VER15_INCONSISTENT_VERIFY:
+		PROV_DMSG("res = SS_ERROR_SIGNATURE_INVALID");
+		res= SS_ERROR_SIGNATURE_INVALID;
+		break;
 	case CRYS_RSA_KEY_GEN_CONDITIONAL_TEST_FAIL_ERROR:
 	case CRYS_RSA_CAN_NOT_GENERATE_RAND_IN_RANGE:
 	case CRYS_RSA_FIPS_MODE_FAIL_ERROR:
@@ -623,6 +634,10 @@ static SSError_t ss_translate_error_crys2ss_aes(CRYSError_t err)
 	case CRYS_AES_IS_NOT_SUPPORTED:
 		PROV_DMSG("res = SS_ERROR_NOT_SUPPORTED\n");
 		res = SS_ERROR_NOT_SUPPORTED;
+		break;
+	case CRYS_AES_UNWRAP_LCS_CHECK_ERROR:
+		PROV_DMSG("res = SS_ERROR_LCS_CHECK\n");
+		res = SS_ERROR_LCS_CHECK;
 		break;
 	default:
 		PROV_DMSG("res = SS_ERROR_BAD_PARAMETERS\n");
@@ -1386,7 +1401,7 @@ static TEE_Result hash_final(void *ctx, uint32_t algo, uint8_t *digest,
 #if defined(CFG_CRYPTO_SHA512)
 		case TEE_ALG_SHA512:
 #endif
-			PROV_DMSG("algo = 0x%08x\n");
+			PROV_DMSG("algo = 0x%08x\n", algo);
 			break;
 		default:
 			PROV_EMSG("NOT_SUPPORTED\n");
@@ -2024,7 +2039,7 @@ static TEE_Result do_rsanopad_decrypt(struct rsa_keypair *key,
 	rsaData_ptr = (uint8_t *) src;
 	rsaDataSize = (uint16_t) src_len;
 
-	blen = src_len;
+	blen = bn_num_bytes(key->n);
 	outBuf = (uint8_t *)ss_malloc(blen, &res);
 
 	if (res == SS_SUCCESS) {
@@ -2994,7 +3009,7 @@ static TEE_Result do_dh_shared_secret(struct dh_keypair *private_key,
 	}
 
 	if (res == SS_SUCCESS) {
-		res = ss_bn_bin2bn(secretKey_ptr,(size_t)secretKeySize, secret);
+		res = bn_bin2bn(secretKey_ptr,(size_t)secretKeySize, secret);
 	}
 
 	ss_free((void *)tmpPubKey);
@@ -5755,6 +5770,40 @@ static void authenc_final(void *ctx __unused, uint32_t algo __unused)
  ******************************************************************************/
 
 /*
+ * brief:	Wrap CRYS_RND_GenerateVector() to output more than 64KB of data.
+ *
+ * param[in]	*outPtr		- Pointer of output buffer.
+ * param[in]	outSize		- Byte size of the output data buffer.
+ * return	SSError_t	- SS provider error code.
+ */
+static SSError_t ss_generate_random(uint8_t *outPtr, size_t outSize)
+{
+	SSError_t res;
+	CRYSError_t crys_res = (CRYSError_t)CRYS_OK;
+	size_t remain = outSize;
+	uint16_t crysOutSize;
+
+	PROV_DMSG("crysOutSize=%ld  outPtr=%p\n", outSize, outPtr);
+
+	while ((remain != 0U) && (crys_res == (CRYSError_t)CRYS_OK)) {
+		if (remain > 0xFFC0U) {
+			crysOutSize = 0xFFC0U;
+		} else {
+			crysOutSize = (uint16_t)remain;
+		}
+		PROV_DMSG("CALL: CRYS_RND_GenerateVector()\n");
+		PROV_DMSG("crysOutSize=%d  outPtr=%p\n", crysOutSize, outPtr);
+		crys_res = CRYS_RND_GenerateVector(crysOutSize, outPtr);
+		outPtr += crysOutSize;
+		remain -= crysOutSize;
+	}
+
+	res = ss_translate_error_crys2ss_rnd(crys_res);
+	PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n", crys_res, res);
+	return res;
+}
+
+/*
  * brief:	Generate a random number.
  *
  * param[in]	*buf		- Pointer to the memory block to output data buffer.
@@ -5767,13 +5816,11 @@ static TEE_Result prng_read(void *buf, size_t blen)
 	SSError_t res = SS_SUCCESS;
 	CRYSError_t crys_res;
 	CRYS_RND_WorkBuff_t *rndWorkBuff;
-	uint16_t outSizeBytes;
 	uint8_t *out_ptr;
 
 	PROV_INMSG("START: prng_read\n");
 
 	out_ptr = (uint8_t *)buf;
-	outSizeBytes = (uint16_t)blen;
 	rndWorkBuff = (CRYS_RND_WorkBuff_t *)ss_malloc(
 			sizeof(CRYS_RND_WorkBuff_t), &res);
 
@@ -5785,11 +5832,9 @@ static TEE_Result prng_read(void *buf, size_t blen)
 				crys_res, res);
 	}
 	if (res == SS_SUCCESS) {
-		PROV_DMSG("CALL: CRYS_RND_GenerateVector()\n");
-		crys_res = CRYS_RND_GenerateVector(outSizeBytes, out_ptr);
-		res = ss_translate_error_crys2ss_rnd(crys_res);
-		PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n",
-				crys_res, res);
+		PROV_DMSG("CALL: ss_generate_random()\n");
+		PROV_DMSG("out_ptr=%p  blen=%ld\n", out_ptr, blen);
+		res = ss_generate_random(out_ptr, blen);
 	}
 
 	ss_free((void *)rndWorkBuff);
@@ -5811,19 +5856,15 @@ static TEE_Result prng_read_without_init(void *buf, size_t blen)
 {
 	TEE_Result tee_res;
 	SSError_t res;
-	CRYSError_t crys_res;
-	uint16_t outSizeBytes;
 	uint8_t *out_ptr;
 
 	PROV_INMSG("START: prng_read\n");
 
 	out_ptr = (uint8_t *)buf;
-	outSizeBytes = (uint16_t)blen;
 
-	PROV_DMSG("CALL: CRYS_RND_GenerateVector()\n");
-	crys_res = CRYS_RND_GenerateVector(outSizeBytes, out_ptr);
-	res = ss_translate_error_crys2ss_rnd(crys_res);
-	PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n", crys_res, res);
+	PROV_DMSG("CALL: ss_generate_random()\n");
+	PROV_DMSG("out_ptr=%p  blen=%ld\n", out_ptr, blen);
+	res = ss_generate_random(out_ptr, blen);
 
 	tee_res = ss_translate_error_ss2tee(res);
 	PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n", res, tee_res);
@@ -5968,7 +6009,7 @@ static TEE_Result do_rpmb_derivekey(uint8_t *out, uint32_t outSize)
 
 	rpmbKeySize = sizeof(DxUtilRpmbKey_t);
 	if (out == NULL) {
-		PROV_EMSG("But Parameters in=%p",in);
+		PROV_EMSG("But Parameters out=%p",out);
 		res = SS_ERROR_BAD_PARAMETERS;
 	}
 	if (res == SS_SUCCESS) {
@@ -5981,14 +6022,14 @@ static TEE_Result do_rpmb_derivekey(uint8_t *out, uint32_t outSize)
 	if (res == SS_SUCCESS) {
 		PROV_DMSG("DX_UTIL_SignRPMBFrames() pCmacResult=%p\n",pCmacResult);
 		util_res = DX_UTIL_DeriveRPMBKey(pCmacResult);
-		PROV_DHEXDUMP(pHmacResult, hmacSize);
+		PROV_DHEXDUMP(pCmacResult, sizeof(DxUtilRpmbKey_t));
 		res = ss_translate_error_crys2ss_util(util_res);
 		PROV_DMSG("return util_res=0x%08x -> res=0x%08x\n", res,
 				tee_res);
 	}
 	if (res == SS_SUCCESS) {
 		(void)memcpy(out, pCmacResult, rpmbKeySize);
-		PROV_DHEXDUMP(out, hmacSize);
+		PROV_DHEXDUMP(out, rpmbKeySize);
 	}
 	tee_res = ss_translate_error_ss2tee(res);
 	PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n", res, tee_res);
@@ -6135,6 +6176,30 @@ static void tee_ltc_alloc_mpa(void)
 	mpa_set_random_generator(crypto_ops.prng.read);
 }
 
+/*
+ * brief:	Callback function to use Suspend To RAM.
+ *
+ * param[in]	state		- State of Suspend To RAM.
+ * param[in]	cpu_id		- ID of using CPU.
+ * return	void
+ */
+static void ss_backup_cb(enum suspend_to_ram_state state,
+		uint32_t cpu_id __unused)
+{
+	if (state == SUS2RAM_STATE_SUSPEND) {
+		CRYS_Core_Suspend();
+#if defined(CFG_CRYPT_ENABLE_CEPKA)
+		CRYS_PKA_Suspend();
+#endif
+	} else {
+		CRYS_Core_Resume();
+#if defined(CFG_CRYPT_ENABLE_CEPKA)
+		CRYS_PKA_Resume();
+#endif
+	}
+	return;
+}
+suspend_to_ram_cbfunc(ss_backup_cb);
 /*
  * brief:	Initialize of Crypto Engine Secure and PKA engines.
  *

@@ -25,27 +25,28 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#include <assert.h>
-#include <stdlib.h>
-#include <types_ext.h>
 
 #include <arm.h>
-#include <util.h>
+#include <assert.h>
+#include <kernel/panic.h>
 #include <kernel/tee_common.h>
+#include <kernel/tee_misc.h>
+#include <kernel/tz_ssvce.h>
 #include <mm/tee_mmu.h>
 #include <mm/tee_mmu_types.h>
 #include <mm/tee_mmu_defs.h>
 #include <mm/pgt_cache.h>
-#include <user_ta_header.h>
 #include <mm/tee_mm.h>
-#include "tee_api_types.h"
-#include <kernel/tee_misc.h>
-#include <trace.h>
 #include <mm/core_memprot.h>
 #include <mm/core_mmu.h>
+#include <mm/tee_pager.h>
 #include <sm/optee_smc.h>
-#include <kernel/tz_ssvce.h>
-#include <kernel/panic.h>
+#include <stdlib.h>
+#include <trace.h>
+#include <types_ext.h>
+#include <user_ta_header.h>
+#include <util.h>
+#include "tee_api_types.h"
 
 #ifdef CFG_PL310
 #include <kernel/tee_l2cc_mutex.h>
@@ -266,7 +267,7 @@ static TEE_Result check_pgt_avail(vaddr_t base __unused, vaddr_t end __unused)
 #endif
 
 void tee_mmu_map_stack(struct user_ta_ctx *utc, paddr_t pa, size_t size,
-			uint32_t prot)
+		       uint32_t prot)
 {
 	const uint32_t attr = TEE_MATTR_VALID_BLOCK | TEE_MATTR_SECURE |
 			      (TEE_MATTR_CACHE_CACHED << TEE_MATTR_CACHE_SHIFT);
@@ -590,24 +591,30 @@ TEE_Result tee_mmu_check_access_rights(const struct user_ta_ctx *utc,
 
 void tee_mmu_set_ctx(struct tee_ta_ctx *ctx)
 {
-	if (!ctx || !is_user_ta_ctx(ctx)) {
-		core_mmu_set_user_map(NULL);
+	struct thread_specific_data *tsd = thread_get_tsd();
+
+	core_mmu_set_user_map(NULL);
 #ifdef CFG_SMALL_PAGE_USER_TA
-		/*
-		 * We're not needing the user page tables for the moment,
-		 * release them as some other thread may be waiting for
-		 * them.
-		 */
-		pgt_free(&thread_get_tsd()->pgt_cache);
+	/*
+	 * No matter what happens below, the current user TA will not be
+	 * current any longer. Make sure pager is in sync with that.
+	 * This function has to be called before there's a chance that
+	 * pgt_free_unlocked() is called.
+	 *
+	 * Save translation tables in a cache if it's a user TA.
+	 */
+	pgt_free(&tsd->pgt_cache, tsd->ctx && is_user_ta_ctx(tsd->ctx));
 #endif
-	} else {
+
+	if (ctx && is_user_ta_ctx(ctx)) {
 		struct core_mmu_user_map map;
 		struct user_ta_ctx *utc = to_user_ta_ctx(ctx);
 
-		core_mmu_create_user_map(utc->mmu, utc->context, &map);
+		core_mmu_create_user_map(utc, &map);
 		core_mmu_set_user_map(&map);
+		tee_pager_assign_uta_tables(utc);
 	}
-	thread_get_tsd()->ctx = ctx;
+	tsd->ctx = ctx;
 }
 
 struct tee_ta_ctx *tee_mmu_get_ctx(void)
@@ -619,8 +626,9 @@ uintptr_t tee_mmu_get_load_addr(const struct tee_ta_ctx *const ctx)
 {
 	const struct user_ta_ctx *utc = to_user_ta_ctx((void *)ctx);
 
-	TEE_ASSERT(utc->mmu && utc->mmu->table &&
-		   utc->mmu->size == TEE_MMU_UMAP_MAX_ENTRIES);
+	assert(utc->mmu && utc->mmu->table);
+	if (utc->mmu->size != TEE_MMU_UMAP_MAX_ENTRIES)
+		panic("invalid size");
 
 	return utc->mmu->table[1].va;
 }
@@ -636,16 +644,18 @@ void teecore_init_ta_ram(void)
 	 * shared mem allcated from teecore */
 	core_mmu_get_mem_by_type(MEM_AREA_TA_RAM, &s, &e);
 	ps = virt_to_phys((void *)s);
-	TEE_ASSERT(ps);
 	pe = virt_to_phys((void *)(e - 1)) + 1;
-	TEE_ASSERT(pe);
 
-	TEE_ASSERT((ps & (CORE_MMU_USER_CODE_SIZE - 1)) == 0);
-	TEE_ASSERT((pe & (CORE_MMU_USER_CODE_SIZE - 1)) == 0);
+	if (!ps || (ps & CORE_MMU_USER_CODE_MASK) ||
+	    !pe || (pe & CORE_MMU_USER_CODE_MASK))
+		panic("invalid TA RAM");
+
 	/* extra check: we could rely on  core_mmu_get_mem_by_type() */
-	TEE_ASSERT(tee_pbuf_is_sec(ps, pe - ps) == true);
+	if (!tee_pbuf_is_sec(ps, pe - ps))
+		panic("TA RAM is not secure");
 
-	TEE_ASSERT(tee_mm_is_empty(&tee_mm_sec_ddr));
+	if (!tee_mm_is_empty(&tee_mm_sec_ddr))
+		panic("TA RAM pool is not empty");
 
 	/* remove previous config and init TA ddr memory pool */
 	tee_mm_final(&tee_mm_sec_ddr);
@@ -657,32 +667,19 @@ void teecore_init_pub_ram(void)
 {
 	vaddr_t s;
 	vaddr_t e;
-	unsigned int nsec_tee_size = 32 * 1024;
 
 	/* get virtual addr/size of NSec shared mem allcated from teecore */
 	core_mmu_get_mem_by_type(MEM_AREA_NSEC_SHM, &s, &e);
 
-	TEE_ASSERT(s < e);
-	TEE_ASSERT((s & SMALL_PAGE_MASK) == 0);
-	TEE_ASSERT((e & SMALL_PAGE_MASK) == 0);
+	if (s >= e || s & SMALL_PAGE_MASK || e & SMALL_PAGE_MASK)
+		panic("invalid PUB RAM");
+
 	/* extra check: we could rely on  core_mmu_get_mem_by_type() */
-	TEE_ASSERT(tee_vbuf_is_non_sec(s, e - s) == true);
-
-	/*
-	 * 32kByte first bytes are allocated from teecore.
-	 * Remaining is under control of the NSec allocator.
-	 */
-	TEE_ASSERT((e - s) > nsec_tee_size);
-
-	TEE_ASSERT(tee_mm_is_empty(&tee_mm_pub_ddr));
-	tee_mm_final(&tee_mm_pub_ddr);
-	tee_mm_init(&tee_mm_pub_ddr, s, s + nsec_tee_size, SMALL_PAGE_SHIFT,
-		    TEE_MM_POOL_NO_FLAGS);
-	s += nsec_tee_size;
+	if (!tee_vbuf_is_non_sec(s, e - s))
+		panic("PUB RAM is not non-secure");
 
 #ifdef CFG_PL310
 	/* Allocate statically the l2cc mutex */
-	TEE_ASSERT((e - s) > 0);
 	tee_l2cc_store_mutex_boot_pa(s);
 	s += sizeof(uint32_t);		/* size of a pl310 mutex */
 #endif
@@ -693,12 +690,11 @@ void teecore_init_pub_ram(void)
 
 uint32_t tee_mmu_user_get_cache_attr(struct user_ta_ctx *utc, void *va)
 {
-	TEE_Result res;
 	paddr_t pa;
 	uint32_t attr;
 
-	res = tee_mmu_user_va2pa_attr(utc, va, &pa, &attr);
-	assert(res == TEE_SUCCESS);
+	if (tee_mmu_user_va2pa_attr(utc, va, &pa, &attr) != TEE_SUCCESS)
+		panic("cannot get attr");
 
 	return (attr >> TEE_MATTR_CACHE_SHIFT) & TEE_MATTR_CACHE_MASK;
 }

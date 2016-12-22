@@ -33,7 +33,10 @@
 #include "qspi_hyper_flash_common.h"
 #include "qspi_flash_common.h"
 #include "hyper_flash_control.h"
+#include "rcar_suspend_to_ram.h"
 
+static void qspi_hyper_flash_backup_cb(enum suspend_to_ram_state state,
+				uint32_t cpu_id);
 static uint32_t erase_flash_unsupported(uint32_t sector_addr);
 static uint32_t ext_addr_read_mode_flash_unsupported(uint32_t read_ext_top_addr,
 			uint32_t flash_addr, uint8_t *buf, size_t rsize);
@@ -46,6 +49,16 @@ static struct flash_control_operations flash_control_ops = {
 	.set_ext_addr_read_mode = ext_addr_read_mode_flash_unsupported,
 	.write = write_flash_unsupported,
 };
+
+static void qspi_hyper_flash_backup_cb(enum suspend_to_ram_state state,
+				uint32_t cpu_id __unused)
+{
+	if (state == SUS2RAM_STATE_RESUME) {
+		(void)init_rpc();
+	}
+}
+
+suspend_to_ram_cbfunc(qspi_hyper_flash_backup_cb);
 
 uint32_t qspi_hyper_flash_init(void)
 {
@@ -104,10 +117,13 @@ uint32_t qspi_hyper_flash_read(uint32_t flash_addr, uint8_t *buf, size_t rsize)
 		ret = FL_DRV_ERR_BUF_INCORRECT;
 		EMSG("buf is incorrect.");
 	}
-	if ((rsize > SECTOR_SIZE) || (rsize < FLASH_DATA_READ_BYTE_COUNT_8) ||
-				((rsize % FLASH_DATA_READ_BYTE_COUNT_8) > 0U)) {
-		ret = FL_DRV_ERR_OUT_OF_RANGE;
-		EMSG("rsize is out of range. rsize=%zu", rsize);
+	if (ret == FL_DRV_OK) {
+		if ((rsize > SECTOR_SIZE) ||
+		    (rsize < FLASH_DATA_READ_BYTE_COUNT_8) ||
+		   ((rsize % FLASH_DATA_READ_BYTE_COUNT_8) > 0U)) {
+			ret = FL_DRV_ERR_OUT_OF_RANGE;
+			EMSG("rsize is out of range. rsize=%zu", rsize);
+		}
 	}
 
 	/* Ex. )
@@ -125,23 +141,30 @@ uint32_t qspi_hyper_flash_read(uint32_t flash_addr, uint8_t *buf, size_t rsize)
 	 *		No : Not sector exceeded
 	 *		Yes: Sector exceeded
 	 *	---------------------------------------------------------
-	*/
-	check_sector_size = ((flash_addr) % (SECTOR_SIZE)) + rsize;
+	 */
+	if (ret == FL_DRV_OK) {
+		check_sector_size = ((flash_addr) % (SECTOR_SIZE)) + rsize;
 
-	if (check_sector_size > SECTOR_SIZE) {
-		ret = FL_DRV_ERR_SECTOR_EXCEED;
-		EMSG("Sector exceeded. flash_addr=%x, rsize=%zu",
-			flash_addr, rsize);
+		if (check_sector_size > SECTOR_SIZE) {
+			ret = FL_DRV_ERR_SECTOR_EXCEED;
+			EMSG("Sector exceeded. flash_addr=%x, rsize=%zu",
+				flash_addr, rsize);
+		}
 	}
 
-	/* External address reading position calculation From 64MB boundary. */
-	if (flash_addr > EXT_ADD_BORDER_SIZE_64MB) {
-		quotient = (flash_addr / EXT_ADD_BORDER_SIZE_64MB);
-		v_flash_addr = SPI_IOADDRESS_TOP +
-			(flash_addr - (quotient * EXT_ADD_BORDER_SIZE_64MB));
-		p_flash_addr = (uint8_t *)v_flash_addr;
-		DMSG("p_flash_addr=%p", p_flash_addr);
-		(void)p_flash_addr; /* suppress compile error */
+	if (ret == FL_DRV_OK) {
+		/*
+		 *  External address reading position calculation
+		 *  From 64MB boundary.
+		 */
+		if (flash_addr > EXT_ADD_BORDER_SIZE_64MB) {
+			quotient = (flash_addr / EXT_ADD_BORDER_SIZE_64MB);
+			v_flash_addr = SPI_IOADDRESS_TOP +
+			   (flash_addr - (quotient * EXT_ADD_BORDER_SIZE_64MB));
+			p_flash_addr = (uint8_t *)v_flash_addr;
+			DMSG("p_flash_addr=%p", p_flash_addr);
+			(void)p_flash_addr; /* suppress compile error */
+		}
 	}
 
 	if (ret == FL_DRV_OK) {
@@ -169,18 +192,23 @@ uint32_t qspi_hyper_flash_write(uint32_t flash_addr, const uint8_t *buf,
 		ret = FL_DRV_ERR_BUF_INCORRECT;
 		EMSG("buf is incorrect.");
 	}
-	if ((wsize > SECTOR_SIZE) || (wsize < FLASH_DATA_READ_BYTE_COUNT_8) ||
-				((wsize % FLASH_DATA_READ_BYTE_COUNT_8) > 0U)) {
-		ret = FL_DRV_ERR_OUT_OF_RANGE;
-		EMSG("wsize is out of range. wsize=%zu", wsize);
+	if (ret == FL_DRV_OK) {
+		if ((wsize > SECTOR_SIZE) ||
+		    (wsize < FLASH_DATA_READ_BYTE_COUNT_8) ||
+		   ((wsize % FLASH_DATA_READ_BYTE_COUNT_8) > 0U)) {
+			ret = FL_DRV_ERR_OUT_OF_RANGE;
+			EMSG("wsize is out of range. wsize=%zu", wsize);
+		}
 	}
 
-	check_sector_size = ((flash_addr) % (SECTOR_SIZE)) + wsize;
+	if (ret == FL_DRV_OK) {
+		check_sector_size = ((flash_addr) % (SECTOR_SIZE)) + wsize;
 
-	if (check_sector_size > SECTOR_SIZE) {
-		ret = FL_DRV_ERR_SECTOR_EXCEED;
-		EMSG("Sector exceeded. flash_addr=%x, wsize=%zu",
-			flash_addr, wsize);
+		if (check_sector_size > SECTOR_SIZE) {
+			ret = FL_DRV_ERR_SECTOR_EXCEED;
+			EMSG("Sector exceeded. flash_addr=%x, wsize=%zu",
+				flash_addr, wsize);
+		}
 	}
 
 	if (ret == FL_DRV_OK) {

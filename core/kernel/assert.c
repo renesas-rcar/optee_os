@@ -24,22 +24,28 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+
 #include <assert.h>
-#include <trace.h>
 #include <compiler.h>
+#include <trace.h>
+#include <kernel/panic.h>
 
-/* indirected assert (see TEE_ASSERT()) */
+/* assert log and break for the optee kernel */
 
-void _assert_log(const char *expr, const char *file, int line)
+void _assert_log(const char *expr __maybe_unused,
+		 const char *file __maybe_unused,
+		 const int line __maybe_unused,
+		 const char *func __maybe_unused)
 {
-	(void)expr;
-	(void)file;
-	(void)line;
-	EMSG("Assertion '%s' failed at %s:%d", expr, file, line);
+#if defined(CFG_TEE_CORE_DEBUG)
+	EMSG_RAW("assertion '%s' failed at %s:%d <%s>",
+		 expr, file, line, func);
+#else
+	EMSG_RAW("assertion failed");
+#endif
 }
 
 void __noreturn _assert_break(void)
 {
-	while (1)
-		;
+	panic();
 }

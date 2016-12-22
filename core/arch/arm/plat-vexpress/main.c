@@ -33,15 +33,19 @@
 
 #include <drivers/gic.h>
 #include <drivers/pl011.h>
+#include <drivers/tzc400.h>
 
 #include <arm.h>
 #include <kernel/generic_boot.h>
 #include <kernel/pm_stubs.h>
 #include <trace.h>
 #include <kernel/misc.h>
+#include <kernel/panic.h>
 #include <kernel/tee_time.h>
 #include <tee/entry_fast.h>
 #include <tee/entry_std.h>
+#include <mm/core_memprot.h>
+#include <mm/core_mmu.h>
 #include <console.h>
 #include <keep.h>
 #include <initcall.h>
@@ -71,22 +75,37 @@ static const struct thread_handlers handlers = {
 
 static struct gic_data gic_data;
 
+register_phys_mem(MEM_AREA_IO_SEC, CONSOLE_UART_BASE, PL011_REG_SIZE);
+
 const struct thread_handlers *generic_boot_get_handlers(void)
 {
 	return &handlers;
 }
 
 #ifdef GIC_BASE
+
+register_phys_mem(MEM_AREA_IO_SEC, GICD_BASE, GIC_DIST_REG_SIZE);
+register_phys_mem(MEM_AREA_IO_SEC, GICC_BASE, GIC_DIST_REG_SIZE);
+
 void main_init_gic(void)
 {
-#if PLATFORM_FLAVOR_IS(fvp) || PLATFORM_FLAVOR_IS(juno) || \
-    PLATFORM_FLAVOR_IS(qemu_armv8a)
+	vaddr_t gicc_base;
+	vaddr_t gicd_base;
+
+	gicc_base = (vaddr_t)phys_to_virt(GIC_BASE + GICC_OFFSET,
+					  MEM_AREA_IO_SEC);
+	gicd_base = (vaddr_t)phys_to_virt(GIC_BASE + GICD_OFFSET,
+					  MEM_AREA_IO_SEC);
+	if (!gicc_base || !gicd_base)
+		panic();
+
+#if defined(PLATFORM_FLAVOR_fvp) || defined(PLATFORM_FLAVOR_juno) || \
+	defined(PLATFORM_FLAVOR_qemu_armv8a)
 	/* On ARMv8, GIC configuration is initialized in ARM-TF */
-	gic_init_base_addr(&gic_data, GIC_BASE + GICC_OFFSET,
-			   GIC_BASE + GICD_OFFSET);
+	gic_init_base_addr(&gic_data, gicc_base, gicd_base);
 #else
 	/* Initialize GIC */
-	gic_init(&gic_data, GIC_BASE + GICC_OFFSET, GIC_BASE + GICD_OFFSET);
+	gic_init(&gic_data, gicc_base, gicd_base);
 #endif
 	itr_init(&gic_data.chip);
 }
@@ -97,30 +116,44 @@ static void main_fiq(void)
 	gic_it_handle(&gic_data);
 }
 
+static vaddr_t console_base(void)
+{
+	static void *va;
+
+	if (cpu_mmu_enabled()) {
+		if (!va)
+			va = phys_to_virt(CONSOLE_UART_BASE, MEM_AREA_IO_SEC);
+		return (vaddr_t)va;
+	}
+	return CONSOLE_UART_BASE;
+}
+
 void console_init(void)
 {
-	pl011_init(CONSOLE_UART_BASE,
-		   CONSOLE_UART_CLK_IN_HZ,
-		   CONSOLE_BAUDRATE);
+	pl011_init(console_base(), CONSOLE_UART_CLK_IN_HZ, CONSOLE_BAUDRATE);
 }
 
 void console_putc(int ch)
 {
-	pl011_putc(ch, CONSOLE_UART_BASE);
+	vaddr_t base = console_base();
+
 	if (ch == '\n')
-		pl011_putc('\r', CONSOLE_UART_BASE);
+		pl011_putc('\r', base);
+	pl011_putc(ch, base);
 }
 
 void console_flush(void)
 {
-	pl011_flush(CONSOLE_UART_BASE);
+	pl011_flush(console_base());
 }
 
 #ifdef IT_CONSOLE_UART
 static enum itr_return console_itr_cb(struct itr_handler *h __unused)
 {
-	while (pl011_have_rx_data(CONSOLE_UART_BASE)) {
-		int ch __maybe_unused = pl011_getchar(CONSOLE_UART_BASE);
+	paddr_t uart_base = console_base();
+
+	while (pl011_have_rx_data(uart_base)) {
+		int ch __maybe_unused = pl011_getchar(uart_base);
 
 		DMSG("cpu %zu: got 0x%x", get_core_pos(), ch);
 	}
@@ -142,3 +175,27 @@ static TEE_Result init_console_itr(void)
 }
 driver_init(init_console_itr);
 #endif
+
+#ifdef CFG_TZC400
+register_phys_mem(MEM_AREA_IO_SEC, TZC400_BASE, TZC400_REG_SIZE);
+
+static TEE_Result init_tzc400(void)
+{
+	void *va;
+
+	DMSG("Initializing TZC400");
+
+	va = phys_to_virt(TZC400_BASE, MEM_AREA_IO_SEC);
+	if (!va) {
+		EMSG("TZC400 not mapped");
+		panic();
+	}
+
+	tzc_init((vaddr_t)va);
+	tzc_dump_state();
+
+	return TEE_SUCCESS;
+}
+
+service_init(init_tzc400);
+#endif /*CFG_TZC400*/

@@ -28,11 +28,9 @@
 #ifndef CORE_MMU_H
 #define CORE_MMU_H
 
-#include <types_ext.h>
-#include <kernel/tee_common_unpg.h>
+#include <kernel/user_ta.h>
 #include <mm/tee_mmu_types.h>
-
-#include <assert.h>
+#include <types_ext.h>
 
 /* A small page is the smallest unit of memory that can be mapped */
 #define SMALL_PAGE_SHIFT	12
@@ -74,27 +72,9 @@
 #define CORE_MMU_USER_PARAM_SIZE	(1 << CORE_MMU_USER_PARAM_SHIFT)
 #define CORE_MMU_USER_PARAM_MASK	(CORE_MMU_USER_PARAM_SIZE - 1)
 
-/*
- * @type:  enumerate: specifiy the purpose of the memory area.
- * @pa:    memory area physical start address
- * @size:  memory area size in bytes
- * @va:    virtual start address (0 if memory is not mapped)
- * @region_size: size of the mapping region used (4k, 64K, 1MB)
- * @secure: true if memory area in inside a A9 secure area
- */
-struct map_area {
-	unsigned int type;
-	unsigned int pa;
-	size_t size;
-	/* below here are core_mmu.c internal data */
-	unsigned int va;
-	unsigned int region_size;
-	bool secure;
-	bool cached;
-	bool device;
-	bool rw;
-	bool exec;
-};
+#ifdef CFG_WITH_PAGER
+extern vaddr_t core_mmu_linear_map_end;
+#endif
 
 /*
  * Memory area type:
@@ -103,9 +83,11 @@ struct map_area {
  * MEM_AREA_TEE_COHERENT: teecore coherent RAM (secure, reserved to TEEtz)
  * MEM_AREA_TA_RAM:   Secure RAM where teecore loads/exec TA instances.
  * MEM_AREA_NS_SHM:   NonSecure shared RAM between NSec and TEEtz.
- * MEM_AREA_KEYVAULT: Secure RAM storing some secrets
+ * MEM_AREA_RAM_NSEC: NonSecure RAM storing data
+ * MEM_AREA_RAM_SEC:  Secure RAM storing some secrets
  * MEM_AREA_IO_SEC:   Secure HW mapped registers
  * MEM_AREA_IO_NSEC:  NonSecure HW mapped registers
+ * MEM_AREA_RES_VASPACE: Reserved virtual memory space
  * MEM_AREA_TA_VASPACE: TA va space, only used with phys_to_virt()
  * MEM_AREA_MAXTYPE:  lower invalid 'type' value
  */
@@ -115,12 +97,36 @@ enum teecore_memtypes {
 	MEM_AREA_TEE_COHERENT,
 	MEM_AREA_TA_RAM,
 	MEM_AREA_NSEC_SHM,
-	MEM_AREA_KEYVAULT,
-	MEM_AREA_IO_SEC,
+	MEM_AREA_RAM_NSEC,
+	MEM_AREA_RAM_SEC,
 	MEM_AREA_IO_NSEC,
+	MEM_AREA_IO_SEC,
+	MEM_AREA_RES_VASPACE,
 	MEM_AREA_TA_VASPACE,
 	MEM_AREA_MAXTYPE
 };
+
+struct core_mmu_phys_mem {
+	const char *name;
+	enum teecore_memtypes type;
+	paddr_t addr;
+	size_t size;
+};
+
+#define register_phys_mem(type, addr, size) \
+	static const struct core_mmu_phys_mem __phys_mem_ ## addr \
+		__used __section("phys_mem_map_section") = \
+		{ #addr, (type), (addr), (size) }
+
+#ifdef MMU_EXEC_ATTR_MAPPING
+#define setopt_exec_attr(addr) \
+	static const paddr_t __exec_attr_ ## addr \
+		__used __section("exec_attr_section") = (addr)
+#else
+#define setopt_exec_attr(addr) \
+	static const paddr_t __exec_attr_ ## addr __unused
+#endif
+
 
 /* Default NSec shared memory allocated from NSec world */
 extern unsigned long default_nsec_shm_paddr;
@@ -129,6 +135,7 @@ extern unsigned long default_nsec_shm_size;
 void core_init_mmu_map(void);
 void core_init_mmu_regs(void);
 
+bool core_mmu_place_tee_ram_at_top(paddr_t paddr);
 
 #ifdef CFG_WITH_LPAE
 /*
@@ -196,12 +203,11 @@ enum core_mmu_fault core_mmu_get_fault_type(uint32_t fault_descr);
 
 /*
  * core_mmu_create_user_map() - Create user space mapping
- * @mmu:	Generic representation of user space mapping
- * @asid:	Address space identifier for this mapping
+ * @utc:	Pointer to user TA context
  * @map:	MMU configuration to use when activating this VA space
  */
-void core_mmu_create_user_map(struct tee_mmu_info *mmu, uint32_t asid,
-		struct core_mmu_user_map *map);
+void core_mmu_create_user_map(struct user_ta_ctx *utc,
+			      struct core_mmu_user_map *map);
 /*
  * core_mmu_get_user_map() - Reads current MMU configuration for user VA space
  * @map:	MMU configuration for current user VA space.
@@ -241,6 +247,9 @@ struct core_mmu_table_info {
 bool core_mmu_find_table(vaddr_t va, unsigned max_level,
 		struct core_mmu_table_info *tbl_info);
 
+void core_mmu_set_entry_primitive(void *table, size_t level, size_t idx,
+				  paddr_t pa, uint32_t attr);
+
 /*
  * core_mmu_set_entry() - Set entry in translation table
  * @tbl_info:	Translation table properties
@@ -249,7 +258,10 @@ bool core_mmu_find_table(vaddr_t va, unsigned max_level,
  * @attr:	Attributes to assign entry
  */
 void core_mmu_set_entry(struct core_mmu_table_info *tbl_info, unsigned idx,
-		paddr_t pa, uint32_t attr);
+			paddr_t pa, uint32_t attr);
+
+void core_mmu_get_entry_primitive(const void *table, size_t level, size_t idx,
+				  paddr_t *pa, uint32_t *attr);
 
 /*
  * core_mmu_get_entry() - Get entry from translation table
@@ -259,7 +271,7 @@ void core_mmu_set_entry(struct core_mmu_table_info *tbl_info, unsigned idx,
  * @attr:	Attributues are returned here if attr is not NULL
  */
 void core_mmu_get_entry(struct core_mmu_table_info *tbl_info, unsigned idx,
-		paddr_t *pa, uint32_t *attr);
+			paddr_t *pa, uint32_t *attr);
 
 /*
  * core_mmu_va2idx() - Translate from virtual address to table index
@@ -310,13 +322,18 @@ bool core_mmu_user_mapping_is_active(void);
  */
 bool core_mmu_mattr_is_ok(uint32_t mattr);
 
-void core_mmu_get_mem_by_type(unsigned int type, vaddr_t *s, vaddr_t *e);
+void core_mmu_get_mem_by_type(enum teecore_memtypes type, vaddr_t *s,
+			      vaddr_t *e);
+
+enum teecore_memtypes core_mmu_get_type_by_pa(paddr_t pa);
 
 /* Function is deprecated, use virt_to_phys() instead */
 int core_va2pa_helper(void *va, paddr_t *pa);
 
 /* routines to retreive shared mem configuration */
 bool core_mmu_is_shm_cached(void);
+
+bool core_mmu_add_mapping(enum teecore_memtypes type, paddr_t addr, size_t len);
 
 /* L1/L2 cache maintenance (op: refer to ???) */
 unsigned int cache_maintenance_l1(int op, void *va, size_t len);
@@ -340,9 +357,7 @@ enum teecore_tlb_op {
 	TLBINV_BY_MVA,		/* invalidate unified tlb by MVA */
 };
 
-struct map_area *bootcfg_get_memory(void);
 int core_tlb_maintenance(int op, unsigned int a);
-unsigned long bootcfg_get_pbuf_is_handler(void);
 
 /* Cache maintenance operation type */
 typedef enum {

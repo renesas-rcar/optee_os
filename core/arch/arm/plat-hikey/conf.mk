@@ -1,5 +1,5 @@
 # 32-bit flags
-arm32-platform-cpuarch		:= cortex-a15
+arm32-platform-cpuarch		:= cortex-a53
 arm32-platform-cflags		+= -mcpu=$(arm32-platform-cpuarch)
 arm32-platform-aflags		+= -mcpu=$(arm32-platform-cpuarch)
 core_arm32-platform-aflags	+= -mfpu=neon
@@ -20,5 +20,8 @@ else
 $(call force,CFG_ARM32_core,y)
 endif
 
+CFG_NUM_THREADS ?= 8
 CFG_CRYPTO_WITH_CE ?= y
 CFG_WITH_STACK_CANARIES ?= y
+CFG_PL061 ?= y
+CFG_PL022 ?= y

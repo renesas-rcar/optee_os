@@ -27,13 +27,13 @@
 #ifndef KERNEL_USER_TA_H
 #define KERNEL_USER_TA_H
 
-#include <types_ext.h>
-#include <tee_api_types.h>
+#include <assert.h>
 #include <kernel/tee_ta_manager.h>
 #include <kernel/thread.h>
 #include <mm/tee_mm.h>
+#include <tee_api_types.h>
+#include <types_ext.h>
 #include <util.h>
-#include <assert.h>
 
 TAILQ_HEAD(tee_cryp_state_head, tee_cryp_state);
 TAILQ_HEAD(tee_obj_head, tee_obj);
@@ -57,6 +57,7 @@ struct user_ta_ctx {
 	uint32_t context;	/* Context ID of the process */
 	struct tee_mmu_info *mmu;	/* Saved MMU information (ddr only) */
 	void *ta_time_offs;	/* Time reference used by the TA */
+	struct tee_pager_area_head *areas;
 #if defined(CFG_SE_API)
 	struct tee_se_service *se_service;
 #endif

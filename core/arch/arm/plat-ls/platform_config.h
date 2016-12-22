@@ -28,11 +28,6 @@
 #ifndef PLATFORM_CONFIG_H
 #define PLATFORM_CONFIG_H
 
-#define PLATFORM_FLAVOR_ID_ls1021aqds		0
-#define PLATFORM_FLAVOR_ID_ls1021atwr		1
-#define PLATFORM_FLAVOR_IS(flav) \
-	(PLATFORM_FLAVOR == PLATFORM_FLAVOR_ID_ ## flav)
-
 #define STACK_ALIGNMENT			64
 
 #define GIC_BASE			0x01400000
@@ -53,27 +48,25 @@
 #define CONSOLE_UART_BASE		UART0_BASE
 
 #define DRAM0_BASE			0x80000000
-#if PLATFORM_FLAVOR_IS(ls1021aqds)
+#if defined(PLATFORM_FLAVOR_ls1021aqds)
 #define DRAM0_SIZE			0x80000000
 #endif
 
-#if PLATFORM_FLAVOR_IS(ls1021atwr)
+#if defined(PLATFORM_FLAVOR_ls1021atwr)
 #define DRAM0_SIZE			0x40000000
 #endif
 
 /* Location of trusted dram on layerscape */
 
-#if PLATFORM_FLAVOR_IS(ls1021atwr)
+#if defined(PLATFORM_FLAVOR_ls1021atwr)
 #define CFG_DDR_TEETZ_RESERVED_START	0xBC000000
 #endif
 
-#if PLATFORM_FLAVOR_IS(ls1021aqds)
+#if defined(PLATFORM_FLAVOR_ls1021aqds)
 #define CFG_DDR_TEETZ_RESERVED_START	0xFC000000
 #endif
 
 #define CFG_DDR_TEETZ_RESERVED_SIZE	0x03F00000
-
-#define HEAP_SIZE			(24 * 1024)
 
 #define CFG_TEE_RAM_VA_SIZE		(1024 * 1024)
 
@@ -140,6 +133,6 @@
 						  CORE_MMU_DEVICE_SIZE)
 #define DEVICE0_VA_BASE			DEVICE0_PA_BASE
 #define DEVICE0_SIZE			CORE_MMU_DEVICE_SIZE
-#define DEVICE0_TYPE			MEM_AREA_IO_NSEC
+#define DEVICE0_TYPE			MEM_AREA_IO_SEC
 
 #endif /*PLATFORM_CONFIG_H*/

@@ -31,6 +31,7 @@
 #include <initcall.h>
 #include <drivers/mfis_driver.h>
 #include "rcar_common.h"
+#include "rcar_suspend_to_ram.h"
 
 /******************************************************************************/
 /* Defines                                                                    */
@@ -70,17 +71,41 @@ typedef struct {
 /******************************************************************************/
 /* Prototype                                                                  */
 /******************************************************************************/
+static void mfis_backup_cb(enum suspend_to_ram_state state, uint32_t cpu_id);
 static enum itr_return mfis_err_handler(struct itr_handler *h);
 static TEE_Result mfis_err_init(void);
+static void mfis_err_itr_del(void);
 
 /******************************************************************************/
 /* Global                                                                     */
 /******************************************************************************/
 static uint32_t		mfis_state = MFIS_STATE_NOACTIVE;
 static uint32_t		mfis_reg_num = MFIS_ERR_DET_MAX - 1U;
+static uint32_t		mfis_suspend_flag = 0U;
 static MFIS_REG_T	mfis_reg;
 static MFIS_ERR_SETTING_T	local_setting;
 static void (*user_cb)(MFIS_ERR_FACTOR_T*) = NULL;
+
+static void mfis_backup_cb(enum suspend_to_ram_state state,
+			uint32_t cpu_id __unused)
+{
+	if ((SUS2RAM_STATE_SUSPEND == state) && (MFIS_STATE_NOACTIVE != mfis_state)) {
+		(void)mfis_error_detection_stop();
+		mfis_suspend_flag = 1U;
+	} else if (SUS2RAM_STATE_RESUME == state) {
+		mfis_err_itr_del();
+		(void)mfis_err_init();
+		if (1U == mfis_suspend_flag) {
+			(void)mfis_error_detection_start(&local_setting, user_cb);
+			mfis_suspend_flag = 0U;
+		}
+	} else {
+		/* Nothing. Because state is a suspend request to the driver but the driver is not running. */
+		;
+	}
+}
+
+suspend_to_ram_cbfunc(mfis_backup_cb);
 
 static enum itr_return mfis_err_handler(struct itr_handler *h)
 {
@@ -158,8 +183,22 @@ int32_t mfis_error_detection_start(MFIS_ERR_SETTING_T *err,
 	uint32_t reg;
 	uint32_t enable_flag = 0U;
 
-	if ((NULL == err) || (NULL == cb)) {
+	if (NULL == err) {
 		ret = MFIS_ERR_PARAMETER;
+	} else {
+		for (loop = 0U; loop < mfis_reg_num; loop++) {
+			if ((0U != err->control[loop]) &&
+				(0U != err->target[loop])) {
+				enable_flag = 1U;
+				break;
+			}
+		}
+		if (1U == enable_flag) {
+			if (NULL == cb) {
+				ret = MFIS_ERR_PARAMETER;
+			}
+		}
+		enable_flag = 0U;
 	}
 
 	if ((MFIS_SUCCESS == ret) && (MFIS_STATE_NOACTIVE != mfis_state)) {
@@ -167,13 +206,8 @@ int32_t mfis_error_detection_start(MFIS_ERR_SETTING_T *err,
 	}
 
 	if (MFIS_SUCCESS == ret) {
-		reg = read32(SMSTPCR2);
-		reg &= ~SMSTP_MFISFLG;
-		write32(reg, SMSTPCR2);
-		
 		for (loop = 0U; loop < mfis_reg_num; loop++) {
-			if ((0U != err->control[loop])
-					|| (0U != err->target[loop])) {
+			if (0U != err->control[loop]) {
 				reg = *(mfis_reg.array[loop].MFIERRSTSR);
 				*(mfis_reg.array[loop].MFIERRTGTR) =
 						err->target[loop];
@@ -186,10 +220,15 @@ int32_t mfis_error_detection_start(MFIS_ERR_SETTING_T *err,
 				enable_flag = 1U;
 			}
 		}
-		if (enable_flag == 1U) {
+		if (1U == enable_flag) {
 			local_setting = *err;
 			user_cb = cb;
 			mfis_state = MFIS_STATE_ACTIVE;
+			
+			reg = read32(SMSTPCR2);
+			reg &= ~SMSTP_MFISFLG;
+			write32(reg, SMSTPCR2);
+
 		} else {
 			ret = MFIS_ERR_PARAMETER;
 		}
@@ -209,8 +248,7 @@ int32_t mfis_error_detection_stop(void)
 	} else {
 		
 		for (loop = 0U; loop < mfis_reg_num; loop++) {
-			if ((0U != local_setting.control[loop])
-					|| (0U != local_setting.target[loop])) {
+			if (0U != local_setting.control[loop]) {
 				itr_disable(&mfis_err_itr[loop]);
 				reg = *(mfis_reg.array[loop].MFIERRSTSR);
 				*(mfis_reg.array[loop].MFIERRSTSR) = reg;
@@ -223,7 +261,6 @@ int32_t mfis_error_detection_stop(void)
 		reg |= SMSTP_MFISFLG;
 		write32(reg, SMSTPCR2);
 
-		user_cb = NULL;
 		mfis_state = MFIS_STATE_NOACTIVE;
 	}
 
@@ -257,6 +294,16 @@ static TEE_Result mfis_err_init(void)
 	}
 
 	return TEE_SUCCESS;
+}
+
+static void mfis_err_itr_del(void)
+{
+	uint32_t loop;
+
+	for(loop = 0U; loop < mfis_reg_num; loop++)
+	{
+		itr_del(&mfis_err_itr[loop]);
+	}
 }
 
 driver_init(mfis_err_init);
