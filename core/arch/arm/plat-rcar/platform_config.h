@@ -90,7 +90,7 @@
 
 #define TA_VERIFICATION_BASE	(0x46200000U)	/* TA area for verification */
 #define TA_VERIFICATION_SIZE	(0x00100000U)	/* TA verification size */
-#define CRYPTOENGINE_WORK_BASE	(0x46300000U)	/* Crypto Enegine Work area */
+#define CRYPTOENGINE_WORK_BASE	(0x46600000U)	/* Crypto Enegine Work area */
 
 #define NONCACHE_WORK_BASE	(0x46500000U)	/* Non Cache Area address */
 #define NONCACHE_WORK_SIZE	(0x00100000U)	/* Non Cache Area Size */
@@ -178,7 +178,7 @@
 #define MEMORY4_BASE		ROUNDDOWN(CRYPTOENGINE_WORK_BASE, \
 					MEM_SECTION_SIZE)
 #define MEMORY4_SIZE		(MEM_SECTION_SIZE)
-#define MEMORY4_TYPE		MEM_AREA_IO_SEC
+#define MEMORY4_TYPE		MEM_AREA_RAM_SEC
 #define MEMORY4_SECURE		true
 #define MEMORY4_CACHED		true
 #define MEMORY4_DEVICE		false
