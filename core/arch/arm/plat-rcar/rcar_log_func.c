@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2016, Renesas Electronics Corporation
+ * Copyright (c) 2015-2017, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -32,7 +32,6 @@
 #include <kernel/thread.h>
 #include <kernel/tz_proc_def.h>
 #include <kernel/generic_boot.h>
-#include <kernel/static_ta.h>
 #include <optee_msg.h>
 #include <mm/core_mmu.h>
 #include <initcall.h>
@@ -137,16 +136,12 @@ void log_buf_write(const struct msg_block_t *msg_block, int32_t msg_block_num)
 #ifdef RCAR_DEBUG_LOG
 void log_debug_send(const struct msg_block_t *msg_block, int32_t msg_block_num)
 {
-	struct tee_ta_session *sess = NULL;
 	struct optee_msg_param params;
 	uint32_t cpu_id;
 	int8_t *log_area;
 	size_t log_offs = 0U;
 	size_t memcpy_size;
 	int32_t i;
-	struct thread_specific_data *tsd;
-	struct tee_ta_session *s;
-	int32_t send_flag = 1;
 
 	if (log_nonsec_ptr != NULL) {
 		cpu_id = get_core_pos();
@@ -163,35 +158,12 @@ void log_debug_send(const struct msg_block_t *msg_block, int32_t msg_block_num)
 		}
 		log_area[log_offs] = (int8_t)'\0';
 
-		tee_ta_get_current_session(&sess);
-		if (sess != NULL) {
-			tsd = thread_get_tsd();
-			s = tsd->sess_stack.tqh_first;
-			if ((s != NULL) && (s->ctx != NULL) &&
-			    (!is_static_ta_ctx(s->ctx)) &&
-			    (sess->link_tsd.tqe_next != NULL) &&
-			    (sess->ctx != sess->link_tsd.tqe_next->ctx) &&
-			    (sess->ctx == s->ctx)) {
-				/* Do not send the log message */
-				send_flag = 0;
-			}
-			if (send_flag == 1) {
-				tee_ta_push_current_session(sess);
-			}
-		}
+		(void)memset(&params, 0, sizeof(params));
+		params.attr = OPTEE_MSG_ATTR_TYPE_VALUE_INPUT;
+		params.u.value.a = cpu_id;
+		params.u.value.b = 0U;
 
-		if (send_flag == 1) {
-			(void)memset(&params, 0, sizeof(params));
-			params.attr = OPTEE_MSG_ATTR_TYPE_VALUE_INPUT;
-			params.u.value.a = cpu_id;
-			params.u.value.b = 0U;
-
-			(void)thread_rpc_cmd(TEE_RPC_DEBUG_LOG, 1, &params);
-
-			if (sess != NULL) {
-				(void)tee_ta_pop_current_session();
-			}
-		}
+		(void)thread_rpc_cmd(TEE_RPC_DEBUG_LOG, 1, &params);
 	}
 }
 #endif

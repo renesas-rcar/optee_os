@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2016, Renesas Electronics Corporation
+ * Copyright (c) 2015-2017, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -101,7 +101,7 @@
 #define HF_ERASE_TIMEOUT	3000U
 #define HF_READ_TIMEOUT		100U
 #define HF_WRITE_TIMEOUT	100U
-#define HF_ERASE_WAIT		200U
+#define HF_ERASE_WAIT		50U
 #define HF_READ_WAIT		10U
 #define HF_WRITE_WAIT		10U
 
@@ -109,7 +109,7 @@
 #define QSPI_ERASE_TIMEOUT	3000U
 #define QSPI_READ_TIMEOUT	100U
 #define QSPI_WRITE_TIMEOUT	100U
-#define QSPI_ERASE_WAIT		200U
+#define QSPI_ERASE_WAIT		50U
 #define QSPI_READ_WAIT		10U
 #define QSPI_WRITE_WAIT		10U
 

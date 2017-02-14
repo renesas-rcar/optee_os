@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2016, Renesas Electronics Corporation
+ * Copyright (c) 2015-2017, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -77,9 +77,24 @@ static uint32_t call_maskrom_api(void);
 static uint32_t get_key_cert_size(const uint32_t *cert_header)
 {
 	uint32_t cert_size;
+	uint32_t hdr_tmp;
+	uint32_t sig_size;
 
 	cert_size = ((cert_header[CERT_IDX_SIZE] & CERT_OFS_BIT_SIZE) *
-		CERT_BLOCK_SIZE) + CERT_SIGNATURE_SIZE;
+		CERT_BLOCK_SIZE);
+
+	hdr_tmp = (cert_header[CERT_IDX_FLAG] & 0x00600000U) >> 21U;
+	sig_size = CERT_SIGNATURE_SIZE;
+
+	if (hdr_tmp == 1U) {
+		sig_size += CERT_SIGNATURE_SIZE / 2U;
+	} else if (hdr_tmp == 2U) {
+		sig_size += CERT_SIGNATURE_SIZE;
+	} else {
+		/* no operation */
+	}
+
+	cert_size += sig_size;
 
 	return cert_size;
 }
@@ -101,9 +116,7 @@ static uint32_t get_object_size(const void *content_cert)
 	const void *obj_len;
 
 	cert_header = (const uint32_t *)content_cert;
-	offset = ((cert_header[CERT_IDX_SIZE] & CERT_OFS_BIT_SIZE) *
-		CERT_BLOCK_SIZE) + CERT_SIGNATURE_SIZE +
-		CERT_STORE_ADDR_SIZE;
+	offset = get_key_cert_size(cert_header) + CERT_STORE_ADDR_SIZE;
 	obj_len = (const uint8_t *)content_cert + offset;
 	obj_size = *(const uint32_t *)obj_len;
 	obj_size *= CERT_BLOCK_SIZE;

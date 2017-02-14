@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2016, Renesas Electronics Corporation
+ * Copyright (c) 2015-2017, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -84,6 +84,10 @@
 #define PRR_PRODUCT_UNKNOWN	(0x000000FFU)
 #define PRR_PRODUCT_H3		(0x00004F00U)	/* R-Car H3 */
 #define PRR_PRODUCT_M3		(0x00005200U)	/* R-Car M3 */
+#define PRR_CUT_MASK		(0x000000FFU)
+#define PRR_CUT_H3_10		(0x00000000U)
+#define PRR_CUT_H3_11		(0x00000001U)
+#define PRR_CUT_H3_20		(0x00000010U)
 
 extern uint32_t product_type;
 extern const int8_t *product_name;

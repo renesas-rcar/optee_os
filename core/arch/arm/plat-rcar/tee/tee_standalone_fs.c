@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, Renesas Electronics Corporation
+ * Copyright (c) 2015-2017, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -49,6 +49,7 @@ static struct mutex g_standalone_fs_mutex = MUTEX_INITIALIZER;
 static TEE_Result g_standalone_fs_status = TEE_ERROR_STORAGE_NOT_AVAILABLE;
 static uint8_t *g_work_buf;
 static uint8_t *g_record_data_buf;
+struct spim_record_descriptor *g_record_data_rdesc;
 
 static TEE_Result tee_standalone_fs_init(void);
 static TEE_Result spi_init_sector_info(void);
@@ -233,6 +234,7 @@ static TEE_Result spi_init_sector_info(void)
 	(void)memset(g_current_surface, 0, sizeof(g_current_surface));
 	g_work_buf = (uint8_t *)OPTEE_LOG_BASE + 204800U;
 	g_record_data_buf = g_work_buf + SECTOR_SIZE; /* RECORD_DATA_BUF_SIZE */
+	g_record_data_rdesc = NULL;
 	lsector_addr = STANDALONE_FS_SECTOR_ADDR;
 
 	for (i = 0; i < SURFACE_NUM; i++) {
@@ -891,7 +893,11 @@ static TEE_Result spi_read_record_data(struct spim_record_descriptor *rdesc)
 	uint8_t *encrypted_data;
 	const uint32_t enc_offset = RECORD_DATA_ENC_OFFSET;
 
-	if (rdesc->record_info.record_head.data_len > 0U) {
+	if (rdesc->record_info.record_head.data_len == 0U) {
+		res = TEE_ERROR_NO_DATA;
+	} else if (rdesc == g_record_data_rdesc) {
+		res = TEE_SUCCESS;
+	} else {
 		lrecord_info = &rdesc->record_info;
 		sector = spi_get_current_sector(rdesc->sector_idx);
 		flash_addr = sector->sector_addr + rdesc->record_offset +
@@ -919,10 +925,9 @@ static TEE_Result spi_read_record_data(struct spim_record_descriptor *rdesc)
 				(void)memcpy(lrecord_info->record_data->tag,
 					encrypted_data,
 					SAFS_TAG_LEN);
+				g_record_data_rdesc = rdesc;
 			}
 		}
-	} else {
-		res = TEE_ERROR_NO_DATA;
 	}
 
 	return res;
@@ -1434,6 +1439,9 @@ static void spi_free_rdesc(struct spim_record_descriptor *rdesc)
 		}
 		(void)handle_put(&g_rd_handle_db, rdesc->rd);
 		free(rdesc);
+		if (rdesc == g_record_data_rdesc) {
+			g_record_data_rdesc = NULL;
+		}
 	}
 }
 
@@ -1797,6 +1805,7 @@ static TEE_Result tee_standalone_write(struct spim_file_descriptor *fdp,
 		}
 		if (old_data_len > 0U) {
 			res = spi_read_record_data(rdesc);
+			g_record_data_rdesc = NULL;
 		} else {
 			res = TEE_SUCCESS;
 		}
@@ -1980,6 +1989,7 @@ static TEE_Result tee_standalone_ftruncate(struct spim_file_descriptor *fdp,
 			if (length > 0) {
 				if (old_dlen > 0U) {
 					res = spi_read_record_data(rdesc);
+					g_record_data_rdesc = NULL;
 				} else {
 					res = TEE_SUCCESS;
 				}
