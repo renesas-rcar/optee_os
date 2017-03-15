@@ -87,7 +87,7 @@ static uint32_t qspi_onboard_set_ext_addr_read_mode(uint32_t read_ext_top_addr,
 	uint32_t DREAR_value;
 	uint32_t ret = FL_DRV_OK;
 
-	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80000260U;
+	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80030260U;
 	*((volatile uint32_t *)RPC_CMNCR)	=	0x01FFF300U;
 	*((volatile uint32_t *)RPC_DRCR)	=	0x001F0100U;
 	/*
@@ -267,7 +267,7 @@ static uint32_t qspi_onboard_read_register_data(uint32_t manual_set_addr,
 	uint32_t ret;
 	uint32_t status = 0U;
 
-	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80000260U;
+	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80030260U;
 	/*
 	 * bit31  CAL         =  1 : PHY calibration
 	 * bit1-0 PHYMEM[1:0] = 00 : QSPI-SDR
@@ -331,7 +331,7 @@ static uint32_t qspi_onboard_read_flash_data4Byte(uint32_t readFlAddr,
 	uint32_t ret;
 	uint32_t status = 0U;
 
-	*((volatile uint32_t *)RPC_PHYCNT)    = 0x80000260U;
+	*((volatile uint32_t *)RPC_PHYCNT)    = 0x80030260U;
 	/*
 	 * bit31  CAL         =  1 : PHY calibration
 	 * bit1-0 PHYMEM[1:0] = 00 : QSPI-SDR
@@ -415,7 +415,7 @@ static uint32_t qspi_onboard_write_buffer(uint32_t manual_set_addr,
 	 * bit9   RCF         =  1 : Read Cache Clear
 	 */
 
-	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80000274U;
+	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80030274U;
 	/*
 	 * bit31  CAL         =  1 : PHY calibration
 	 * bit2   WBUF        =  1 : Write Buffer Enable
@@ -469,7 +469,7 @@ static uint32_t qspi_onboard_write_buffer(uint32_t manual_set_addr,
 					QSPI_WRITE_TIMEOUT, QSPI_WRITE_WAIT);
 
 	if (ret == FL_DRV_OK) {
-		*((volatile uint32_t *)RPC_PHYCNT)	=	0x00000273U;
+		*((volatile uint32_t *)RPC_PHYCNT)	=	0x00030273U;
 		/*
 		 * bit31  CAL         =  0 : No PHY calibration
 		 * bit2   WBUF        =  0 : Write Buffer Disable
@@ -491,7 +491,7 @@ static uint32_t qspi_onboard_write_register_data(uint32_t manual_set_addr,
 	uint32_t ret;
 	uint32_t status = 0U;
 
-	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80000260U;
+	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80030260U;
 	/*
 	 * bit31  CAL         =  1 : PHY calibration
 	 * bit1-0 PHYMEM[1:0] = 00 : QSPI-SDR
@@ -538,7 +538,7 @@ static uint32_t qspi_onboard_write_register_data(uint32_t manual_set_addr,
 					QSPI_WRITE_TIMEOUT, QSPI_WRITE_WAIT);
 
 	if (ret == FL_DRV_OK) {
-		*((volatile uint32_t *)RPC_PHYCNT)	=	0x00000273U;
+		*((volatile uint32_t *)RPC_PHYCNT)	=	0x00030273U;
 		/*
 		 * bit31  CAL         =  0 : No PHY calibration
 		 * bit2   WBUF        =  0 : Write Buffer Disable

@@ -303,6 +303,11 @@ struct util_ops {
 	TEE_Result (*rpmb_signframes)(uint64_t *in, uint32_t listSize,
 			uint8_t *out, uint32_t outSize);
 	TEE_Result (*rpmb_derivekey)(uint8_t *out, uint32_t outSize);
+	TEE_Result (*gen_skey_package)(RCAR_SkeyParams_t *skeyParams,
+			uint8_t *skeyPackageBuf, uint32_t skeyPackageSize);
+	TEE_Result (*asset_unpack)(uint32_t assetId, uint8_t *pAssetPackage,
+			uint32_t assetPackagLen, uint8_t *pAssetData,
+			uint32_t *pAssetDataLen, uint32_t *pUserData);
 };
 
 /* Cryptographic Provider API */

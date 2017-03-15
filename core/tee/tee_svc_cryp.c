@@ -3566,3 +3566,34 @@ TEE_Result syscall_rcar_aes_unwrap(void *srcData, uint32_t srcLen, void *keyData
 	}
 	return ret;
 }
+
+TEE_Result syscall_rcar_gen_skey_package(RCAR_SkeyParams_t *skeyParams,
+		uint8_t *skeyPackageBuf, uint32_t skeyPackageSize)
+{
+	TEE_Result rcar_ret;
+
+	if (NULL != (crypto_ops.util.gen_skey_package)) {
+		rcar_ret = crypto_ops.util.gen_skey_package(skeyParams,
+				skeyPackageBuf, skeyPackageSize);
+	} else {
+		rcar_ret = TEE_ERROR_NOT_IMPLEMENTED;
+	}
+	return rcar_ret;
+}
+
+TEE_Result syscall_rcar_asset_unpack(uint32_t assetId, uint8_t *pAssetPackage,
+		uint32_t assetPackagLen, uint8_t *pAssetData,
+		uint32_t *pAssetDataLen, uint32_t *pUserData)
+{
+	TEE_Result rcar_ret;
+
+	if (NULL != (crypto_ops.util.asset_unpack)) {
+		rcar_ret = crypto_ops.util.asset_unpack(assetId, pAssetPackage,
+				assetPackagLen, pAssetData, pAssetDataLen,
+				pUserData);
+	} else {
+		rcar_ret = TEE_ERROR_NOT_IMPLEMENTED;
+	}
+	return rcar_ret;
+}
+

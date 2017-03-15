@@ -82,12 +82,24 @@
 #define PRR			(0xFFF00044U)
 #define PRR_PRODUCT_MASK	(0x00007F00U)
 #define PRR_PRODUCT_UNKNOWN	(0x000000FFU)
+#define PRR_PRODUCT_API_TABLE	(0x00010000U)
 #define PRR_PRODUCT_H3		(0x00004F00U)	/* R-Car H3 */
 #define PRR_PRODUCT_M3		(0x00005200U)	/* R-Car M3 */
 #define PRR_CUT_MASK		(0x000000FFU)
-#define PRR_CUT_H3_10		(0x00000000U)
-#define PRR_CUT_H3_11		(0x00000001U)
-#define PRR_CUT_H3_20		(0x00000010U)
+#define PRR_CUT_10		(0x00000000U)
+#define PRR_CUT_11		(0x00000001U)
+#define PRR_CUT_20		(0x00000010U)
+
+/* Fuse Monitor Register */
+#define FUSE_DUMMY5		(0xE60603E8U)	/* Fuse dummy5 */
+#define	FUSE_M3_MASK		(0x1C000000U)	/* Dummy5[28:26] */
+#define	M3_100			(0x00000000U)	/* M3 1.0  */
+#define	M3_105			(0x04000000U)	/* M3 1.05 */
+#define	M3_106			(0x08000000U)	/* M3 1.06 */
+
+/* Parameters value passed from ARM Trusted FW */
+#define TFW_ARG_CPU_SUSPEND	(0x0UL)
+#define TFW_ARG_SYSTEM_SUSPEND	(0x1UL)
 
 extern uint32_t product_type;
 extern const int8_t *product_name;

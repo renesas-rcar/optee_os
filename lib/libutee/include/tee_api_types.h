@@ -210,6 +210,24 @@ typedef struct {
 	size_t bufferLen;
 } TEE_SEAID;
 
+/* Used for RCAR_GneSkeyPackage */
+
+typedef struct {
+	TEE_OperationMode direction;
+	uint32_t mode;
+	uint64_t lowerBound;
+	uint64_t upperBound;
+	uint8_t	nonceBuf[12];
+	uint8_t keyBuf[40];
+	uint32_t keyType;
+	uint32_t keyNumRounds;
+	uint8_t nonceCtrBuff[16];
+	uint32_t nonceLen;
+	uint32_t ctrLen;
+	uint32_t dataRange;
+	uint32_t isNonSecPathOp;
+}RCAR_SkeyParams_t;
+
 /* Other definitions */
 typedef uint32_t TEE_ErrorOrigin;
 typedef void *TEE_Session;

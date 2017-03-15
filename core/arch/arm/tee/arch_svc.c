@@ -139,6 +139,8 @@ static const struct syscall_entry tee_svc_syscall_table[] = {
 	SYSCALL_ENTRY(syscall_cache_operation),
 #ifdef PLATFORM_RCAR
 	SYSCALL_ENTRY(syscall_rcar_aes_unwrap),
+	SYSCALL_ENTRY(syscall_rcar_gen_skey_package),
+	SYSCALL_ENTRY(syscall_rcar_asset_unpack),
 #endif
 };
 

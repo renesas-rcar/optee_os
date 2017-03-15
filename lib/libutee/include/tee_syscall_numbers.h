@@ -100,8 +100,10 @@
 #define TEE_SCN_SE_CHANNEL_CLOSE		69
 #define TEE_SCN_CACHE_OPERATION			70
 #define RCAR_SCN_AES_UNWRAP			71
+#define RCAR_SCN_GEN_SKEY_PACKAGE		72
+#define RCAR_SCN_ASSET_UNPACK			73
 
-#define TEE_SCN_MAX				71
+#define TEE_SCN_MAX				73
 
 /* Maximum number of allowed arguments for a syscall */
 #define TEE_SVC_MAX_ARGS			8

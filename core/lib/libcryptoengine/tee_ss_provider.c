@@ -46,6 +46,7 @@
 #include "include_secure/dx_util_rpmb.h"
 #include "include_secure/crys_aes_unwrap_rcar.h"
 #include "include_secure/crys_suspend_to_ram.h"
+#include "include_secure/secure_key_gen.h"
 
 
 #ifdef CFG_CRYPT_ENABLE_CEPKA
@@ -224,7 +225,8 @@ do { \
 	} \
 }while (0)
 
-
+#define CHECK_CRYS_ERROR_AESCCM_BASE		(CRYS_AESCCM_MODULE_ERROR_BASE >> 8U)
+#define CHECK_CRYS_ERROR_AES_BASE		(CRYS_AES_MODULE_ERROR_BASE >> 8U)
 
 /*************** declaration statement ***************/
 static TEE_Result hash_get_ctx_size(uint32_t algo, size_t *size);
@@ -348,6 +350,12 @@ static TEE_Result do_rpmb_derivekey(uint8_t *out, uint32_t outSize);
 static TEE_Result cipher_unwrap(void *srcData, uint32_t srcLen,
 		const void *keyData, uint32_t keySize, uint32_t isSecretKey,
 		void *destData, uint32_t *dstLen);
+static TEE_Result do_gen_skey_package(RCAR_SkeyParams_t *skeyParams,
+		uint8_t *skeyPackageBuf, uint32_t skeyPackageSize);
+static TEE_Result do_asset_unpack(uint32_t assetId,
+		uint8_t *pAssetPackage, uint32_t assetPackagLen,
+		uint8_t *pAssetData, uint32_t *pAssetDataLen,
+		uint32_t *pUserData);
 
 /* ss provider original function */
 static SSError_t ss_get_rsa_hash(uint32_t algo,
@@ -4269,6 +4277,7 @@ static SSError_t ss_aes_update(void *ctx, uint32_t algo, bool last_block,
 					dataInSize, dataOut_ptr);
 			ss_ctx->crys_error = crys_res;
 			res = ss_translate_error_crys2ss_aes(crys_res);
+			PROV_DMSG("crys_res=0x%08x -> res=0x%08x\n", crys_res, res);
 		}
 		if ((SS_SUCCESS == res) && (TEE_MODE_ENCRYPT == ss_ctx->mode)) {
 			PROV_DMSG("algo=0x%08x dstData=%p\n", algo,
@@ -4278,7 +4287,6 @@ static SSError_t ss_aes_update(void *ctx, uint32_t algo, bool last_block,
 			res = ss_swap_cts_block(algo, dataOut_ptr, dataInSize,
 					ss_ctx->blockSize);
 		}
-		PROV_DMSG("crys_res=0x%08x -> res=0x%08x\n", crys_res, res);
 		ss_free(ctsData);
 	}
 
@@ -6024,8 +6032,8 @@ static TEE_Result do_rpmb_derivekey(uint8_t *out, uint32_t outSize)
 		util_res = DX_UTIL_DeriveRPMBKey(pCmacResult);
 		PROV_DHEXDUMP(pCmacResult, sizeof(DxUtilRpmbKey_t));
 		res = ss_translate_error_crys2ss_util(util_res);
-		PROV_DMSG("return util_res=0x%08x -> res=0x%08x\n", res,
-				tee_res);
+		PROV_DMSG("return util_res=0x%08x -> res=0x%08x\n", util_res,
+				res);
 	}
 	if (res == SS_SUCCESS) {
 		(void)memcpy(out, pCmacResult, rpmbKeySize);
@@ -6083,8 +6091,8 @@ static TEE_Result do_rpmb_signframes(uint64_t *in, uint32_t listSize,
 				pHmacResult);
 		PROV_DHEXDUMP(pHmacResult, hmacSize);
 		res = ss_translate_error_crys2ss_util(util_res);
-		PROV_DMSG("return util_res=0x%08x -> res=0x%08x\n", res,
-				tee_res);
+		PROV_DMSG("return util_res=0x%08x -> res=0x%08x\n", util_res,
+				res);
 	}
 	if (res == SS_SUCCESS) {
 		(void)memcpy(out, pHmacResult, hmacSize);
@@ -6096,13 +6104,13 @@ static TEE_Result do_rpmb_signframes(uint64_t *in, uint32_t listSize,
 }
 
 /*
- * brief:	This function provides AES unwrap for a user key or OEM key.
+ * brief:	This function provides AES unwrap for a user key or Krdp.
  *
  * param[in]	 *srcData	- Input buffer address to make MAC.
  * param[in]	 srcLen		- Size of Input buffer address.
  * param[in]	 *keyData	- Key data address.
  * param[in]	 keySize	- Key data size.
- * param[in]	 isSecretKey	- Input keyType 0:User key 1:OEM key.
+ * param[in]	 isSecretKey	- Input keyType 0:User key 1:Krdp.
  * param[out]	 *destData	- Output buffer address to get result.
  * param[in/out] *dstLen	- Size of Output buffer address.
  * return	 TEE_Result	- TEE internal API error code.
@@ -6150,7 +6158,7 @@ static TEE_Result cipher_unwrap(void *srcData, uint32_t srcLen,
 				keySizeNum, isSecretKey, (uint8_t *)destData,
 				&dataOutLen);
 		PROV_DMSG("End  CRYS_AESUNWRAP() dataOutLen=%d\n", dataOutLen);
-		PROV_DMSG("tee_res=0x%08x res=0x%08x\n", tee_res, res);
+		PROV_DMSG("crys_res=0x%08x res=0x%08x\n", crys_res, res);
 		res = ss_translate_error_crys2ss_aes(crys_res);
 	}
 	if (SS_SUCCESS == res) {
@@ -6158,6 +6166,179 @@ static TEE_Result cipher_unwrap(void *srcData, uint32_t srcLen,
 	}
 	tee_res = ss_translate_error_ss2tee(res);
 	PROV_DMSG("tee_res=0x%08x res=0x%08x\n", tee_res, res);
+	return tee_res;
+}
+
+/*
+ * brief:	This function provides generating Secure Key Package..
+ *
+ * param[in]	 skeyParams	 - Structure contains input parameters.
+ * param[out]	 *skeyPackageBuf - Output buffer address to Secure Key Package.
+ * return	 TEE_Result	 - TEE internal API error code.
+ */
+static TEE_Result do_gen_skey_package(RCAR_SkeyParams_t *skeyParams,
+		uint8_t *skeyPackageBuf, uint32_t skeyPackageSize)
+{
+	SSError_t res = SS_SUCCESS;
+	TEE_Result tee_res;
+	uint32_t util_res;
+	enum secure_key_direction skeyDirection;
+	enum secure_key_cipher_mode skeyMode;
+	enum secure_key_type skeyType;
+	struct DX_UTIL_NonceCtrProtParams_t skeyProtParams;
+	skeyPackageBuf_t OutPackageBuf;
+
+	switch (skeyParams->direction) {
+	case TEE_MODE_ENCRYPT:
+		skeyDirection = DX_SECURE_KEY_DIRECTION_ENCRYPT;
+		break;
+	case TEE_MODE_DECRYPT:
+		skeyDirection = DX_SECURE_KEY_DIRECTION_DECRYPT;
+		break;
+	default:
+		PROV_EMSG("Direction=%d", skeyParams->direction);
+		res = SS_ERROR_BAD_PARAMETERS;
+		break;
+	}
+
+	if (SS_SUCCESS == res) {
+		switch (skeyParams->mode) {
+		case TEE_SKEY_CIPHER_CBC:
+			skeyMode = DX_SECURE_KEY_CIPHER_CBC;
+			break;
+		case TEE_SKEY_CIPHER_CTR:
+			skeyMode = DX_SECURE_KEY_CIPHER_CTR;
+			break;
+		case TEE_SKEY_CIPHER_OFB:
+			skeyMode = DX_SECURE_KEY_CIPHER_OFB;
+			break;
+		case TEE_SKEY_CIPHER_CBC_CTS:
+			skeyMode = DX_SECURE_KEY_CIPHER_CBC_CTS;
+			break;
+		case TEE_SKEY_CIPHER_CTR_NONCE_PROT:
+			skeyMode = DX_SECURE_KEY_CIPHER_CTR_NONCE_PROT;
+			break;
+		case TEE_SKEY_CIPHER_CTR_NONCE_PROT_NSP:
+			skeyMode = DX_SECURE_KEY_CIPHER_CTR_NONCE_CTR_PROT_NSP;
+			break;
+		default:
+			PROV_EMSG("Mode=%d", skeyParams->mode);
+			res = SS_ERROR_NOT_SUPPORTED;
+			break;
+		}
+	}
+
+	if (SS_SUCCESS == res) {
+		switch (skeyParams->keyType) {
+		case TEE_SKEY_AES_KEY128:
+			skeyType = DX_SECURE_KEY_AES_KEY128;
+			break;
+		case TEE_SKEY_AES_KEY256:
+			skeyType = DX_SECURE_KEY_AES_KEY256;
+			break;
+		case TEE_SKEY_MULTI2:
+			skeyType = DX_SECURE_KEY_MULTI2;
+			break;
+		case TEE_SKEY_BYPASS:
+			skeyType = DX_SECURE_KEY_BYPASS;
+			break;
+		default:
+			PROV_EMSG("KeyType=%d", skeyParams->keyType);
+			res = SS_ERROR_BAD_PARAMETERS;
+			break;
+		}
+	}
+
+	if (SS_SUCCESS == res) {
+		skeyProtParams.nonceCtrBuff = &skeyParams->nonceCtrBuff[0];
+		skeyProtParams.nonceLen = skeyParams->nonceLen;
+		skeyProtParams.ctrLen = skeyParams->ctrLen;
+		skeyProtParams.dataRange = skeyParams->dataRange;
+		skeyProtParams.isNonSecPathOp = skeyParams->isNonSecPathOp;
+
+		util_res = DX_UTIL_GenerateSecureKeyPackage(skeyDirection,
+				skeyMode, skeyParams->lowerBound,
+				skeyParams->upperBound, skeyParams->nonceBuf,
+				skeyParams->keyBuf, skeyType,
+				skeyParams->keyNumRounds, &skeyProtParams,
+				OutPackageBuf);
+
+		res = ss_translate_error_crys2ss_util(util_res);
+		PROV_DMSG("util_res=0x%08x -> res=0x%08x\n", util_res, res);
+	}
+
+	if (SS_SUCCESS == res) {
+		if (NULL == skeyPackageBuf) {
+			PROV_EMSG("skeyPackageBuf is NULL");
+			res = SS_ERROR_BAD_PARAMETERS;
+		}
+	}
+
+	if (SS_SUCCESS == res) {
+		if (sizeof(skeyPackageBuf_t) <= skeyPackageSize) {
+			(void)memcpy(skeyPackageBuf, OutPackageBuf,
+				sizeof(skeyPackageBuf_t));
+		} else {
+			PROV_EMSG("skeyPackageSize=%d", skeyPackageSize);
+			res = SS_ERROR_BAD_PARAMETERS;
+		}
+	}
+
+	tee_res = ss_translate_error_ss2tee(res);
+	PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n", res, tee_res);
+	return tee_res;
+}
+/*
+ * brief:	This function provides secure provisioning of OEM key.
+ *
+ * param[in]	 assetId		- Asset ID embedded in the asset package.
+ * param[in]	 *pAssetPackage		- The encrypted asset package.
+ * param[in]	 assetPackagLen		- Package data size.
+ * param[out]	 *pAssetData		- The decrypted asset data.
+ * param[in/out] *pAssetDataLen		- Size of Output buffer address.
+ * param[out]	 *pUserData		- Optionally user data embedded in the package.
+ * return	- TEE internal API error code.
+ */
+static TEE_Result do_asset_unpack(uint32_t assetId,
+		uint8_t *pAssetPackage, uint32_t assetPackagLen,
+		uint8_t *pAssetData, uint32_t *pAssetDataLen,
+		uint32_t *pUserData)
+
+{
+	TEE_Result tee_res;
+	SSError_t res = SS_SUCCESS;
+	CRYSError_t crys_res;
+	uint32_t dataOutLen = *pAssetDataLen;
+	uint32_t check_crys_res;
+
+	PROV_INMSG("START: do_asset_unpack\n");
+	if ((pAssetPackage == NULL) || (pAssetData == NULL) || 
+		(pAssetDataLen  == NULL)) {
+		PROV_EMSG("But Parameters in=%p out=%p outlen_ptr=%p",
+			pAssetPackage, pAssetData, pAssetDataLen);
+		res = SS_ERROR_BAD_PARAMETERS;
+	}
+	
+	if (SS_SUCCESS == res) {
+		crys_res = CRYS_ASSET_UNPACK(assetId, pAssetPackage,
+				assetPackagLen, pAssetData, &dataOutLen,
+				pUserData);
+		PROV_DMSG("crys_res=0x%08x dataOutLen=%d\n", crys_res, dataOutLen);
+		check_crys_res = crys_res >> 8U;
+		if (check_crys_res == CHECK_CRYS_ERROR_AES_BASE) {
+			res = ss_translate_error_crys2ss_aes(crys_res);
+		} else if (check_crys_res == CHECK_CRYS_ERROR_AESCCM_BASE) {
+			res = ss_translate_error_crys2ss_ccm(crys_res);
+		} else {
+			res = ss_translate_error_crys2ss_util(crys_res);
+		}
+		PROV_DMSG("crys_res=0x%08x -> res=0x%08x\n", crys_res, res);
+	}
+	if (SS_SUCCESS == res) {
+		*pAssetDataLen = dataOutLen;
+	}
+	tee_res = ss_translate_error_ss2tee(res);
+	PROV_OUTMSG("res=0x%08x -> tee_res=0x%08x\n",res, tee_res);
 	return tee_res;
 }
 
@@ -6336,5 +6517,7 @@ const struct crypto_ops crypto_ops = {
 		.cmac_derivekey = &do_cmac_derivekey,
 		.rpmb_derivekey = &do_rpmb_derivekey,
 		.rpmb_signframes = &do_rpmb_signframes,
+		.gen_skey_package = &do_gen_skey_package,
+		.asset_unpack = &do_asset_unpack,
 	}
 };

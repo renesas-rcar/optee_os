@@ -465,4 +465,11 @@ void TEE_BigIntComputeFMM(TEE_BigIntFMM *dest, TEE_BigIntFMM *op1,
 TEE_Result RCAR_AesUnwrap(void *srcData, uint32_t srcLen, void *keyData,
 	uint32_t keySize, uint32_t isSecretKey, void *destData, uint32_t *dstLen);
 
+TEE_Result RCAR_GenSkeyPackage(RCAR_SkeyParams_t *skeyParams,
+		uint8_t *skeyPackageBuf, uint32_t skeyPackageSize);
+
+TEE_Result RCAR_AssetUnpack(uint32_t assetId,
+		uint8_t *pAssetPackage, uint32_t assetPackagLen,
+		uint8_t *pAssetData, uint32_t *pAssetDataLen,
+		uint32_t *pUserData);
 #endif /* TEE_API_H */

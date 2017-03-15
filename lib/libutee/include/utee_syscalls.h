@@ -297,4 +297,11 @@ TEE_Result utee_cache_operation(void *va, size_t l, unsigned long op);
 TEE_Result urcar_aes_unwrap(void *srcData, uint32_t srcLen, void *keyData,
 	uint32_t keySize, uint32_t isSecretKey, void *destData, uint32_t *dstLen);
 
+TEE_Result urcar_gen_skey_package(RCAR_SkeyParams_t *skeyParams,
+		uint8_t *skeyPackageBuf, uint32_t skeyPackageSize);
+
+TEE_Result urcar_gen_asset_unpack(uint32_t assetId,
+		uint8_t *pAssetPackage, uint32_t assetPackagLen,
+		uint8_t *pAssetData, uint32_t *pAssetDataLen,
+		uint32_t *pUserData);
 #endif /* UTEE_SYSCALLS_H */

@@ -446,6 +446,18 @@
 #define TEE_PANIC_ID_TEE_BIGINTCONVERTFROMFMM       0x00001C02
 #define TEE_PANIC_ID_TEE_BIGINTCONVERTTOFMM         0x00001C03
 
+/* Use for RCAR_GneSkeyPackage */
+#define TEE_SKEY_AES_KEY128			    0x00000001U
+#define TEE_SKEY_AES_KEY256			    0x00000002U
+#define TEE_SKEY_MULTI2				    0x00000003U
+#define TEE_SKEY_BYPASS				    0x00000004U
+#define TEE_SKEY_CIPHER_CBC			    0x00000005U
+#define TEE_SKEY_CIPHER_CTR			    0x00000006U
+#define TEE_SKEY_CIPHER_OFB			    0x00000007U
+#define TEE_SKEY_CIPHER_CBC_CTS			    0x00000008U
+#define TEE_SKEY_CIPHER_CTR_NONCE_PROT		    0x00000009U
+#define TEE_SKEY_CIPHER_CTR_NONCE_PROT_NSP	    0x0000000AU
+
 /*
  * The macro TEE_PARAM_TYPES can be used to construct a value that you can
  * compare against an incoming paramTypes to check the type of all the

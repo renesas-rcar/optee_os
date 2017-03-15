@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
- * Copyright (c) 2015-2016, Renesas Electronics Corporation
+ * Copyright (c) 2015-2017, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -57,6 +57,9 @@ static unsigned long main_cpu_resume(unsigned long a0, unsigned long a1);
 static void main_fiq(void);
 static void main_hook_gic_disable(struct itr_chip *chip, size_t it);
 
+static uint32_t suspend_to_ram_save_flag = 0U;
+static uint32_t main_cpu_lock = (uint32_t)SPINLOCK_UNLOCK;
+
 static void main_tee_entry_fast(struct thread_smc_args *args)
 {
 	if (args->a0 == OPTEE_SMC_GET_SHM_CONFIG) {
@@ -65,19 +68,47 @@ static void main_tee_entry_fast(struct thread_smc_args *args)
 	tee_entry_fast(args);
 }
 
-static unsigned long main_cpu_suspend(unsigned long a0 __unused,
+static unsigned long main_cpu_suspend(unsigned long a0,
 				unsigned long a1 __unused)
 {
-	suspend_to_ram_save();
+	uint32_t cpsr;
 
+	cpu_spin_lock_irqsave(&main_cpu_lock, &cpsr);
+	DMSG("a0=0x%lX, a1=0x%lX", a0, a1);
+
+	if (a0 == TFW_ARG_SYSTEM_SUSPEND) {
+		if (suspend_to_ram_save_flag == 0U) {
+			suspend_to_ram_save();
+			suspend_to_ram_save_flag = 1U;
+			DMSG("END suspend_to_ram_save");
+		} else {
+			/* no operation */
+		}
+	} else {
+		/* in case of CPU_SUSPEND(CPU Idle), no operation */
+	}
+
+	cpu_spin_unlock_irqrestore(&main_cpu_lock, cpsr);
 	return 0U;
 }
 
 static unsigned long main_cpu_resume(unsigned long a0 __unused,
 				unsigned long a1 __unused)
 {
-	suspend_to_ram_restore();
+	uint32_t cpsr;
 
+	cpu_spin_lock_irqsave(&main_cpu_lock, &cpsr);
+	DMSG("a0=0x%lX, a1=0x%lX", a0, a1);
+
+	if (suspend_to_ram_save_flag == 1U) {
+		suspend_to_ram_restore();
+		suspend_to_ram_save_flag = 0U;
+		DMSG("END suspend_to_ram_restore");
+	} else {
+		/* no operation */
+	}
+
+	cpu_spin_unlock_irqrestore(&main_cpu_lock, cpsr);
 	return 0U;
 }
 

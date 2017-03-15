@@ -43,9 +43,12 @@
 /* H3 2.0 */
 #define ADDR_ROM_SECURE_API_H3_2_0	(0xeb1041d4U)
 #define ADDR_ROM_GETLCS_API_H3_2_0	(0xeb104434U)
-/* M3 */
+/* M3 1.0/1.05 */
 #define ADDR_ROM_SECURE_API_M3		(0xeb103efcU)
 #define ADDR_ROM_GETLCS_API_M3		(0xeb10415cU)
+/* API table */
+#define ADDR_ROM_SECURE_API_TABLE	(0xeb100100U)
+#define ADDR_ROM_GETLCS_API_TABLE	(0xeb10010cU)
 #else /* ARM64 */
 /* H3 1.0/1.1 */
 #define ADDR_ROM_SECURE_API_H3_1_X	(0xeb10dd64U)
@@ -53,9 +56,12 @@
 /* H3 2.0 */
 #define ADDR_ROM_SECURE_API_H3_2_0	(0xeb116ed4U)
 #define ADDR_ROM_GETLCS_API_H3_2_0	(0xeb117150U)
-/* M3 */
+/* M3 1.0/1.05 */
 #define ADDR_ROM_SECURE_API_M3		(0xeb1102fcU)
 #define ADDR_ROM_GETLCS_API_M3		(0xeb110578U)
+/* API table */
+#define ADDR_ROM_SECURE_API_TABLE	(0xeb100180U)
+#define ADDR_ROM_GETLCS_API_TABLE	(0xeb10018cU)
 #endif
 
 /* default value : R-Car H3 1.0/1.1 */
@@ -71,6 +77,8 @@ static TEE_Result product_setup(void)
 	uint32_t reg;
 	uint32_t type;
 	uint32_t cut_ver;
+	uint32_t dummy5;
+	int32_t new_api_table = 0;
 
 	reg = read32(PRR);
 	type = reg & PRR_PRODUCT_MASK;
@@ -78,27 +86,45 @@ static TEE_Result product_setup(void)
 
 	switch (type) {
 	case PRR_PRODUCT_H3:
-		if (cut_ver == PRR_CUT_H3_20) {
+		if (cut_ver == PRR_CUT_20) {
 			product_name = (const int8_t *)"H3 2.0";
 			ROM_SecureBootAPI =
 				(ROM_SECURE_API)ADDR_ROM_SECURE_API_H3_2_0;
 			ROM_GetLcs =
 				(ROM_GETLCS_API)ADDR_ROM_GETLCS_API_H3_2_0;
-		} else { /* H3 1.0/1.1 */
+		} else if ((cut_ver == PRR_CUT_10) || (cut_ver == PRR_CUT_11)) {
 			/* No Operation */
+		} else {
+			new_api_table = 1;	/* Later than H3 2.0 */
 		}
 		break;
 	case PRR_PRODUCT_M3:
-		product_type = PRR_PRODUCT_M3;
-		product_name = (const int8_t *)"M3";
-		ROM_SecureBootAPI = (ROM_SECURE_API)ADDR_ROM_SECURE_API_M3;
-		ROM_GetLcs = (ROM_GETLCS_API)ADDR_ROM_GETLCS_API_M3;
+		if (cut_ver == PRR_CUT_10) {
+			dummy5 = read32(FUSE_DUMMY5) & FUSE_M3_MASK;
+			if ((dummy5 == M3_100) || (dummy5 == M3_105)) {
+				product_type = PRR_PRODUCT_M3;
+				product_name = (const int8_t *)"M3 1.0/1.05";
+				ROM_SecureBootAPI =
+					(ROM_SECURE_API)ADDR_ROM_SECURE_API_M3;
+				ROM_GetLcs =
+					(ROM_GETLCS_API)ADDR_ROM_GETLCS_API_M3;
+			} else {
+				new_api_table = 1;	/* M3 1.06 */
+			}
+		} else {
+			new_api_table = 1;	/* M3 1.1 or later */
+		}
 		break;
 	default:
-		EMSG("Unknown product. PRR=0x%x", reg);
-		product_type = type | PRR_PRODUCT_UNKNOWN;
-		product_name = (const int8_t *)"unknown";
+		new_api_table = 1;	/* assume that M3N and E3 */
 		break;
+	}
+
+	if (new_api_table == 1) {
+		product_type = type | PRR_PRODUCT_API_TABLE;
+		product_name = (const int8_t *)"API table";
+		ROM_SecureBootAPI = (ROM_SECURE_API)ADDR_ROM_SECURE_API_TABLE;
+		ROM_GetLcs = (ROM_GETLCS_API)ADDR_ROM_GETLCS_API_TABLE;
 	}
 
 	return TEE_SUCCESS;

@@ -347,3 +347,19 @@ TEE_Result RCAR_AesUnwrap(void *srcData, uint32_t srcLen, void *keyData,
 	return urcar_aes_unwrap(srcData, srcLen, keyData, keySize, isSecretKey,
 			destData, dstLen);
 }
+
+TEE_Result RCAR_GenSkeyPackage(RCAR_SkeyParams_t *skeyParams,
+		uint8_t *skeyPackageBuf, uint32_t skeyPackageSize)
+{
+	return urcar_gen_skey_package(skeyParams, skeyPackageBuf, skeyPackageSize);
+}
+
+TEE_Result RCAR_AssetUnpack(uint32_t assetId,
+		uint8_t *pAssetPackage, uint32_t assetPackagLen,
+		uint8_t *pAssetData, uint32_t *pAssetDataLen,
+		uint32_t *pUserData)
+{
+	return urcar_gen_asset_unpack(assetId, pAssetPackage, assetPackagLen,
+			pAssetData, pAssetDataLen, pUserData);
+}
+

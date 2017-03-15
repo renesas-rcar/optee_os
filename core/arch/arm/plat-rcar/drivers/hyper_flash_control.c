@@ -135,7 +135,7 @@ static uint32_t hyper_flash_set_ext_addr_read_mode(uint32_t read_ext_top_addr,
 
 	uint32_t DREAR_value;
 
-	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80040263U;
+	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80070263U;
 	*((volatile uint32_t *)RPC_CMNCR)	=	0x01FFF301U;
 	*((volatile uint32_t *)RPC_DRCR)	=	0x001F0100U;
 	*((volatile uint32_t *)RPC_DRCMR)	=	0x00A00000U;
@@ -243,7 +243,7 @@ static uint32_t hyper_flash_set_command(uint32_t manual_set_addr,
 	uint32_t ret;
 	uint32_t status = 0U;
 
-	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80000263U;
+	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80030263U;
 	/*
 	 * bit31  CAL         =  1 : PHY calibration
 	 * bit1-0 PHYMEM[1:0] = 11 : HyperFlash
@@ -332,7 +332,7 @@ static uint32_t hyper_flash_read_register_data(uint32_t manual_set_addr,
 	uint32_t status = 0U;
 	uint32_t ret;
 
-	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80000263U;
+	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80030263U;
 	/*
 	 * bit31  CAL         =  1 : PHY calibration
 	 * bit1-0 PHYMEM[1:0] = 11 : HyperFlash
@@ -531,7 +531,7 @@ static uint32_t hyper_flash_write_buffer(uint32_t manual_set_addr,
 	 * bit9   RCF         =  1 : Read Cache Clear
 	 */
 
-	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80000277U;
+	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80030277U;
 	/*
 	 * bit31  CAL         =  1 : PHY calibration
 	 * bit2   WBUF        =  1 : Write Buffer Enable
@@ -592,7 +592,7 @@ static uint32_t hyper_flash_write_buffer(uint32_t manual_set_addr,
 					HF_WRITE_TIMEOUT, HF_WRITE_WAIT);
 
 	if (ret == FL_DRV_OK) {
-		*((volatile uint32_t *)RPC_PHYCNT)	=	0x00000273U;
+		*((volatile uint32_t *)RPC_PHYCNT)	=	0x00030273U;
 		/*
 		 * bit31  CAL         =  0 : No PHY calibration
 		 * bit2   WBUF        =  0 : Write Buffer Disable
