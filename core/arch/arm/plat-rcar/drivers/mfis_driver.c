@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2016, Renesas Electronics Corporation
+ * Copyright (c) 2015-2017, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -37,12 +37,9 @@
 /* Defines                                                                    */
 /******************************************************************************/
 /* Register */
-#define	MFIERRCTLR(a)	((volatile uint32_t *)(0xE6260200U + (uintptr_t)((a) * 4U)))
-#define	MFIERRSTSR(a)	((volatile uint32_t *)(0xE6260240U + (uintptr_t)((a) * 4U)))
-#define	MFIERRTGTR(a)	((volatile uint32_t *)(0xE6260280U + (uintptr_t)((a) * 4U)))
-#define	MFIERRCTLR7	((volatile uint32_t *)(0xE6260260U))
-#define	MFIERRSTSR7	((volatile uint32_t *)(0xE6260264U))
-#define	MFIERRTGTR7	((volatile uint32_t *)(0xE6260268U))
+#define	MFIERRCTLR(a)	((volatile uint32_t *)(0xE6260214U + (uintptr_t)((a) * 4U)))
+#define	MFIERRSTSR(a)	((volatile uint32_t *)(0xE6260254U + (uintptr_t)((a) * 4U)))
+#define	MFIERRTGTR(a)	((volatile uint32_t *)(0xE6260294U + (uintptr_t)((a) * 4U)))
 #define	MFIERRTGTR6	((volatile uint32_t *)(0xE626025CU))
 
 #define SMSTPCR2	(0xE6150138U)
@@ -56,14 +53,8 @@ typedef struct {
 	}array[MFIS_ERR_DET_MAX];
 }MFIS_REG_T;
 
-#define MFIS_ERR_0	(409U + 32U)
-#define MFIS_ERR_1	(410U + 32U)
-#define MFIS_ERR_2	(411U + 32U)
-#define MFIS_ERR_3	(412U + 32U)
-#define MFIS_ERR_4	(413U + 32U)
 #define MFIS_ERR_5	(414U + 32U)
 #define MFIS_ERR_6	(415U + 32U)
-#define MFIS_ERR_7	(307U + 32U)
 
 #define MFIS_STATE_NOACTIVE	(0U)
 #define MFIS_STATE_ACTIVE	(1U)
@@ -80,7 +71,7 @@ static void mfis_err_itr_del(void);
 /* Global                                                                     */
 /******************************************************************************/
 static uint32_t		mfis_state = MFIS_STATE_NOACTIVE;
-static uint32_t		mfis_reg_num = MFIS_ERR_DET_MAX - 1U;
+static uint32_t		mfis_reg_num = MFIS_ERR_DET_MAX;
 static uint32_t		mfis_suspend_flag = 0U;
 static MFIS_REG_T	mfis_reg;
 static MFIS_ERR_SETTING_T	local_setting;
@@ -113,11 +104,7 @@ static enum itr_return mfis_err_handler(struct itr_handler *h)
 	uint32_t table;
 
 	if (NULL != h) {
-		if (MFIS_ERR_7 == h->it) {
-			table = MFIS_ERR_DET_MAX - 1U;
-		} else {
-			table = h->it - MFIS_ERR_0;
-		}
+		table = h->it - MFIS_ERR_5;
 
 		factor.error[table] = *(mfis_reg.array[table].MFIERRSTSR);
 
@@ -134,42 +121,12 @@ static enum itr_return mfis_err_handler(struct itr_handler *h)
 
 static struct itr_handler mfis_err_itr[] = {
 	{
-	.it = MFIS_ERR_0,
-	.flags = (uint32_t)ITRF_TRIGGER_LEVEL,
-	.handler = &mfis_err_handler
-	},
-	{
-	.it = MFIS_ERR_1,
-	.flags = (uint32_t)ITRF_TRIGGER_LEVEL,
-	.handler = &mfis_err_handler
-	},
-	{
-	.it = MFIS_ERR_2,
-	.flags = (uint32_t)ITRF_TRIGGER_LEVEL,
-	.handler = &mfis_err_handler
-	},
-	{
-	.it = MFIS_ERR_3,
-	.flags = (uint32_t)ITRF_TRIGGER_LEVEL,
-	.handler = &mfis_err_handler
-	},
-	{
-	.it = MFIS_ERR_4,
-	.flags = (uint32_t)ITRF_TRIGGER_LEVEL,
-	.handler = &mfis_err_handler
-	},
-	{
 	.it = MFIS_ERR_5,
 	.flags = (uint32_t)ITRF_TRIGGER_LEVEL,
 	.handler = &mfis_err_handler
 	},
 	{
 	.it = MFIS_ERR_6,
-	.flags = (uint32_t)ITRF_TRIGGER_LEVEL,
-	.handler = &mfis_err_handler
-	},
-	{
-	.it = MFIS_ERR_7,
 	.flags = (uint32_t)ITRF_TRIGGER_LEVEL,
 	.handler = &mfis_err_handler
 	}
@@ -270,28 +227,17 @@ int32_t mfis_error_detection_stop(void)
 static TEE_Result mfis_err_init(void)
 {
 	uint32_t loop;
-	uint32_t type;
 	
 	(void)memset(&mfis_reg, 0x00, sizeof(MFIS_REG_T));
 
-	for(loop = 0U; loop < (MFIS_ERR_DET_MAX - 1U); loop++)
+	for(loop = 0U; loop < mfis_reg_num; loop++)
 	{
 		mfis_reg.array[loop].MFIERRCTLR = MFIERRCTLR(loop);
 		mfis_reg.array[loop].MFIERRSTSR = MFIERRSTSR(loop);
 		mfis_reg.array[loop].MFIERRTGTR = MFIERRTGTR(loop);
 		itr_add(&mfis_err_itr[loop]);
 	}
-	mfis_reg.array[6U].MFIERRTGTR = MFIERRTGTR6;
-
-	type = read32(PRR) & PRR_PRODUCT_MASK;
-
-	if (PRR_PRODUCT_M3 == type) {
-		mfis_reg.array[7U].MFIERRCTLR = MFIERRCTLR7;
-		mfis_reg.array[7U].MFIERRSTSR = MFIERRSTSR7;
-		mfis_reg.array[7U].MFIERRTGTR = MFIERRTGTR7;
-		itr_add(&mfis_err_itr[7U]);
-		mfis_reg_num = MFIS_ERR_DET_MAX;
-	}
+	mfis_reg.array[1U].MFIERRTGTR = MFIERRTGTR6;
 
 	return TEE_SUCCESS;
 }

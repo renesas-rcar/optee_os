@@ -337,7 +337,6 @@ static TEE_Result authenc_dec_final(void *ctx, uint32_t algo,
 		size_t *dst_len, const uint8_t *tag, size_t tag_len);
 static void authenc_final(void *ctx, uint32_t algo);
 static SSError_t ss_generate_random(uint8_t *outPtr, size_t outSize);
-static TEE_Result prng_read(void *buf, size_t blen);
 static TEE_Result prng_read_without_init(void *buf, size_t blen);
 static TEE_Result prng_add_entropy(const uint8_t *inbuf, size_t len);
 static TEE_Result prng_init(void);
@@ -5812,48 +5811,6 @@ static SSError_t ss_generate_random(uint8_t *outPtr, size_t outSize)
 }
 
 /*
- * brief:	Generate a random number.
- *
- * param[in]	*buf		- Pointer to the memory block to output data buffer.
- * param[in]	blen		- Size of Output data buffer you want.
- * return	TEE_Result	- TEE internal API error code.
- */
-static TEE_Result prng_read(void *buf, size_t blen)
-{
-	TEE_Result tee_res;
-	SSError_t res = SS_SUCCESS;
-	CRYSError_t crys_res;
-	CRYS_RND_WorkBuff_t *rndWorkBuff;
-	uint8_t *out_ptr;
-
-	PROV_INMSG("START: prng_read\n");
-
-	out_ptr = (uint8_t *)buf;
-	rndWorkBuff = (CRYS_RND_WorkBuff_t *)ss_malloc(
-			sizeof(CRYS_RND_WorkBuff_t), &res);
-
-	if (res == SS_SUCCESS) {
-		PROV_DMSG("CALL: CRYS_RND_Instantiation()\n");
-		crys_res = CRYS_RND_Instantiation(rndWorkBuff);
-		res = ss_translate_error_crys2ss_rnd(crys_res);
-		PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n",
-				crys_res, res);
-	}
-	if (res == SS_SUCCESS) {
-		PROV_DMSG("CALL: ss_generate_random()\n");
-		PROV_DMSG("out_ptr=%p  blen=%ld\n", out_ptr, blen);
-		res = ss_generate_random(out_ptr, blen);
-	}
-
-	ss_free((void *)rndWorkBuff);
-	tee_res = ss_translate_error_ss2tee(res);
-	PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n", res, tee_res);
-	return tee_res;
-}
-
-
-
-/*
  * brief:	Generate a random number (SHE).
  *
  * param[in]	*buf		- Pointer to the memory block to output data buffer.
@@ -6509,7 +6466,7 @@ const struct crypto_ops crypto_ops = {
 #endif /* _CFG_CRYPTO_WITH_ACIPHER */
 	.prng = {
 		.add_entropy = &prng_add_entropy,
-		.read = &prng_read,
+		.read = &prng_read_without_init,
 		.read_without_init = &prng_read_without_init,
 		.init = &prng_init,
 	},

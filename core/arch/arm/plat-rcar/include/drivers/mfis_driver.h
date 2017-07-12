@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2016, Renesas Electronics Corporation
+ * Copyright (c) 2015-2017, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -28,7 +28,7 @@
 #ifndef MFIS_DRIVER_H_
 #define MFIS_DRIVER_H_
 
-#define	MFIS_ERR_DET_MAX	(8U)
+#define	MFIS_ERR_DET_MAX	(2U)
 
 #define	MFIS_SUCCESS			(0)
 #define	MFIS_ERR_PARAMETER		(-1)
