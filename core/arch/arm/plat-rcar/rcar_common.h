@@ -101,6 +101,9 @@
 #define TFW_ARG_CPU_SUSPEND	(0x0UL)
 #define TFW_ARG_SYSTEM_SUSPEND	(0x1UL)
 
+/* Argument flag of the hw_engine_lock() */
+#define HWENG_SECURE_CORE	(0x00000001U)
+
 extern uint32_t product_type;
 extern const int8_t *product_name;
 
@@ -116,5 +119,13 @@ void enable_interrupts(uint32_t flags);
 void enable_abort(void);
 void enable_fiq(void);
 void enable_irq(void);
+
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
+extern void hw_engine_lock(uint32_t *lock, uint32_t flag);
+extern void hw_engine_unlock(uint32_t lock);
+#else
+#define hw_engine_lock(...)	(void)0
+#define hw_engine_unlock(lock)	(void)(lock)
+#endif /* CFG_CRYPT_HW_CRYPTOENGINE */
 
 #endif /* RCAR_COMMON_H */

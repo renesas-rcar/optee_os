@@ -167,8 +167,13 @@ static uint32_t call_maskrom_api(void)
 	uint32_t ret;
 	uint32_t *key_cert = (uint32_t *)TA_KEY_CERT_ADDR;
 	uint32_t *content_cert = (uint32_t *)TA_CONTENT_CERT_ADDR;
+	uint32_t hwlock;
+
+	hw_engine_lock(&hwlock, HWENG_SECURE_CORE);
 
 	ret = ROM_SecureBootAPI(key_cert, content_cert, NULL);
+
+	hw_engine_unlock(hwlock);
 
 	return ret;
 }
