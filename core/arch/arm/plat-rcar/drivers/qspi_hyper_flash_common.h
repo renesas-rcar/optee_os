@@ -166,6 +166,12 @@
 /* read_sector_size_bit on/off flag */
 #define READ_SECTOR_SIZE_BIT_OFF	0U
 #define READ_SECTOR_SIZE_BIT_ON		1U
+
+/* RPC clock mode */
+#define RPC_CLK_40M			(0x01U)
+#define RPC_CLK_80M			(0x02U)
+#define RPC_CLK_160M			(0x03U)
+
 /*
  * Global variable declaration
  */
@@ -181,5 +187,6 @@ uint32_t common_wait_spi_transfer(uint32_t *dataL);
 uint32_t common_wait(uint32_t (*read_status)(uint32_t *), uint32_t *data,
 					uint32_t timeout, uint32_t wait);
 void soft_delay(uint32_t delay_ms);
+uint32_t set_rpc_clock_mode(uint32_t mode);
 
 #endif /* QSPI_HYPER_FLASH_COMMON_H */

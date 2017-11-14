@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2016, Renesas Electronics Corporation
+ * Copyright (c) 2015-2017, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@
 
 #include <stdint.h>
 
-#define VERSION_OF_RENESAS	"1.0.9"
+#define VERSION_OF_RENESAS	"1.0.10"
 
 extern const int8_t version_of_renesas[];
 

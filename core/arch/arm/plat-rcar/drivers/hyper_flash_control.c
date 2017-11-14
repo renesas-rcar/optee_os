@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2016, Renesas Electronics Corporation
+ * Copyright (c) 2015-2017, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -191,40 +191,48 @@ static uint32_t hyper_flash_write_main(uint32_t buf_addr,
 	uint8_t *p_flash_addr;
 	uint32_t ret = FL_DRV_OK;
 
-	hyper_flash_set_disable_write_protect();
+	ret = set_rpc_clock_mode(RPC_CLK_40M);	/* 50MHz(max) */
 
-	write_data_addr = buf_addr;
-	work_flash_addr = flash_addr;
-	write_num = wsize / WRITE_BUFF_SIZE;
-	rest_wsize = wsize % WRITE_BUFF_SIZE;
-	if (rest_wsize > 0U) {
-		write_num++;
-	}
+	if (ret == FL_DRV_OK) {
+		hyper_flash_set_disable_write_protect();
 
-	/* RPC Write Buffer size : 256byte , and rest size writing */
-	for (wcount = 0U; wcount < write_num; wcount++) {
-		if (wcount == (write_num - 1U)) {
-			if (rest_wsize > 0U) {
-				wbuf_size = rest_wsize;
-				work_flash_256top =
-					(work_flash_addr / WRITE_BUFF_SIZE) *
-								WRITE_BUFF_SIZE;
-				(void)memset(wbuff, 0xffU, WRITE_BUFF_SIZE);
-				w_offset = work_flash_addr - work_flash_256top;
-				v_flash_addr = write_data_addr;
-				p_flash_addr = (uint8_t *)v_flash_addr;
-				(void)memcpy(wbuff+w_offset, p_flash_addr,
-								wbuf_size);
-				uptr_wbuff = (uintptr_t)wbuff;
-				ret = hyper_flash_request_write_buffer(
-					work_flash_256top, uptr_wbuff);
-				break;
-			}
+		write_data_addr = buf_addr;
+		work_flash_addr = flash_addr;
+		write_num = wsize / WRITE_BUFF_SIZE;
+		rest_wsize = wsize % WRITE_BUFF_SIZE;
+		if (rest_wsize > 0U) {
+			write_num++;
 		}
-		ret = hyper_flash_request_write_buffer(work_flash_addr,
+
+		/* RPC Write Buffer size : 256byte , and rest size writing */
+		for (wcount = 0U; wcount < write_num; wcount++) {
+			if (wcount == (write_num - 1U)) {
+				if (rest_wsize > 0U) {
+					wbuf_size = rest_wsize;
+					work_flash_256top = (work_flash_addr /
+						WRITE_BUFF_SIZE) *
+						WRITE_BUFF_SIZE;
+					(void)memset(wbuff, 0xffU,
+						WRITE_BUFF_SIZE);
+					w_offset = work_flash_addr -
+						work_flash_256top;
+					v_flash_addr = write_data_addr;
+					p_flash_addr = (uint8_t *)v_flash_addr;
+					(void)memcpy(wbuff+w_offset,
+						p_flash_addr, wbuf_size);
+					uptr_wbuff = (uintptr_t)wbuff;
+					ret = hyper_flash_request_write_buffer(
+						work_flash_256top, uptr_wbuff);
+					break;
+				}
+			}
+			ret = hyper_flash_request_write_buffer(work_flash_addr,
 							write_data_addr);
-		work_flash_addr += WRITE_BUFF_SIZE;
-		write_data_addr += WRITE_BUFF_SIZE;
+			work_flash_addr += WRITE_BUFF_SIZE;
+			write_data_addr += WRITE_BUFF_SIZE;
+		}
+
+		ret = set_rpc_clock_mode(RPC_CLK_80M);
 	}
 
 	return ret;

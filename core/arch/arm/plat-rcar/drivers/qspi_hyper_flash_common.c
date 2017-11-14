@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2016, Renesas Electronics Corporation
+ * Copyright (c) 2015-2017, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -123,4 +123,50 @@ void soft_delay(uint32_t delay_ms)
 			}
 		} while ((ret == TEE_SUCCESS) && ((e - s) < delay_ms));
 	}
+}
+
+uint32_t set_rpc_clock_mode(uint32_t mode)
+{
+	uint32_t ret = FL_DRV_OK;
+	uint32_t dataL;
+	uint32_t reg;
+	int32_t i;
+	const int32_t polling_max = 100;
+	const int32_t dummy_max = 1700; /* 10us or so wait */
+	volatile int32_t loop;
+
+	if (mode == RPC_CLK_40M) {
+		dataL = 0x00000017U;	/* RPC clock 40MHz */
+	} else if (mode == RPC_CLK_80M) {
+		dataL = 0x00000013U;	/* RPC clock 80MHz */
+	} else if (mode == RPC_CLK_160M) {
+		dataL = 0x00000011U;	/* RPC clock 160MHz */
+	} else {
+		ret = FL_DRV_ERR_STATUS_INCORRECT;
+		EMSG("%s: Invalid argument. mode=%d", __func__, mode);
+	}
+	/*
+	 bit[9]=1'b0: RPCD2 clock supply
+	 bit[8]=1'b0: RPC clock supply
+	 bit[4:0]=1'b10001: RPC clock=320MHz, RPCD2 clock=160MHz (160MHz)
+	 bit[4:0]=1'b10011: RPC clock=160MHz, RPCD2 clock= 80MHz ( 80MHz)
+	 bit[4:0]=1'b10111: RPC clock= 80MHz, RPCD2 clock= 40MHz ( 40MHz)
+	 */
+	if (ret == FL_DRV_OK) {
+		*((volatile uint32_t*)CPG_CPGWPR)	= ~dataL;
+		*((volatile uint32_t*)CPG_RPCCKCR)	=  dataL;
+
+		ret = FL_DRV_ERR_TIMEOUT;
+		for (i = 0; i < polling_max; i++) {
+			reg = *((volatile uint32_t*)CPG_RPCCKCR);
+			if (reg == dataL) {
+				ret = FL_DRV_OK;
+				break;
+			}
+			/* dummy loop */
+			for(loop = 0; loop < dummy_max; loop++);
+		}
+	}
+
+	return ret;
 }
