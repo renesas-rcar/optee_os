@@ -1,13 +1,14 @@
 ##########################################################
 ## Common mk file used for Android to compile and       ##
-## integrate OP-TEE related components                   ##
-## Following flags need to be defined in device.mk    ##
+## integrate OP-TEE related components                  ##
+## Following flags need to be defined in optee*.mk      ##
 ##    OPTEE_OS_DIR                                      ##
 ##    OPTEE_TA_TARGETS                                  ##
 ##    OPTEE_CFG_ARM64_CORE                              ##
 ##    OPTEE_PLATFORM                                    ##
 ##    OPTEE_PLATFORM_FLAVOR                             ##
-## And BUILD_OPTEE_MK needs to be defined in device.mk  ##
+##    OPTEE_EXTRA_FLAGS (optional)                      ##
+## And BUILD_OPTEE_MK needs to be defined in optee*.mk  ##
 ## to point to this file                                ##
 ##                                                      ##
 ## local_module needs to be defined before including    ##
@@ -28,7 +29,7 @@ TA_DEV_KIT_DIR := $(OPTEE_OS_OUT_DIR)/export-${OPTEE_TA_TARGETS}
 TOP_ROOT_ABS := $(realpath $(TOP))
 CROSS_COMPILE64 := $(TOP_ROOT_ABS)/$(TARGET_TOOLS_PREFIX)
 CROSS_COMPILE_LINE := CROSS_COMPILE64="$(CROSS_COMPILE64)"
-ifeq ($(strip $($(combo_2nd_arch_prefix)TARGET_TOOLS_PREFIX)),)
+ifneq ($(strip $($(combo_2nd_arch_prefix)TARGET_TOOLS_PREFIX)),)
 CROSS_COMPILE32 := $(TOP_ROOT_ABS)/$($(combo_2nd_arch_prefix)TARGET_TOOLS_PREFIX)
 CROSS_COMPILE_LINE += CROSS_COMPILE32="$(CROSS_COMPILE32)"
 endif
@@ -50,7 +51,8 @@ BUILD_OPTEE_OS:
 		CFG_ARM64_core=$(OPTEE_CFG_ARM64_CORE) \
 		PLATFORM=$(OPTEE_PLATFORM) \
 		PLATFORM_FLAVOR=$(OPTEE_PLATFORM_FLAVOR) \
-		$(CROSS_COMPILE_LINE)
+		$(CROSS_COMPILE_LINE) \
+		$(OPTEE_EXTRA_FLAGS)
 	@echo "Finished building optee_os..."
 
 endif

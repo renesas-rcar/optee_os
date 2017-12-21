@@ -24,6 +24,10 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+#ifndef TZ_SSVCE_DEF_H
+#define TZ_SSVCE_DEF_H
+
+#include <util.h>
 
 /*
  * ARMv7 Secure Services library
@@ -72,7 +76,7 @@
  * Outer cache iomem
  */
 #define PL310_LINE_SIZE		32
-#define PL310_NB_WAYS		8
+#define PL310_8_WAYS		8
 
 /* reg1 */
 #define PL310_CTRL		0x100
@@ -99,6 +103,9 @@
 #define PL310_PREFETCH_CTRL	0xF60
 #define PL310_POWER_CTRL	0xF80
 
+#define PL310_CTRL_ENABLE_BIT	BIT32(0)
+#define PL310_AUX_16WAY_BIT	BIT32(16)
+
 /*
  * SCU iomem
  */
@@ -112,6 +119,14 @@
 #define SCU_NSAC	0x54
 #define SCU_ERRATA744369 0x30
 
+#define SCU_ACCESS_CONTROL_CPU0		BIT32(0)
+#define SCU_ACCESS_CONTROL_CPU1		BIT32(1)
+#define SCU_ACCESS_CONTROL_CPU2		BIT32(2)
+#define SCU_ACCESS_CONTROL_CPU3		BIT32(3)
+#define SCU_NSAC_SCU_SHIFT		0
+#define SCU_NSAC_PTIMER_SHIFT		4
+#define SCU_NSAC_GTIMER_SHIFT		8
+
 /*
  * GIC iomem
  */
@@ -122,3 +137,5 @@
  * CPU iomem
  */
 #define CORE_ICC_ICCPMR	0x0004
+
+#endif /* TZ_SSVCE_DEF_H */

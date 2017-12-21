@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, Linaro Limited
+ * Copyright (c) 2016-2017, Linaro Limited
  * Copyright (c) 2014, STMicroelectronics International N.V.
  * All rights reserved.
  *
@@ -26,15 +26,19 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <asm.S>
-#include <arm.h>
 #include <arm32_macros.S>
-#include <sm/optee_smc.h>
-#include <sm/teesmc_opteed_macros.h>
-#include <sm/teesmc_opteed.h>
+#include <arm.h>
+#include <asm-defines.h>
+#include <asm.S>
+#include <keep.h>
 #include <kernel/abort.h>
 #include <kernel/thread_defs.h>
 #include <kernel/unwind.h>
+#include <sm/optee_smc.h>
+#include <sm/teesmc_opteed.h>
+#include <sm/teesmc_opteed_macros.h>
+
+#include "thread_private.h"
 
 	.section .text.thread_asm
 
@@ -75,7 +79,7 @@ UNWIND(	.fnstart)
 UNWIND(	.cantunwind)
  	/* Secure Monitor received a FIQ and passed control to us. */
 	bl	thread_check_canaries
- 	ldr	lr, =thread_fiq_handler_ptr
+	ldr	lr, =thread_nintr_handler_ptr
  	ldr	lr, [lr]
  	blx	lr
 	mov	r1, r0
@@ -169,8 +173,7 @@ END_FUNC vector_system_reset_entry
  * the cpu_*_entry and system_*_entry are not used then.
  *
  * Note that ARM-TF depends on the layout of this vector table, any change
- * in layout has to be synced with ARM-TF. This layout must also be kept in
- * sync with sm_entry_vector in sm.c
+ * in layout has to be synced with ARM-TF.
  */
 FUNC thread_vector_table , :
 UNWIND(	.fnstart)
@@ -192,6 +195,17 @@ UNWIND(	.fnstart)
 UNWIND(	.cantunwind)
 	mrs	r1, cpsr
 	cps	#CPSR_MODE_ABT
+	mov	sp, r0
+	msr	cpsr, r1
+	bx	lr
+UNWIND(	.fnend)
+END_FUNC thread_set_abt_sp
+
+FUNC thread_set_und_sp , :
+UNWIND(	.fnstart)
+UNWIND(	.cantunwind)
+	mrs	r1, cpsr
+	cps	#CPSR_MODE_UND
 	mov	sp, r0
 	msr	cpsr, r1
 	bx	lr
@@ -243,6 +257,53 @@ UNWIND(	.cantunwind)
 	rfefd	sp!
 UNWIND(	.fnend)
 END_FUNC thread_resume
+
+/*
+ * Disables IRQ and FIQ and saves state of thread in fiq mode which has
+ * the banked r8-r12 registers, returns original CPSR.
+ */
+LOCAL_FUNC thread_save_state_fiq , :
+UNWIND(	.fnstart)
+UNWIND(	.cantunwind)
+	mov	r9, lr
+
+	/*
+	 * Uses stack for temporary storage, while storing needed
+	 * context in the thread context struct.
+	 */
+
+	mrs	r8, cpsr
+
+	cpsid	aif			/* Disable Async abort, IRQ and FIQ */
+
+	push	{r4-r7}
+	push	{r0-r3}
+
+	mrs	r6, cpsr		/* Save current CPSR */
+
+	bl	thread_get_ctx_regs
+
+	pop	{r1-r4}			/* r0-r3 pushed above */
+	stm	r0!, {r1-r4}
+	pop	{r1-r4}			/* r4-r7 pushed above */
+	stm	r0!, {r1-r4}
+
+	cps     #CPSR_MODE_SYS
+	stm	r0!, {r8-r12}
+	stm     r0!, {sp, lr}
+
+	cps     #CPSR_MODE_SVC
+	mrs     r1, spsr
+	stm     r0!, {r1, sp, lr}
+
+	/* back to fiq mode */
+	orr	r6, r6, #ARM32_CPSR_FIA	/* Disable Async abort, IRQ and FIQ */
+	msr	cpsr, r6		/* Restore mode */
+
+	mov	r0, r8			/* Return original CPSR */
+	bx	r9
+UNWIND(	.fnend)
+END_FUNC thread_save_state_fiq
 
 /*
  * Disables IRQ and FIQ and saves state of thread, returns original
@@ -380,44 +441,72 @@ UNWIND(	.save	{r0})
 UNWIND(	.fnend)
 END_FUNC thread_rpc
 
-LOCAL_FUNC thread_fiq_handler , :
-UNWIND(	.fnstart)
-UNWIND(	.cantunwind)
-	/* FIQ has a +4 offset for lr compared to preferred return address */
-	sub     lr, lr, #4
+/* The handler of native interrupt. */
+.macro	native_intr_handler mode:req
+	.ifc	\mode\(),irq
 	/*
-	 * We're saving {r0-r3} and the banked fiq registers {r8-r12}. The
-	 * banked fiq registers need to be saved because the secure monitor
-	 * doesn't save those. The treatment of the banked fiq registers is
-	 * somewhat analogous to the lazy save of VFP registers.
+	 * Foreign interrupts should be masked.
+	 * For GICv2, IRQ is for foreign interrupt and already masked by
+	 * hardware in FIQ mode which is used for native interrupt.
+	 * For GICv3, FIQ is for foreign interrupt. It's not masked by hardware
+	 * in IRQ mode which is used for natvie interrupt.
 	 */
+	cpsid	f
+	.endif
+	/*
+	 * FIQ and IRQ have a +4 offset for lr compared to preferred return
+	 * address
+	 */
+	sub     lr, lr, #4
+
+	/*
+	 * We're always saving {r0-r3}. In IRQ mode we're saving r12 also.
+	 * In FIQ mode we're saving the banked fiq registers {r8-r12} FIQ
+	 * because the secure monitor doesn't save those. The treatment of
+	 * the banked fiq registers is somewhat analogous to the lazy save
+	 * of VFP registers.
+	 */
+	.ifc	\mode\(),fiq
 	push	{r0-r3, r8-r12, lr}
+	.else
+	push	{r0-r3, r12, lr}
+	.endif
 	bl	thread_check_canaries
-	ldr	lr, =thread_fiq_handler_ptr
+	ldr	lr, =thread_nintr_handler_ptr
 	ldr	lr, [lr]
 	blx	lr
+	.ifc	\mode\(),fiq
 	pop	{r0-r3, r8-r12, lr}
+	.else
+	pop	{r0-r3, r12, lr}
+	.endif
 	movs	pc, lr
-UNWIND(	.fnend)
-END_FUNC thread_fiq_handler
+.endm
 
-LOCAL_FUNC thread_irq_handler , :
-UNWIND(	.fnstart)
-UNWIND(	.cantunwind)
+/* The handler of foreign interrupt. */
+.macro foreign_intr_handler mode:req
+	.ifc	\mode\(),irq
 	/*
+	 * Disable FIQ if the foreign interrupt is sent as IRQ.
 	 * IRQ mode is set up to use tmp stack so FIQ has to be
 	 * disabled before touching the stack. We can also assign
 	 * SVC sp from IRQ sp to get SVC mode into the state we
 	 * need when doing the SMC below.
+	 * If it is sent as FIQ, the IRQ has already been masked by hardware
 	 */
-	cpsid	f			/* Disable FIQ also */
+	cpsid	f
+	.endif
 	sub	lr, lr, #4
 	push	{lr}
 	push	{r12}
 
+	.ifc	\mode\(),fiq
+	bl	thread_save_state_fiq
+	.else
 	bl	thread_save_state
+	.endif
 
-	mov	r0, #THREAD_FLAGS_EXIT_ON_IRQ
+	mov	r0, #THREAD_FLAGS_EXIT_ON_FOREIGN_INTR
 	mrs	r1, spsr
 	pop	{r12}
 	pop	{r2}
@@ -433,12 +522,33 @@ UNWIND(	.cantunwind)
 	mov	sp, r0
 
 	ldr	r0, =TEESMC_OPTEED_RETURN_CALL_DONE
-	ldr	r1, =OPTEE_SMC_RETURN_RPC_IRQ
+	ldr	r1, =OPTEE_SMC_RETURN_RPC_FOREIGN_INTR
 	mov	r2, #0
 	mov	r3, #0
 	/* r4 is already filled in above */
 	smc	#0
 	b	.	/* SMC should not return */
+.endm
+
+LOCAL_FUNC thread_fiq_handler , :
+UNWIND(	.fnstart)
+UNWIND(	.cantunwind)
+#if defined(CFG_ARM_GICV3)
+	foreign_intr_handler	fiq
+#else
+	native_intr_handler	fiq
+#endif
+UNWIND(	.fnend)
+END_FUNC thread_fiq_handler
+
+LOCAL_FUNC thread_irq_handler , :
+UNWIND(	.fnstart)
+UNWIND(	.cantunwind)
+#if defined(CFG_ARM_GICV3)
+	native_intr_handler	irq
+#else
+	foreign_intr_handler	irq
+#endif
 UNWIND(	.fnend)
 END_FUNC thread_irq_handler
 
@@ -450,6 +560,7 @@ UNWIND(	.fnstart)
 	bx	lr
 UNWIND(	.fnend)
 END_FUNC thread_init_vbar
+KEEP_PAGER thread_init_vbar
 
 /*
  * Below are low level routines handling entry and return from user mode.
@@ -558,59 +669,129 @@ UNWIND(	.fnend)
 END_FUNC thread_unwind_user_mode
 
 LOCAL_FUNC thread_abort_handler , :
-thread_abort_handler:
 thread_und_handler:
 UNWIND(	.fnstart)
 UNWIND(	.cantunwind)
 	/*
-	 * Switch to abort mode to use that stack instead.
+	 * Disable both foreign and native interrupts in the thread handlers.
+	 * The tee handlers can decide when the native interrupts should
+	 * be enabled.
 	 */
-	cps	#CPSR_MODE_ABT
-	push	{r0-r11, ip}
-	cps	#CPSR_MODE_UND
-	mrs	r0, spsr
-	tst	r0, #CPSR_T
-	subne	r1, lr, #2
-	subeq	r1, lr, #4
-	cps	#CPSR_MODE_ABT
-	push	{r0, r1}
-	msr	spsr_fsxc, r0	/* In case some code reads spsr directly */
+	cpsid	f	/* IRQ is already masked by the hardware */
+	strd	r0, r1, [sp, #THREAD_CORE_LOCAL_R0]
+	mrs	r1, spsr
+	tst	r1, #CPSR_T
+	subne	lr, lr, #2
+	subeq	lr, lr, #4
 	mov	r0, #ABORT_TYPE_UNDEF
 	b	.thread_abort_generic
 
 thread_dabort_handler:
-	push	{r0-r11, ip}
-	sub	r1, lr, #8
-	mrs	r0, spsr
-	push	{r0, r1}
+	/*
+	 * Disable both foreign and native interrupts in the thread handlers.
+	 * The tee handlers can decide when the native interrupts should
+	 * be enabled.
+	 */
+	cpsid	f	/* IRQ is already masked by the hardware */
+	strd	r0, r1, [sp, #THREAD_CORE_LOCAL_R0]
+	sub	lr, lr, #8
 	mov	r0, #ABORT_TYPE_DATA
 	b	.thread_abort_generic
 
 thread_pabort_handler:
-	push	{r0-r11, ip}
-	sub	r1, lr, #4
-	mrs	r0, spsr
-	push	{r0, r1}
+	/*
+	 * Disable both foreign and native interrupts in the thread handlers.
+	 * The tee handlers can decide when the native interrupts should
+	 * be enabled.
+	 */
+	cpsid	f	/* IRQ is already masked by the hardware */
+	strd	r0, r1, [sp, #THREAD_CORE_LOCAL_R0]
+	sub	lr, lr, #4
 	mov	r0, #ABORT_TYPE_PREFETCH
-	b	.thread_abort_generic
 
 .thread_abort_generic:
+	/*
+	 * At this label:
+	 * cpsr is in mode undef or abort
+	 * sp is still pointing to struct thread_core_local belonging to
+	 * this core.
+	 * {r0, r1} are saved in struct thread_core_local pointed to by sp
+	 * {r2-r11, ip} are untouched.
+	 * r0 holds the first argument for abort_handler()
+	 */
+
+	/*
+	 * Update core local flags.
+	 * flags = (flags << THREAD_CLF_SAVED_SHIFT) | THREAD_CLF_ABORT;
+	 */
+	ldr	r1, [sp, #THREAD_CORE_LOCAL_FLAGS]
+	lsl	r1, r1, #THREAD_CLF_SAVED_SHIFT
+	orr	r1, r1, #THREAD_CLF_ABORT
+
+	/*
+	 * Select stack and update flags accordingly
+	 *
+	 * Normal case:
+	 * If the abort stack is unused select that.
+	 *
+	 * Fatal error handling:
+	 * If we're already using the abort stack as noted by bit
+	 * (THREAD_CLF_SAVED_SHIFT + THREAD_CLF_ABORT_SHIFT) in the flags
+	 * field we're selecting the temporary stack instead to be able to
+	 * make a stack trace of the abort in abort mode.
+	 *
+	 * r1 is initialized as a temporary stack pointer until we've
+	 * switched to system mode.
+	 */
+	tst	r1, #(THREAD_CLF_ABORT << THREAD_CLF_SAVED_SHIFT)
+	orrne	r1, r1, #THREAD_CLF_TMP /* flags |= THREAD_CLF_TMP; */
+	str	r1, [sp, #THREAD_CORE_LOCAL_FLAGS]
+	ldrne	r1, [sp, #THREAD_CORE_LOCAL_TMP_STACK_VA_END]
+	ldreq	r1, [sp, #THREAD_CORE_LOCAL_ABT_STACK_VA_END]
+
+	/*
+	 * Store registers on stack fitting struct thread_abort_regs
+	 * start from the end of the struct
+	 * {r2-r11, ip}
+	 * Load content of previously saved {r0-r1} and stores
+	 * it up to the pad field.
+	 * After this is only {usr_sp, usr_lr} missing in the struct
+	 */
+	stmdb	r1!, {r2-r11, ip}	/* Push on the selected stack */
+	ldrd	r2, r3, [sp, #THREAD_CORE_LOCAL_R0]
+	/* Push the original {r0-r1} on the selected stack */
+	stmdb	r1!, {r2-r3}
+	mrs	r3, spsr
+	/* Push {pad, spsr, elr} on the selected stack */
+	stmdb	r1!, {r2, r3, lr}
+
 	cps	#CPSR_MODE_SYS
-	mov	r1, sp
-	mov	r2, lr
-	cps	#CPSR_MODE_ABT
-	push	{r1-r3}
-	mov	r1, sp
-	bl	abort_handler
-	pop	{r1-r3}
-	cps	#CPSR_MODE_SYS
+	str	lr, [r1, #-4]!
+	str	sp, [r1, #-4]!
 	mov	sp, r1
-	mov	lr, r2
+
+	bl	abort_handler
+
+	mov	ip, sp
+	ldr	sp, [ip], #4
+	ldr	lr, [ip], #4
+
+	/*
+	 * Even if we entered via CPSR_MODE_UND, we are returning via
+	 * CPSR_MODE_ABT. It doesn't matter as lr and spsr are assigned
+	 * here.
+	 */
 	cps	#CPSR_MODE_ABT
-	pop	{r0, r1}
-	mov	lr, r1
-	msr	spsr_fsxc, r0
-	pop	{r0-r11, ip}
+	ldm	ip!, {r0, r1, lr}	/* r0 is pad */
+	msr	spsr_fsxc, r1
+
+	/* Update core local flags */
+	ldr	r0, [sp, #THREAD_CORE_LOCAL_FLAGS]
+	lsr	r0, r0, #THREAD_CLF_SAVED_SHIFT
+	str	r0, [sp, #THREAD_CORE_LOCAL_FLAGS]
+
+	ldm	ip, {r0-r11, ip}
+
 	movs	pc, lr
 UNWIND(	.fnend)
 END_FUNC thread_abort_handler
@@ -618,6 +799,12 @@ END_FUNC thread_abort_handler
 LOCAL_FUNC thread_svc_handler , :
 UNWIND(	.fnstart)
 UNWIND(	.cantunwind)
+	/*
+	 * Disable both foreign and native interrupts in the thread handlers.
+	 * The tee handlers can decide when the native interrupts should
+	 * be enabled.
+	 */
+	cpsid	f	/* IRQ is already masked by the hardware */
 	push	{r0-r7, lr}
 	mrs	r0, spsr
 	push	{r0}

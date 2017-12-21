@@ -26,7 +26,7 @@
  */
 
 #include <platform_config.h>
-
+#include <console.h>
 #include <stdint.h>
 #include <string.h>
 #include <assert.h>
@@ -40,6 +40,7 @@
 #include <kernel/misc.h>
 #include <kernel/mutex.h>
 #include <kernel/tee_time.h>
+#include <kernel/tee_common_otp.h>
 #include <mm/core_mmu.h>
 #include <mm/core_memprot.h>
 #include <tee/entry_std.h>
@@ -47,12 +48,48 @@
 #include <console.h>
 #include <sm/sm.h>
 
-static void main_fiq(void);
+#define PLAT_HW_UNIQUE_KEY_LENGTH 32
+
+static struct gic_data gic_data;
+static struct serial8250_uart_data console_data;
+static uint8_t plat_huk[PLAT_HW_UNIQUE_KEY_LENGTH];
+
+register_phys_mem(MEM_AREA_RAM_SEC, TZDRAM_BASE, CFG_TEE_RAM_VA_SIZE);
+register_phys_mem(MEM_AREA_IO_SEC, SECRAM_BASE, SECRAM_SIZE);
+register_phys_mem(MEM_AREA_IO_SEC, GICC_BASE, GICC_SIZE);
+register_phys_mem(MEM_AREA_IO_SEC, GICD_BASE, GICD_SIZE);
+register_phys_mem(MEM_AREA_IO_NSEC, CONSOLE_UART_BASE,
+		  SERIAL8250_UART_REG_SIZE);
+
+void main_init_gic(void)
+{
+	vaddr_t gicc_base;
+	vaddr_t gicd_base;
+
+	gicc_base = (vaddr_t)phys_to_virt(GICC_BASE, MEM_AREA_IO_SEC);
+	gicd_base = (vaddr_t)phys_to_virt(GICD_BASE, MEM_AREA_IO_SEC);
+
+	if (!gicc_base || !gicd_base)
+		panic();
+
+	gic_init(&gic_data, gicc_base, gicd_base);
+	itr_init(&gic_data.chip);
+}
+
+void main_secondary_init_gic(void)
+{
+	gic_cpu_init(&gic_data);
+}
+
+static void main_fiq(void)
+{
+	gic_it_handle(&gic_data);
+}
 
 static const struct thread_handlers handlers = {
 	.std_smc = tee_entry_std,
 	.fast_smc = tee_entry_fast,
-	.fiq = main_fiq,
+	.nintr = main_fiq,
 	.cpu_on = pm_panic,
 	.cpu_off = pm_panic,
 	.cpu_suspend = pm_panic,
@@ -65,45 +102,6 @@ const struct thread_handlers *generic_boot_get_handlers(void)
 {
 	return &handlers;
 }
-
-static void main_fiq(void)
-{
-	panic();
-}
-
-static vaddr_t console_base(void)
-{
-	static void *va;
-
-	if (cpu_mmu_enabled()) {
-		if (!va)
-			va = phys_to_virt(CONSOLE_UART_BASE, MEM_AREA_IO_SEC);
-		return (vaddr_t)va;
-	}
-	return CONSOLE_UART_BASE;
-}
-
-void console_init(void)
-{
-	serial8250_uart_init(console_base(), CONSOLE_UART_CLK_IN_HZ,
-			     CONSOLE_BAUDRATE);
-}
-
-void console_putc(int ch)
-{
-	vaddr_t base = console_base();
-
-	if (ch == '\n')
-		serial8250_uart_putc('\r', base);
-	serial8250_uart_putc(ch, base);
-}
-
-void console_flush(void)
-{
-	serial8250_uart_flush_tx_fifo(console_base());
-}
-
-
 
 struct plat_nsec_ctx {
 	uint32_t usr_sp;
@@ -128,34 +126,59 @@ struct plat_nsec_ctx {
 	uint32_t mon_spsr;
 };
 
+struct plat_boot_args {
+	struct plat_nsec_ctx nsec_ctx;
+	uint8_t huk[PLAT_HW_UNIQUE_KEY_LENGTH];
+};
+
 void init_sec_mon(unsigned long nsec_entry)
 {
-	struct plat_nsec_ctx *plat_ctx = (struct plat_nsec_ctx *)nsec_entry;
+	struct plat_boot_args *plat_boot_args;
 	struct sm_nsec_ctx *nsec_ctx;
 
+	plat_boot_args = phys_to_virt(nsec_entry, MEM_AREA_IO_SEC);
+	if (!plat_boot_args)
+		panic();
+
 	/* Invalidate cache to fetch data from external memory */
-	cache_maintenance_l1(DCACHE_AREA_INVALIDATE, (void *)nsec_entry,
-		sizeof(struct plat_nsec_ctx));
+	cache_op_inner(DCACHE_AREA_INVALIDATE,
+			plat_boot_args, sizeof(*plat_boot_args));
 
 	/* Initialize secure monitor */
 	nsec_ctx = sm_get_nsec_ctx();
 
-	nsec_ctx->usr_sp = plat_ctx->usr_sp;
-	nsec_ctx->usr_lr = plat_ctx->usr_lr;
-	nsec_ctx->irq_spsr = plat_ctx->irq_spsr;
-	nsec_ctx->irq_sp = plat_ctx->irq_sp;
-	nsec_ctx->irq_lr = plat_ctx->irq_lr;
-	nsec_ctx->svc_spsr = plat_ctx->svc_spsr;
-	nsec_ctx->svc_sp = plat_ctx->svc_sp;
-	nsec_ctx->svc_lr = plat_ctx->svc_lr;
-	nsec_ctx->abt_spsr = plat_ctx->abt_spsr;
-	nsec_ctx->abt_sp = plat_ctx->abt_sp;
-	nsec_ctx->abt_lr = plat_ctx->abt_lr;
-	nsec_ctx->und_spsr = plat_ctx->und_spsr;
-	nsec_ctx->und_sp = plat_ctx->und_sp;
-	nsec_ctx->und_lr = plat_ctx->und_lr;
-	nsec_ctx->mon_lr = plat_ctx->mon_lr;
-	nsec_ctx->mon_spsr = plat_ctx->mon_spsr;
+	nsec_ctx->mode_regs.usr_sp = plat_boot_args->nsec_ctx.usr_sp;
+	nsec_ctx->mode_regs.usr_lr = plat_boot_args->nsec_ctx.usr_lr;
+	nsec_ctx->mode_regs.irq_spsr = plat_boot_args->nsec_ctx.irq_spsr;
+	nsec_ctx->mode_regs.irq_sp = plat_boot_args->nsec_ctx.irq_sp;
+	nsec_ctx->mode_regs.irq_lr = plat_boot_args->nsec_ctx.irq_lr;
+	nsec_ctx->mode_regs.svc_spsr = plat_boot_args->nsec_ctx.svc_spsr;
+	nsec_ctx->mode_regs.svc_sp = plat_boot_args->nsec_ctx.svc_sp;
+	nsec_ctx->mode_regs.svc_lr = plat_boot_args->nsec_ctx.svc_lr;
+	nsec_ctx->mode_regs.abt_spsr = plat_boot_args->nsec_ctx.abt_spsr;
+	nsec_ctx->mode_regs.abt_sp = plat_boot_args->nsec_ctx.abt_sp;
+	nsec_ctx->mode_regs.abt_lr = plat_boot_args->nsec_ctx.abt_lr;
+	nsec_ctx->mode_regs.und_spsr = plat_boot_args->nsec_ctx.und_spsr;
+	nsec_ctx->mode_regs.und_sp = plat_boot_args->nsec_ctx.und_sp;
+	nsec_ctx->mode_regs.und_lr = plat_boot_args->nsec_ctx.und_lr;
+	nsec_ctx->mon_lr = plat_boot_args->nsec_ctx.mon_lr;
+	nsec_ctx->mon_spsr = plat_boot_args->nsec_ctx.mon_spsr;
+
+	memcpy(plat_huk, plat_boot_args->huk, sizeof(plat_boot_args->huk));
 }
 
+void console_init(void)
+{
+	serial8250_uart_init(&console_data, CONSOLE_UART_BASE,
+			     CONSOLE_UART_CLK_IN_HZ, CONSOLE_BAUDRATE);
+	register_serial_console(&console_data.chip);
+}
 
+#if defined(CFG_OTP_SUPPORT)
+
+void tee_otp_get_hw_unique_key(struct tee_hw_unique_key *hwkey)
+{
+	memcpy(&hwkey->data[0], &plat_huk[0], sizeof(hwkey->data));
+}
+
+#endif

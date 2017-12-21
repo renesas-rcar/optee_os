@@ -1,5 +1,19 @@
 SHELL = /bin/bash
 
+# It can happen that a makefile calls us, which contains an 'export' directive
+# or the '.EXPORT_ALL_VARIABLES:' special target. In this case, all the make
+# variables are added to the environment for each line of the recipes, so that
+# any sub-makefile can use them.
+# We have observed this can cause issues such as 'Argument list too long'
+# errors as the shell runs out of memory.
+# Since this Makefile won't call any sub-makefiles, and since the commands do
+# not expect to implicitely obtain any make variable from the environment, we
+# can safely cancel this export mechanism. Unfortunately, it can't be done
+# globally, only by name. Let's unexport MAKEFILE_LIST which is by far the
+# biggest one due to our way of tracking dependencies and compile flags
+# (we include many *.cmd and *.d files).
+unexport MAKEFILE_LIST
+
 .PHONY: all
 all:
 
@@ -24,13 +38,14 @@ endif
 ARCH            ?= arm
 PLATFORM        ?= vexpress
 # Default value for PLATFORM_FLAVOR is set in plat-$(PLATFORM)/conf.mk
-O		?= out/$(ARCH)-plat-$(PLATFORM)
+ifeq ($O,)
+O               := out
+out-dir         := $(O)/$(ARCH)-plat-$(PLATFORM)
+else
+out-dir         := $(O)
+endif
 
 arch_$(ARCH)	:= y
-
-ifneq ($O,)
-out-dir := $O
-endif
 
 ifneq ($V,1)
 q := @
@@ -66,10 +81,15 @@ endef
 $(foreach t, $(ta-targets), $(eval $(call build-ta-target, $(t))))
 endif
 
+include mk/cleandirs.mk
+
 .PHONY: clean
 clean:
-	@$(cmd-echo-silent) '  CLEAN   .'
+	@$(cmd-echo-silent) '  CLEAN   $(out-dir)'
 	${q}rm -f $(cleanfiles)
+	${q}dirs="$(call cleandirs-for-rmdir)"; if [ "$$dirs" ]; then $(RMDIR) $$dirs; fi
+	@if [ "$(out-dir)" != "$(O)" ]; then $(cmd-echo-silent) '  CLEAN   $(O)'; fi
+	${q}if [ -d "$(O)" ]; then $(RMDIR) $(O); fi
 
 .PHONY: cscope
 cscope:

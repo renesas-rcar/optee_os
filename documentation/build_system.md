@@ -45,14 +45,14 @@ A *platform* is a family of closely related hardware configurations. A platform
 *flavor* is a variant of such configurations. When used together they define the
 target hardware on which OP-TEE will be run.
 
-For instance **PLATFORM=stm PLATFORM_FLAVOR=orly2** will build for the
-ST Microelectronics Orly2 board, while **PLATFORM=vexpress
+For instance **PLATFORM=stm PLATFORM_FLAVOR=b2260** will build for the
+ST Microelectronics 96boards/cannes2 board, while **PLATFORM=vexpress
 PLATFORM_FLAVOR=qemu_virt** will generate code for a para-virtualized ARM
 Versatile Express board running on QEMU.
 
 For convenience, the flavor may be appended to the platform name with a dash, so
-**make PLATFORM=stm-orly2** is a shortcut for
-**make PLATFORM=stm PLATFORM_FLAVOR=orly2**. Note that in both cases the value
+**make PLATFORM=stm-b2260** is a shortcut for
+**make PLATFORM=stm PLATFORM_FLAVOR=b2260**. Note that in both cases the value
 of **$(PLATFORM)** is **stm** in the makefiles.
 
 Platform-specific source code belongs to `core/arch/$(ARCH)/plat-$(PLATFORM)`,
@@ -124,7 +124,7 @@ $ make CROSS_COMPILE="ccache arm-linux-gnueabihf-"
 # 3. Same as (2.)
 $ make CROSS_COMPILE32="ccache arm-linux-gnueabihf-"
 
-# 4. Select 64-bit secure OS (and therefore both 32- and 64-bit
+# 4. Select 64-bit secure 'core' (and therefore both 32- and 64-bit
 # Trusted Application libraries)
 $ make CFG_ARM64_core=y
 

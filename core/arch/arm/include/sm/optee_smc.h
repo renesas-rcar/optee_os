@@ -290,6 +290,13 @@
 #define OPTEE_SMC_SEC_CAP_HAVE_RESERVED_SHM	(1 << 0)
 /* Secure world can communicate via previously unregistered shared memory */
 #define OPTEE_SMC_SEC_CAP_UNREGISTERED_SHM	(1 << 1)
+
+/*
+ * Secure world supports commands "register/unregister shared memory",
+ * secure world accepts command buffers located in any parts of non-secure RAM
+ */
+#define OPTEE_SMC_SEC_CAP_DYNAMIC_SHM		(1 << 2)
+
 #define OPTEE_SMC_FUNCID_EXCHANGE_CAPABILITIES	9
 #define OPTEE_SMC_EXCHANGE_CAPABILITIES \
 	OPTEE_SMC_FAST_CALL_VAL(OPTEE_SMC_FUNCID_EXCHANGE_CAPABILITIES)
@@ -385,7 +392,7 @@
 	OPTEE_SMC_FAST_CALL_VAL(OPTEE_SMC_FUNCID_BOOT_SECONDARY)
 
 /*
- * Resume from RPC (for example after processing an IRQ)
+ * Resume from RPC (for example after processing a foreign interrupt)
  *
  * Call register usage:
  * a0	SMC Function ID, OPTEE_SMC_CALL_RETURN_FROM_RPC
@@ -470,19 +477,19 @@
 	OPTEE_SMC_RPC_VAL(OPTEE_SMC_RPC_FUNC_FREE)
 
 /*
- * Deliver an IRQ in normal world.
+ * Deliver a foreign interrupt in normal world.
  *
  * "Call" register usage:
- * a0	OPTEE_SMC_RETURN_RPC_IRQ
+ * a0	OPTEE_SMC_RETURN_RPC_FOREIGN_INTR
  * a1-7	Resume information, must be preserved
  *
  * "Return" register usage:
  * a0	SMC Function ID, OPTEE_SMC_CALL_RETURN_FROM_RPC.
  * a1-7	Preserved
  */
-#define OPTEE_SMC_RPC_FUNC_IRQ		4
-#define OPTEE_SMC_RETURN_RPC_IRQ \
-	OPTEE_SMC_RPC_VAL(OPTEE_SMC_RPC_FUNC_IRQ)
+#define OPTEE_SMC_RPC_FUNC_FOREIGN_INTR	4
+#define OPTEE_SMC_RETURN_RPC_FOREIGN_INTR \
+	OPTEE_SMC_RPC_VAL(OPTEE_SMC_RPC_FUNC_FOREIGN_INTR)
 
 /*
  * Do an RPC request. The supplied struct optee_msg_arg tells which

@@ -355,6 +355,7 @@ typedef struct {
 #define	PT_HISUNW	0x6fffffff
 #define	PT_HIOS		0x6fffffff	/* Last OS-specific. */
 #define	PT_LOPROC	0x70000000	/* First processor-specific type. */
+#define PT_ARM_EXIDX	0x70000001	/* .ARM.exidx segment */
 #define	PT_HIPROC	0x7fffffff	/* Last processor-specific type. */
 
 /* Values for p_flags. */
@@ -645,6 +646,7 @@ typedef struct {
 #define	R_386_TLS_TPOFF32	37	/* GOT entry of -ve static TLS offset */
 #define	R_386_IRELATIVE		42	/* PLT entry resolved indirectly at runtime */
 
+#define	R_AARCH64_ABS64		257
 #define	R_AARCH64_RELATIVE 	1027
 
 #define	R_ARM_NONE		0	/* No relocation. */

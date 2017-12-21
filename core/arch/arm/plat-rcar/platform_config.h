@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2014, Linaro Limited
- * Copyright (c) 2015-2016, Renesas Electronics Corporation
+ * Copyright (c) 2015-2017, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -57,30 +57,17 @@
 #define GICC_OFFSET		(0x20000)
 #define GICD_OFFSET		(0x10000)
 
-#ifndef CFG_CRYPT_HW_CRYPTOENGINE
-#define CFG_TEE_RAM_VA_SIZE	(1024 * 1024)
-#else
 #define CFG_TEE_RAM_VA_SIZE	(1024 * 1024 * 3)
-#endif
 
 #ifndef CFG_TEE_LOAD_ADDR
 #define CFG_TEE_LOAD_ADDR	CFG_TEE_RAM_START
 #endif
 
 #define CFG_TEE_RAM_START	(0x44100000)	/* TEE RAM address	*/
-#ifndef CFG_CRYPT_HW_CRYPTOENGINE
-#define CFG_TEE_RAM_PH_SIZE	(0x00100000U)	/* TEE RAM size		*/
-#else
 #define CFG_TEE_RAM_PH_SIZE	(0x00300000U)	/* TEE RAM size		*/
-#endif
 
-#ifndef CFG_CRYPT_HW_CRYPTOENGINE
-#define CFG_TA_RAM_START	(0x44200000U)	/* TA RAM address	*/
-#define CFG_TA_RAM_SIZE		(0x02000000U)	/* TA RAM size		*/
-#else
 #define CFG_TA_RAM_START	(0x44400000U)	/* TA RAM address	*/
 #define CFG_TA_RAM_SIZE		(0x01E00000U)	/* TA RAM size		*/
-#endif
 
 #define CFG_SHMEM_START		(0x47E00000U)	/* Share Memory address	*/
 #define CFG_SHMEM_SIZE		(0x00100000U)	/* Share Memory size	*/
@@ -115,11 +102,11 @@
 
 #define MEM_SECTION_SIZE	(0x00100000U)
 
-#define MAX_MMAP_REGIONS	(17)
-
 #ifdef CFG_WITH_LPAE
-#define MAX_XLAT_TABLES		MAX_MMAP_REGIONS
+#define MAX_XLAT_TABLES		CFG_MMAP_REGIONS
 #endif
+
+#define OPTEE_LIMIT		(CFG_TEE_RAM_START + 0x00100000)
 
 #define DEVICE0_PA_BASE		ROUNDDOWN(SYSWDT_BASE, CORE_MMU_DEVICE_SIZE)
 #define DEVICE0_VA_BASE		DEVICE0_PA_BASE

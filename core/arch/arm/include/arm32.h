@@ -33,6 +33,12 @@
 #include <stdint.h>
 #include <util.h>
 
+#define CORTEX_A7_PART_NUM		0xC07
+#define CORTEX_A9_PART_NUM		0xC09
+
+#define MIDR_PRIMARY_PART_NUM_SHIFT	4
+#define MIDR_PRIMARY_PART_NUM_WIDTH	12
+
 #define CPSR_MODE_MASK	ARM32_CPSR_MODE_MASK
 #define CPSR_MODE_USR	ARM32_CPSR_MODE_USR
 #define CPSR_MODE_FIQ	ARM32_CPSR_MODE_FIQ
@@ -351,6 +357,13 @@ static inline uint32_t read_ifsr(void)
 	return ifsr;
 }
 
+static inline void write_scr(uint32_t scr)
+{
+	asm volatile ("mcr	p15, 0, %[scr], c1, c1, 0"
+			: : [scr] "r" (scr)
+	);
+}
+
 static inline void isb(void)
 {
 	asm volatile ("isb");
@@ -359,6 +372,31 @@ static inline void isb(void)
 static inline void dsb(void)
 {
 	asm volatile ("dsb");
+}
+
+static inline void dsb_ish(void)
+{
+	asm volatile ("dsb ish");
+}
+
+static inline void dsb_ishst(void)
+{
+	asm volatile ("dsb ishst");
+}
+
+static inline void dmb(void)
+{
+	asm volatile ("dmb");
+}
+
+static inline void sev(void)
+{
+	asm volatile ("sev");
+}
+
+static inline void wfe(void)
+{
+	asm volatile ("wfe");
 }
 
 /* Address translate privileged write translation (current state secure PL1) */
@@ -399,6 +437,13 @@ static inline uint64_t read_par64(void)
 	return val;
 }
 #endif
+
+static inline void write_tlbimvaais(uint32_t mva)
+{
+	asm volatile ("mcr	p15, 0, %[mva], c8, c3, 3"
+			: : [mva] "r" (mva)
+	);
+}
 
 static inline void write_mair0(uint32_t mair0)
 {
@@ -535,6 +580,24 @@ static inline uint32_t read_cntfrq(void)
 	return frq;
 }
 
+static inline void write_cntfrq(uint32_t frq)
+{
+	asm volatile("mcr p15, 0, %0, c14, c0, 0" : : "r" (frq));
+}
+
+static inline uint32_t read_cntkctl(void)
+{
+	uint32_t cntkctl;
+
+	asm volatile("mrc p15, 0, %0, c14, c1, 0" : "=r" (cntkctl));
+	return cntkctl;
+}
+
+static inline void write_cntkctl(uint32_t cntkctl)
+{
+	asm volatile("mcr p15, 0, %0, c14, c1, 0" : : "r" (cntkctl));
+}
+
 static __always_inline uint32_t read_pc(void)
 {
 	uint32_t val;
@@ -557,6 +620,67 @@ static __always_inline uint32_t read_lr(void)
 
 	asm volatile ("mov %0, lr" : "=r" (val));
 	return val;
+}
+
+static __always_inline uint32_t read_fp(void)
+{
+	uint32_t val;
+
+	asm volatile ("mov %0, fp" : "=r" (val));
+	return val;
+}
+
+static __always_inline uint32_t read_r7(void)
+{
+	uint32_t val;
+
+	asm volatile ("mov %0, r7" : "=r" (val));
+	return val;
+}
+
+/* Register read/write functions for GICC registers by using system interface */
+static inline uint32_t read_icc_ctlr(void)
+{
+	uint32_t v;
+
+	asm volatile ("mrc p15,0,%0,c12,c12,4" : "=r" (v));
+	return v;
+}
+
+static inline void write_icc_ctlr(uint32_t v)
+{
+	asm volatile ("mcr p15,0,%0,c12,c12,4" : : "r" (v));
+}
+
+static inline void write_icc_pmr(uint32_t v)
+{
+	asm volatile ("mcr p15,0,%0,c4,c6,0" : : "r" (v));
+}
+
+static inline uint32_t read_icc_iar0(void)
+{
+	uint32_t v;
+
+	asm volatile ("mrc p15,0,%0,c12,c8,0" : "=r" (v));
+	return v;
+}
+
+static inline void write_icc_eoir0(uint32_t v)
+{
+	asm volatile ("mcr p15,0,%0,c12,c8,1" : : "r" (v));
+}
+
+static inline uint64_t read_pmu_ccnt(void)
+{
+	uint32_t val;
+
+	asm volatile("mrc p15, 0, %0, c9, c13, 0" : "=r"(val));
+	return val;
+}
+
+static inline void wfi(void)
+{
+	asm volatile("wfi");
 }
 #endif /*ASM*/
 

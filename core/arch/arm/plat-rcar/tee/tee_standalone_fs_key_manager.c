@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2015, Linaro Limited
- * Copyright (c) 2016, Renesas Electronics Corporation
+ * Copyright (c) 2016-2017, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -44,7 +44,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <kernel/tee_common_otp.h>
-#include <kernel/tee_common_unpg.h>
 #include <tee/tee_cryp_utl.h>
 #include <tee/tee_cryp_provider.h>
 #include <tee/tee_fs_key_manager.h>
@@ -61,11 +60,9 @@ static uint8_t g_safs_ivek[TEE_SHA256_HASH_SIZE];
 static TEE_Result generate_ssk(uint8_t *ssk, uint32_t ssk_size,
 			uint8_t *huk, uint32_t huk_size,
 			uint8_t *message, uint32_t message_size);
-#ifdef CFG_ENC_FS
 static TEE_Result crypt_aes(uint32_t algo, TEE_OperationMode mode,
 			const struct tee_sfkm_crypt_info *c,
 			uint8_t *data_out);
-#endif
 static TEE_Result generate_cmac(const uint8_t *data_in, size_t data_size,
 			uint8_t *mac_out, const uint8_t *key, size_t key_size,
 			const uint8_t *data2_in, size_t data2_size);
@@ -169,16 +166,13 @@ TEE_Result tee_sfkm_encrypt_suk(struct tee_sfkm_crypt_info *c,
 			uint8_t *encrypted_iv)
 {
 	TEE_Result res;
-#ifdef CFG_ENC_FS
 	struct tee_sfkm_crypt_info iv_enc_info;
-#endif
 
 	c->key = g_safs_suk;
 	c->key_size = sizeof(g_safs_suk);
 
 	res = tee_sfkm_encrypt(c, data_out, NULL);
 
-#ifdef CFG_ENC_FS
 	if (res == TEE_SUCCESS) {
 		iv_enc_info.data_in	= c->iv;
 		iv_enc_info.data_size	= c->key_size;
@@ -190,11 +184,6 @@ TEE_Result tee_sfkm_encrypt_suk(struct tee_sfkm_crypt_info *c,
 		res = crypt_aes(TEE_ALG_AES_ECB_NOPAD, TEE_MODE_ENCRYPT,
 				&iv_enc_info, encrypted_iv);
 	}
-#else
-	if (res == TEE_SUCCESS) {
-		(void)memcpy(encrypted_iv, c->iv, c->iv_size);
-	}
-#endif
 
 	if (res == TEE_SUCCESS) {
 		/* Encrypt-then-MAC */
@@ -211,13 +200,8 @@ TEE_Result tee_sfkm_encrypt(const struct tee_sfkm_crypt_info *c,
 {
 	TEE_Result res;
 
-#ifdef CFG_ENC_FS
 	res = crypt_aes(TEE_ALG_AES_CBC_NOPAD, TEE_MODE_ENCRYPT,
 			c, data_out);
-#else
-	(void)memcpy(data_out, c->data_in, c->data_size);
-	res = TEE_SUCCESS;
-#endif
 
 	if ((res == TEE_SUCCESS) && (tag != NULL)) {
 		/* Encrypt-then-MAC */
@@ -235,9 +219,7 @@ TEE_Result tee_sfkm_decrypt_suk(struct tee_sfkm_crypt_info *c,
 {
 	TEE_Result res;
 	uint8_t mac_buf[SAFS_TAG_LEN];
-#ifdef CFG_ENC_FS
 	struct tee_sfkm_crypt_info iv_dec_info;
-#endif
 
 	c->key = g_safs_suk;
 	c->key_size = sizeof(g_safs_suk);
@@ -255,7 +237,6 @@ TEE_Result tee_sfkm_decrypt_suk(struct tee_sfkm_crypt_info *c,
 	}
 
 	if (res == TEE_SUCCESS) {
-#ifdef CFG_ENC_FS
 		iv_dec_info.data_in	= c->iv; /* Encrypted IV */
 		iv_dec_info.data_size	= c->key_size;
 		iv_dec_info.iv		= NULL;
@@ -274,11 +255,6 @@ TEE_Result tee_sfkm_decrypt_suk(struct tee_sfkm_crypt_info *c,
 			res = crypt_aes(TEE_ALG_AES_CBC_NOPAD, TEE_MODE_DECRYPT,
 					c, data_out);
 		}
-#else
-		(void)memcpy(decrypted_iv, c->iv, c->iv_size);
-		(void)memcpy(data_out, c->data_in, c->data_size);
-		res = TEE_SUCCESS;
-#endif
 	}
 
 	return res;
@@ -303,13 +279,8 @@ TEE_Result tee_sfkm_decrypt(const struct tee_sfkm_crypt_info *c,
 	}
 
 	if (res == TEE_SUCCESS) {
-#ifdef CFG_ENC_FS
 		res = crypt_aes(TEE_ALG_AES_CBC_NOPAD, TEE_MODE_DECRYPT,
 				c, data_out);
-#else
-		(void)memcpy(data_out, c->data_in, c->data_size);
-		res = TEE_SUCCESS;
-#endif
 	}
 
 	return res;
@@ -357,7 +328,6 @@ TEE_Result tee_sfkm_generate_sha256(const uint8_t *data_in, size_t data_size,
 	return res;
 }
 
-#ifdef CFG_ENC_FS
 static TEE_Result crypt_aes(uint32_t algo, TEE_OperationMode mode,
 			const struct tee_sfkm_crypt_info *c,
 			uint8_t *data_out)
@@ -401,7 +371,6 @@ static TEE_Result crypt_aes(uint32_t algo, TEE_OperationMode mode,
 
 	return res;
 }
-#endif
 
 static TEE_Result generate_cmac(const uint8_t *data_in, size_t data_size,
 			uint8_t *mac_out, const uint8_t *key, size_t key_size,

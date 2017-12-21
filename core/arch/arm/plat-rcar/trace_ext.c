@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2014, Linaro Limited
- * Copyright (c) 2015-2016, Renesas Electronics Corporation
+ * Copyright (c) 2015-2017, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -31,6 +31,7 @@
 #include <trace.h>
 #include <arm.h>
 #include <kernel/tee_time.h>
+#include <kernel/spinlock.h>
 #include "rcar_log_func.h"
 #include "rcar_common.h"
 
@@ -46,7 +47,7 @@ void trace_ext_puts(const char *str)
 	int32_t res;
 	struct msg_block_t msg_block[MSG_BLK_MAX_NUM];
 	int32_t msg_block_num;
-	uint32_t cpsr;
+	uint32_t exceptions;
 #ifdef RCAR_DEBUG_LOG
 	const int8_t TERM_LOG_PREFIX[] = "[OP-TEE]";
 	const size_t TERM_LOG_PREFIX_LEN = sizeof(TERM_LOG_PREFIX) - 1U;
@@ -55,9 +56,9 @@ void trace_ext_puts(const char *str)
 #endif
 
 	if ((str != NULL) && (log_secram_header != NULL)) {
-		cpu_spin_lock_irqsave(&log_spin_lock, &cpsr);
+		exceptions = cpu_spin_lock_xsave(&log_spin_lock);
 
-		ret = arm_cntpct_get_sys_time(&sys_time);
+		ret = tee_time_get_sys_time(&sys_time);
 		if (ret == TEE_SUCCESS) {
 			res = snprintf((char *)time_buf, sizeof(time_buf),
 				"[%u.%06u][%d]",
@@ -77,7 +78,7 @@ void trace_ext_puts(const char *str)
 
 		log_buf_write(msg_block, msg_block_num);
 
-		cpu_spin_unlock_irqrestore(&log_spin_lock, cpsr);
+		cpu_spin_unlock_xrestore(&log_spin_lock, exceptions);
 
 #ifdef RCAR_DEBUG_LOG
 		if (is_normal_world_initialized != 0) {
@@ -98,7 +99,7 @@ void trace_ext_puts(const char *str)
 					log_sum_size - (uint32_t)MAX_PRINT_SIZE;
 			}
 
-			if ((cpsr & ARM32_CPSR_F) == 0U) {
+			if ((exceptions & THREAD_EXCP_NATIVE_INTR) == 0U) {
 				/* User context */
 				log_debug_send(msg_block, msg_block_num);
 			} else {

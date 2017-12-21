@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, Linaro Limited
+ * Copyright (c) 2015-2017, Linaro Limited
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -25,14 +25,16 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <asm.S>
-#include <arm64_macros.S>
 #include <arm64.h>
-#include <sm/optee_smc.h>
-#include <sm/teesmc_opteed_macros.h>
-#include <sm/teesmc_opteed.h>
+#include <arm64_macros.S>
 #include <asm-defines.h>
+#include <asm.S>
+#include <keep.h>
 #include <kernel/thread_defs.h>
+#include <sm/optee_smc.h>
+#include <sm/teesmc_opteed.h>
+#include <sm/teesmc_opteed_macros.h>
+
 #include "thread_private.h"
 
 	.macro get_thread_ctx core_local, res, tmp0, tmp1
@@ -77,7 +79,7 @@ END_FUNC vector_fast_smc_entry
 LOCAL_FUNC vector_fiq_entry , :
 	/* Secure Monitor received a FIQ and passed control to us. */
 	bl	thread_check_canaries
-	ldr	x16, =thread_fiq_handler_ptr
+	ldr	x16, =thread_nintr_handler_ptr
 	ldr	x16, [x16]
 	blr	x16
 	ldr	x0, =TEESMC_OPTEED_RETURN_FIQ_DONE
@@ -259,6 +261,7 @@ FUNC thread_init_vbar , :
 	msr	vbar_el1, x0
 	ret
 END_FUNC thread_init_vbar
+KEEP_PAGER thread_init_vbar
 
 /*
  * uint32_t __thread_enter_user_mode(unsigned long a0, unsigned long a1,
@@ -305,6 +308,8 @@ FUNC __thread_enter_user_mode , :
 	msr	sp_el0, x4	/* Used when running TA in Aarch64 */
 	/* Set user function */
 	msr	elr_el1, x5
+	/* Set frame pointer (user stack can't be unwound past this point) */
+	mov x29, #0
 
 	/* Jump into user mode */
 	eret
@@ -487,11 +492,15 @@ LOCAL_FUNC el0_svc , :
 	mov	x0, sp
 
 	/*
-	 * Unmask FIQ, Serror, and debug exceptions since we have nothing
-	 * left in sp_el1. Note that the SVC handler is excepted to
-	 * re-enable IRQs by itself.
+	 * Unmask native interrupts, Serror, and debug exceptions since we have
+	 * nothing left in sp_el1. Note that the SVC handler is excepted to
+	 * re-enable foreign interrupts by itself.
 	 */
+#if defined(CFG_ARM_GICV3)
+	msr	daifclr, #(DAIFBIT_IRQ | DAIFBIT_ABT | DAIFBIT_DBG)
+#else
 	msr	daifclr, #(DAIFBIT_FIQ | DAIFBIT_ABT | DAIFBIT_DBG)
+#endif
 
 	/* Call the handler */
 	bl	tee_svc_handler
@@ -680,14 +689,19 @@ LOCAL_FUNC el0_sync_abort , :
 	eret
 END_FUNC el0_sync_abort
 
-LOCAL_FUNC elx_irq , :
+/* The handler of foreign interrupt. */
+.macro foreign_intr_handler mode:req
 	/*
 	 * Update core local flags
 	 */
 	ldr	w1, [sp, #THREAD_CORE_LOCAL_FLAGS]
 	lsl	w1, w1, #THREAD_CLF_SAVED_SHIFT
 	orr	w1, w1, #THREAD_CLF_TMP
+	.ifc	\mode\(),fiq
+	orr	w1, w1, #THREAD_CLF_FIQ
+	.else
 	orr	w1, w1, #THREAD_CLF_IRQ
+	.endif
 	str	w1, [sp, #THREAD_CORE_LOCAL_FLAGS]
 
 	/* get pointer to current thread context in x0 */
@@ -713,7 +727,7 @@ LOCAL_FUNC elx_irq , :
 	/*
 	 * Mark current thread as suspended
 	 */
-	mov	w0, #THREAD_FLAGS_EXIT_ON_IRQ
+	mov	w0, #THREAD_FLAGS_EXIT_ON_FOREIGN_INTR
 	mrs	x1, spsr_el1
 	mrs	x2, elr_el1
 	bl	thread_state_suspend
@@ -734,36 +748,41 @@ LOCAL_FUNC elx_irq , :
 	 */
 
 	ldr	w0, =TEESMC_OPTEED_RETURN_CALL_DONE
-	ldr	w1, =OPTEE_SMC_RETURN_RPC_IRQ
+	ldr	w1, =OPTEE_SMC_RETURN_RPC_FOREIGN_INTR
 	mov	w2, #0
 	mov	w3, #0
 	/* w4 is already filled in above */
 	smc	#0
 	b	.	/* SMC should not return */
-END_FUNC elx_irq
+.endm
 
 /*
  * This struct is never used from C it's only here to visualize the
  * layout.
  *
- * struct elx_fiq_rec {
+ * struct elx_nintr_rec {
  * 	uint64_t x[19 - 4]; x4..x18
  * 	uint64_t lr;
  * 	uint64_t sp_el0;
  * };
  */
-#define ELX_FIQ_REC_X(x)		(8 * ((x) - 4))
-#define ELX_FIQ_REC_LR			(8 + ELX_FIQ_REC_X(19))
-#define ELX_FIQ_REC_SP_EL0		(8 + ELX_FIQ_REC_LR)
-#define ELX_FIQ_REC_SIZE		(8 + ELX_FIQ_REC_SP_EL0)
+#define ELX_NINTR_REC_X(x)		(8 * ((x) - 4))
+#define ELX_NINTR_REC_LR		(8 + ELX_NINTR_REC_X(19))
+#define ELX_NINTR_REC_SP_EL0		(8 + ELX_NINTR_REC_LR)
+#define ELX_NINTR_REC_SIZE		(8 + ELX_NINTR_REC_SP_EL0)
 
-LOCAL_FUNC elx_fiq , :
+/* The handler of native interrupt. */
+.macro native_intr_handler mode:req
 	/*
 	 * Update core local flags
 	 */
 	ldr	w1, [sp, #THREAD_CORE_LOCAL_FLAGS]
 	lsl	w1, w1, #THREAD_CLF_SAVED_SHIFT
+	.ifc	\mode\(),fiq
 	orr	w1, w1, #THREAD_CLF_FIQ
+	.else
+	orr	w1, w1, #THREAD_CLF_IRQ
+	.endif
 	orr	w1, w1, #THREAD_CLF_TMP
 	str	w1, [sp, #THREAD_CORE_LOCAL_FLAGS]
 
@@ -779,15 +798,15 @@ LOCAL_FUNC elx_fiq , :
 	 * Save registers on stack that can be corrupted by a call to
 	 * a C function
 	 */
-	/* Make room for struct elx_fiq_rec */
-	sub	sp, sp, #ELX_FIQ_REC_SIZE
+	/* Make room for struct elx_nintr_rec */
+	sub	sp, sp, #ELX_NINTR_REC_SIZE
 	/* Store x4..x18 */
-	store_xregs sp, ELX_FIQ_REC_X(4), 4, 18
+	store_xregs sp, ELX_NINTR_REC_X(4), 4, 18
 	/* Store lr and original sp_el0 */
-	stp	x30, x2, [sp, #ELX_FIQ_REC_LR]
+	stp	x30, x2, [sp, #ELX_NINTR_REC_LR]
 
 	bl	thread_check_canaries
-	ldr	x16, =thread_fiq_handler_ptr
+	ldr	x16, =thread_nintr_handler_ptr
 	ldr	x16, [x16]
 	blr	x16
 
@@ -795,9 +814,9 @@ LOCAL_FUNC elx_fiq , :
 	 * Restore registers
 	 */
 	/* Restore x4..x18 */
-	load_xregs sp, ELX_FIQ_REC_X(4), 4, 18
+	load_xregs sp, ELX_NINTR_REC_X(4), 4, 18
 	/* Load  lr and original sp_el0 */
-	ldp	x30, x2, [sp, #ELX_FIQ_REC_LR]
+	ldp	x30, x2, [sp, #ELX_NINTR_REC_LR]
 	/* Restore SP_El0 */
 	mov	sp, x2
 	/* Switch back to SP_EL1 */
@@ -813,4 +832,20 @@ LOCAL_FUNC elx_fiq , :
 
 	/* Return from exception */
 	eret
+.endm
+
+LOCAL_FUNC elx_irq , :
+#if defined(CFG_ARM_GICV3)
+	native_intr_handler	irq
+#else
+	foreign_intr_handler	irq
+#endif
+END_FUNC elx_irq
+
+LOCAL_FUNC elx_fiq , :
+#if defined(CFG_ARM_GICV3)
+	foreign_intr_handler	fiq
+#else
+	native_intr_handler	fiq
+#endif
 END_FUNC elx_fiq

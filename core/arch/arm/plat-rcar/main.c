@@ -47,6 +47,7 @@
 #include <io.h>
 
 #include <sm/optee_smc.h>
+#include <kernel/spinlock.h>
 #include "rcar_common.h"
 #include "rcar_log_func.h"
 #include "rcar_suspend_to_ram.h"
@@ -55,7 +56,6 @@ static void main_tee_entry_fast(struct thread_smc_args *args);
 static unsigned long main_cpu_suspend(unsigned long a0, unsigned long a1);
 static unsigned long main_cpu_resume(unsigned long a0, unsigned long a1);
 static void main_fiq(void);
-static void main_hook_gic_disable(struct itr_chip *chip, size_t it);
 
 static uint32_t suspend_to_ram_save_flag = 0U;
 static uint32_t main_cpu_lock = (uint32_t)SPINLOCK_UNLOCK;
@@ -71,9 +71,9 @@ static void main_tee_entry_fast(struct thread_smc_args *args)
 static unsigned long main_cpu_suspend(unsigned long a0,
 				unsigned long a1 __unused)
 {
-	uint32_t cpsr;
+	uint32_t exceptions;
 
-	cpu_spin_lock_irqsave(&main_cpu_lock, &cpsr);
+	exceptions = cpu_spin_lock_xsave(&main_cpu_lock);
 	DMSG("a0=0x%lX, a1=0x%lX", a0, a1);
 
 	if (a0 == TFW_ARG_SYSTEM_SUSPEND) {
@@ -88,16 +88,16 @@ static unsigned long main_cpu_suspend(unsigned long a0,
 		/* in case of CPU_SUSPEND(CPU Idle), no operation */
 	}
 
-	cpu_spin_unlock_irqrestore(&main_cpu_lock, cpsr);
+	cpu_spin_unlock_xrestore(&main_cpu_lock, exceptions);
 	return 0U;
 }
 
 static unsigned long main_cpu_resume(unsigned long a0 __unused,
 				unsigned long a1 __unused)
 {
-	uint32_t cpsr;
+	uint32_t exceptions;
 
-	cpu_spin_lock_irqsave(&main_cpu_lock, &cpsr);
+	exceptions = cpu_spin_lock_xsave(&main_cpu_lock);
 	DMSG("a0=0x%lX, a1=0x%lX", a0, a1);
 
 	if (suspend_to_ram_save_flag == 1U) {
@@ -108,14 +108,14 @@ static unsigned long main_cpu_resume(unsigned long a0 __unused,
 		/* no operation */
 	}
 
-	cpu_spin_unlock_irqrestore(&main_cpu_lock, cpsr);
+	cpu_spin_unlock_xrestore(&main_cpu_lock, exceptions);
 	return 0U;
 }
 
 static const struct thread_handlers handlers = {
 	.std_smc = tee_entry_std,
 	.fast_smc = main_tee_entry_fast,
-	.fiq = main_fiq,
+	.nintr = main_fiq,
 	.cpu_on = cpu_on_handler,
 	.cpu_off = pm_do_nothing,
 	.cpu_suspend = main_cpu_suspend,
@@ -125,8 +125,6 @@ static const struct thread_handlers handlers = {
 };
 
 struct gic_data gic_data;
-static struct itr_ops main_base_gic_ops;
-static struct itr_ops main_hook_gic_ops;
 
 register_phys_mem(MEM_AREA_IO_SEC, GICD_BASE, GIC_DIST_REG_SIZE);
 register_phys_mem(MEM_AREA_IO_SEC, GICC_BASE, GIC_DIST_REG_SIZE);
@@ -162,6 +160,18 @@ register_phys_mem(MEMORY9_TYPE, MEMORY9_BASE, MEMORY9_SIZE);
 #ifdef MEMORY10_BASE
 register_phys_mem(MEMORY10_TYPE, MEMORY10_BASE, MEMORY10_SIZE);
 #endif
+#ifdef DEVICE0_PA_BASE
+register_phys_mem(DEVICE0_TYPE, DEVICE0_PA_BASE, DEVICE0_SIZE);
+#endif
+#ifdef DEVICE1_PA_BASE
+register_phys_mem(DEVICE1_TYPE, DEVICE1_PA_BASE, DEVICE1_SIZE);
+#endif
+#ifdef DEVICE2_PA_BASE
+register_phys_mem(DEVICE2_TYPE, DEVICE2_PA_BASE, DEVICE2_SIZE);
+#endif
+#ifdef DEVICE3_PA_BASE
+register_phys_mem(DEVICE3_TYPE, DEVICE3_PA_BASE, DEVICE3_SIZE);
+#endif
 
 const struct thread_handlers *generic_boot_get_handlers(void)
 {
@@ -182,11 +192,6 @@ void main_init_gic(void)
 	/* On ARMv8, GIC configuration is initialized in ARM-TF */
 	gic_init_base_addr(&gic_data, gicc_base, gicd_base);
 
-	main_base_gic_ops = *gic_data.chip.ops;
-	main_hook_gic_ops = *gic_data.chip.ops;
-	main_hook_gic_ops.disable = main_hook_gic_disable;
-	gic_data.chip.ops = (const struct itr_ops *)&main_hook_gic_ops;
-
 	itr_init(&gic_data.chip);
 }
 
@@ -198,17 +203,4 @@ static void main_fiq(void)
 void console_init(void)
 {
 	/* No Operation */
-}
-
-static void main_hook_gic_disable(struct itr_chip *chip, size_t it)
-{
-	const size_t spurious_id = 1022U; /* Used only if the GIC supports
-						interrupt grouping */
-
-	if (it == spurious_id) {
-		/* the interrupt acknowledge is a read of GICC_IAR */
-		(void)read32(gic_data.gicc_base + 0x00C);
-	} else {
-		main_base_gic_ops.disable(chip, it);
-	}
 }

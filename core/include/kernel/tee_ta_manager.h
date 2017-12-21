@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
+ * Copyright (c) 2017, Linaro Limited
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -45,15 +46,30 @@
 TAILQ_HEAD(tee_ta_session_head, tee_ta_session);
 TAILQ_HEAD(tee_ta_ctx_head, tee_ta_ctx);
 
+struct mobj;
+
+struct param_val {
+	uint32_t a;
+	uint32_t b;
+};
+
+struct param_mem {
+	struct mobj *mobj;
+	size_t size;
+	size_t offs;
+};
+
 struct tee_ta_param {
 	uint32_t types;
-	TEE_Param params[4];
-	uint32_t param_attr[4];
+	union {
+		struct param_val val;
+		struct param_mem mem;
+	} u[TEE_NUM_PARAMS];
 };
 
 struct tee_ta_ctx;
 struct user_ta_ctx;
-struct static_ta_ctx;
+struct pseudo_ta_ctx;
 
 struct tee_ta_ops {
 	TEE_Result (*enter_open_session)(struct tee_ta_session *s,
@@ -63,7 +79,22 @@ struct tee_ta_ops {
 	void (*enter_close_session)(struct tee_ta_session *s);
 	void (*dump_state)(struct tee_ta_ctx *ctx);
 	void (*destroy)(struct tee_ta_ctx *ctx);
+	uint32_t (*get_instance_id)(struct tee_ta_ctx *ctx);
 };
+
+#if defined(CFG_TA_GPROF_SUPPORT)
+struct sample_buf {
+	uint32_t nsamples;	/* Size of @samples array in uint16_t */
+	uint32_t offset;	/* Passed from user mode */
+	uint32_t scale;		/* Passed from user mode */
+	uint32_t count;		/* Number of samples taken */
+	bool enabled;		/* Sampling enabled? */
+	uint16_t *samples;
+	uint64_t usr;		/* Total user CPU time for this session */
+	uint64_t usr_entered;	/* When this session last entered user mode */
+	uint32_t freq;		/* @usr divided by @freq is in seconds */
+};
+#endif
 
 /* Context of a loaded TA */
 struct tee_ta_ctx {
@@ -92,6 +123,9 @@ struct tee_ta_session {
 	struct condvar lock_cv;	/* CV used to wait for lock */
 	int lock_thread;	/* Id of thread holding the lock */
 	bool unlink;		/* True if session is to be unlinked */
+#if defined(CFG_TA_GPROF_SUPPORT)
+	struct sample_buf *sbuf; /* Profiling data (PC sampling) */
+#endif
 };
 
 /* Registered contexts */
@@ -146,10 +180,14 @@ void tee_ta_put_session(struct tee_ta_session *sess);
 
 void tee_ta_dump_current(void);
 
-/*
- * Implemented under core/arch for architecure specific checks
- */
-TEE_Result tee_ta_verify_param(struct tee_ta_session *sess,
-			       struct tee_ta_param *param);
+#if defined(CFG_TA_GPROF_SUPPORT)
+void tee_ta_gprof_sample_pc(vaddr_t pc);
+void tee_ta_update_session_utime_suspend(void);
+void tee_ta_update_session_utime_resume(void);
+#else
+static inline void tee_ta_gprof_sample_pc(vaddr_t pc __unused) {}
+static inline void tee_ta_update_session_utime_suspend(void) {}
+static inline void tee_ta_update_session_utime_resume(void) {}
+#endif
 
 #endif

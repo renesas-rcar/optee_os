@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
+ * Copyright (c) 2017, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -131,11 +132,13 @@ TEE_Result TEE_AllocateOperation(TEE_OperationHandle *operation,
 	case TEE_ALG_AES_CTS:
 	case TEE_ALG_AES_XTS:
 		buffer_two_blocks = true;
-	 /*FALLTHROUGH*/ case TEE_ALG_AES_ECB_NOPAD:
+		/* FALLTHROUGH */
+	case TEE_ALG_AES_ECB_NOPAD:
 	case TEE_ALG_AES_CBC_NOPAD:
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
 	case TEE_ALG_AES_CTR:
+#endif
 	case TEE_ALG_AES_CCM:
-	case TEE_ALG_AES_GCM:
 	case TEE_ALG_DES_ECB_NOPAD:
 	case TEE_ALG_DES_CBC_NOPAD:
 	case TEE_ALG_DES3_ECB_NOPAD:
@@ -144,7 +147,11 @@ TEE_Result TEE_AllocateOperation(TEE_OperationHandle *operation,
 			block_size = TEE_AES_BLOCK_SIZE;
 		else
 			block_size = TEE_DES_BLOCK_SIZE;
-
+		/* FALLTHROUGH */
+	case TEE_ALG_AES_GCM:
+#ifndef CFG_CRYPT_HW_CRYPTOENGINE
+	case TEE_ALG_AES_CTR:
+#endif
 		if (mode == TEE_MODE_ENCRYPT)
 			req_key_usage = TEE_USAGE_ENCRYPT;
 		else if (mode == TEE_MODE_DECRYPT)
@@ -345,7 +352,7 @@ out:
 	if (res != TEE_SUCCESS) {
 		if (res != TEE_ERROR_OUT_OF_MEMORY &&
 		    res != TEE_ERROR_NOT_SUPPORTED)
-			TEE_Panic(0);
+			TEE_Panic(res);
 		if (op) {
 			if (op->state) {
 				TEE_FreeOperation(op);
@@ -375,7 +382,7 @@ void TEE_FreeOperation(TEE_OperationHandle operation)
 	 */
 	res = utee_cryp_state_free(operation->state);
 	if (res != TEE_SUCCESS)
-		TEE_Panic(0);
+		TEE_Panic(res);
 
 	TEE_Free(operation->buffer);
 	TEE_Free(operation);
@@ -484,7 +491,7 @@ TEE_Result TEE_GetOperationInfoMultiple(TEE_OperationHandle operation,
 out:
 	if (res != TEE_SUCCESS &&
 	    res != TEE_ERROR_SHORT_BUFFER)
-		TEE_Panic(0);
+		TEE_Panic(res);
 
 	return res;
 }
@@ -582,7 +589,7 @@ out:
 	if (res != TEE_SUCCESS  &&
 	    res != TEE_ERROR_CORRUPT_OBJECT &&
 	    res != TEE_ERROR_STORAGE_NOT_AVAILABLE)
-		TEE_Panic(0);
+		TEE_Panic(res);
 
 	return res;
 }
@@ -707,7 +714,7 @@ out:
 	    res != TEE_ERROR_CORRUPT_OBJECT_2 &&
 	    res != TEE_ERROR_STORAGE_NOT_AVAILABLE &&
 	    res != TEE_ERROR_STORAGE_NOT_AVAILABLE_2)
-		TEE_Panic(0);
+		TEE_Panic(res);
 
 	return res;
 }
@@ -761,7 +768,7 @@ void TEE_CopyOperation(TEE_OperationHandle dst_op, TEE_OperationHandle src_op)
 
 /* Cryptographic Operations API - Message Digest Functions */
 
-static void init_hash_operation(TEE_OperationHandle operation, void *IV,
+static void init_hash_operation(TEE_OperationHandle operation, const void *IV,
 				uint32_t IVLen)
 {
 	TEE_Result res;
@@ -778,7 +785,7 @@ static void init_hash_operation(TEE_OperationHandle operation, void *IV,
 }
 
 void TEE_DigestUpdate(TEE_OperationHandle operation,
-		      void *chunk, uint32_t chunkSize)
+		      const void *chunk, uint32_t chunkSize)
 {
 	TEE_Result res = TEE_ERROR_GENERIC;
 
@@ -793,7 +800,7 @@ void TEE_DigestUpdate(TEE_OperationHandle operation,
 		TEE_Panic(res);
 }
 
-TEE_Result TEE_DigestDoFinal(TEE_OperationHandle operation, void *chunk,
+TEE_Result TEE_DigestDoFinal(TEE_OperationHandle operation, const void *chunk,
 			     uint32_t chunkLen, void *hash, uint32_t *hashLen)
 {
 	TEE_Result res;
@@ -822,14 +829,15 @@ TEE_Result TEE_DigestDoFinal(TEE_OperationHandle operation, void *chunk,
 out:
 	if (res != TEE_SUCCESS &&
 	    res != TEE_ERROR_SHORT_BUFFER)
-		TEE_Panic(0);
+		TEE_Panic(res);
 
 	return res;
 }
 
 /* Cryptographic Operations API - Symmetric Cipher Functions */
 
-void TEE_CipherInit(TEE_OperationHandle operation, void *IV, uint32_t IVLen)
+void TEE_CipherInit(TEE_OperationHandle operation, const void *IV,
+		    uint32_t IVLen)
 {
 	TEE_Result res;
 
@@ -873,6 +881,12 @@ static TEE_Result tee_buffer_update(
 	size_t l;
 	size_t buffer_size;
 	size_t buffer_left;
+
+	if (!src) {
+		if (slen)
+			TEE_Panic(0);
+		goto out;
+	}
 
 	if (op->buffer_two_blocks) {
 		buffer_size = op->block_size * 2;
@@ -948,7 +962,7 @@ out:
 	return TEE_SUCCESS;
 }
 
-TEE_Result TEE_CipherUpdate(TEE_OperationHandle operation, void *srcData,
+TEE_Result TEE_CipherUpdate(TEE_OperationHandle operation, const void *srcData,
 			    uint32_t srcLen, void *destData, uint32_t *destLen)
 {
 	TEE_Result res;
@@ -978,9 +992,19 @@ TEE_Result TEE_CipherUpdate(TEE_OperationHandle operation, void *srcData,
 		goto out;
 	}
 
+	if (!srcData && !srcLen) {
+		*destLen = 0;
+		res = TEE_SUCCESS;
+		goto out;
+	}
+
 	/* Calculate required dlen */
-	req_dlen = ((operation->buffer_offs + srcLen) / operation->block_size) *
-	    operation->block_size;
+	if (operation->block_size > 1) {
+		req_dlen = ((operation->buffer_offs + srcLen) /
+			    operation->block_size) * operation->block_size;
+	} else {
+		req_dlen = srcLen;
+	}
 	if (operation->buffer_two_blocks) {
 		if (req_dlen > operation->block_size * 2)
 			req_dlen -= operation->block_size * 2;
@@ -999,21 +1023,31 @@ TEE_Result TEE_CipherUpdate(TEE_OperationHandle operation, void *srcData,
 	}
 
 	dl = *destLen;
-	res = tee_buffer_update(operation, utee_cipher_update, srcData, srcLen,
-				destData, &dl);
+	if (operation->block_size > 1) {
+		res = tee_buffer_update(operation, utee_cipher_update, srcData,
+					srcLen, destData, &dl);
+	} else {
+		if (srcLen > 0) {
+			res = utee_cipher_update(operation->state, srcData,
+						 srcLen, destData, &dl);
+		} else {
+			res = TEE_SUCCESS;
+			dl = 0;
+		}
+	}
 	*destLen = dl;
 
 out:
 	if (res != TEE_SUCCESS &&
 	    res != TEE_ERROR_SHORT_BUFFER)
-		TEE_Panic(0);
+		TEE_Panic(res);
 
 	return res;
 }
 
 TEE_Result TEE_CipherDoFinal(TEE_OperationHandle operation,
-			     void *srcData, uint32_t srcLen, void *destData,
-			     uint32_t *destLen)
+			     const void *srcData, uint32_t srcLen,
+			     void *destData, uint32_t *destLen)
 {
 	TEE_Result res;
 	uint8_t *dst = destData;
@@ -1066,7 +1100,11 @@ TEE_Result TEE_CipherDoFinal(TEE_OperationHandle operation,
 	 * data to the algorithm. Errors during feeding of data are fatal as we
 	 * can't restore sync with this API.
 	 */
-	req_dlen = operation->buffer_offs + srcLen;
+	if (operation->block_size > 1) {
+		req_dlen = operation->buffer_offs + srcLen;
+	} else {
+		req_dlen = srcLen;
+	}
 	if (*destLen < req_dlen) {
 		*destLen = req_dlen;
 		res = TEE_ERROR_SHORT_BUFFER;
@@ -1074,17 +1112,22 @@ TEE_Result TEE_CipherDoFinal(TEE_OperationHandle operation,
 	}
 
 	tmp_dlen = *destLen - acc_dlen;
-	res = tee_buffer_update(operation, utee_cipher_update, srcData, srcLen,
-				dst, &tmp_dlen);
-	if (res != TEE_SUCCESS)
-		goto out;
+	if (operation->block_size > 1) {
+		res = tee_buffer_update(operation, utee_cipher_update,
+					srcData, srcLen, dst, &tmp_dlen);
+		if (res != TEE_SUCCESS)
+			goto out;
 
-	dst += tmp_dlen;
-	acc_dlen += tmp_dlen;
+		dst += tmp_dlen;
+		acc_dlen += tmp_dlen;
 
-	tmp_dlen = *destLen - acc_dlen;
-	res = utee_cipher_final(operation->state, operation->buffer,
-				operation->buffer_offs, dst, &tmp_dlen);
+		tmp_dlen = *destLen - acc_dlen;
+		res = utee_cipher_final(operation->state, operation->buffer,
+					operation->buffer_offs, dst, &tmp_dlen);
+	} else {
+		res = utee_cipher_final(operation->state, srcData,
+					srcLen, dst, &tmp_dlen);
+	}
 	if (res != TEE_SUCCESS)
 		goto out;
 
@@ -1098,14 +1141,14 @@ TEE_Result TEE_CipherDoFinal(TEE_OperationHandle operation,
 out:
 	if (res != TEE_SUCCESS &&
 	    res != TEE_ERROR_SHORT_BUFFER)
-		TEE_Panic(0);
+		TEE_Panic(res);
 
 	return res;
 }
 
 /* Cryptographic Operations API - MAC Functions */
 
-void TEE_MACInit(TEE_OperationHandle operation, void *IV, uint32_t IVLen)
+void TEE_MACInit(TEE_OperationHandle operation, const void *IV, uint32_t IVLen)
 {
 	if (operation == TEE_HANDLE_NULL)
 		TEE_Panic(0);
@@ -1125,7 +1168,7 @@ void TEE_MACInit(TEE_OperationHandle operation, void *IV, uint32_t IVLen)
 	init_hash_operation(operation, IV, IVLen);
 }
 
-void TEE_MACUpdate(TEE_OperationHandle operation, void *chunk,
+void TEE_MACUpdate(TEE_OperationHandle operation, const void *chunk,
 		   uint32_t chunkSize)
 {
 	TEE_Result res;
@@ -1148,7 +1191,7 @@ void TEE_MACUpdate(TEE_OperationHandle operation, void *chunk,
 }
 
 TEE_Result TEE_MACComputeFinal(TEE_OperationHandle operation,
-			       void *message, uint32_t messageLen,
+			       const void *message, uint32_t messageLen,
 			       void *mac, uint32_t *macLen)
 {
 	TEE_Result res;
@@ -1196,8 +1239,8 @@ out:
 }
 
 TEE_Result TEE_MACCompareFinal(TEE_OperationHandle operation,
-			       void *message, uint32_t messageLen,
-			       void *mac, uint32_t macLen)
+			       const void *message, uint32_t messageLen,
+			       const void *mac, uint32_t macLen)
 {
 	TEE_Result res;
 	uint8_t computed_mac[TEE_MAX_HASH_SIZE];
@@ -1245,7 +1288,7 @@ out:
 
 /* Cryptographic Operations API - Authenticated Encryption Functions */
 
-TEE_Result TEE_AEInit(TEE_OperationHandle operation, void *nonce,
+TEE_Result TEE_AEInit(TEE_OperationHandle operation, const void *nonce,
 		      uint32_t nonceLen, uint32_t tagLen, uint32_t AADLen,
 		      uint32_t payloadLen)
 {
@@ -1298,7 +1341,7 @@ out:
 	return res;
 }
 
-void TEE_AEUpdateAAD(TEE_OperationHandle operation, void *AADdata,
+void TEE_AEUpdateAAD(TEE_OperationHandle operation, const void *AADdata,
 		     uint32_t AADdataLen)
 {
 	TEE_Result res;
@@ -1321,7 +1364,7 @@ void TEE_AEUpdateAAD(TEE_OperationHandle operation, void *AADdata,
 		TEE_Panic(res);
 }
 
-TEE_Result TEE_AEUpdate(TEE_OperationHandle operation, void *srcData,
+TEE_Result TEE_AEUpdate(TEE_OperationHandle operation, const void *srcData,
 			uint32_t srcLen, void *destData, uint32_t *destLen)
 {
 	TEE_Result res;
@@ -1346,13 +1389,24 @@ TEE_Result TEE_AEUpdate(TEE_OperationHandle operation, void *srcData,
 		goto out;
 	}
 
+	if (!srcData && !srcLen) {
+		*destLen = 0;
+		res = TEE_SUCCESS;
+		goto out;
+	}
+
 	/*
 	 * Check that required destLen is big enough before starting to feed
 	 * data to the algorithm. Errors during feeding of data are fatal as we
 	 * can't restore sync with this API.
 	 */
-	req_dlen = ROUNDDOWN(operation->buffer_offs + srcLen,
-			     operation->block_size);
+	if (operation->block_size > 1) {
+		req_dlen = ROUNDDOWN(operation->buffer_offs + srcLen,
+				     operation->block_size);
+	} else {
+		req_dlen = srcLen;
+	}
+
 	if (*destLen < req_dlen) {
 		*destLen = req_dlen;
 		res = TEE_ERROR_SHORT_BUFFER;
@@ -1360,8 +1414,22 @@ TEE_Result TEE_AEUpdate(TEE_OperationHandle operation, void *srcData,
 	}
 
 	dl = *destLen;
-	res = tee_buffer_update(operation, utee_authenc_update_payload, srcData,
-				srcLen, destData, &dl);
+	if (operation->block_size > 1) {
+		res = tee_buffer_update(operation, utee_authenc_update_payload,
+					srcData, srcLen, destData, &dl);
+	} else {
+		if (srcLen > 0) {
+			res = utee_authenc_update_payload(operation->state,
+							  srcData, srcLen,
+							  destData, &dl);
+		} else {
+			dl = 0;
+			res = TEE_SUCCESS;
+		}
+	}
+	if (res != TEE_SUCCESS)
+		goto out;
+
 	*destLen = dl;
 
 	operation->operationState = TEE_OPERATION_STATE_ACTIVE;
@@ -1375,7 +1443,7 @@ out:
 }
 
 TEE_Result TEE_AEEncryptFinal(TEE_OperationHandle operation,
-			      void *srcData, uint32_t srcLen,
+			      const void *srcData, uint32_t srcLen,
 			      void *destData, uint32_t *destLen, void *tag,
 			      uint32_t *tagLen)
 {
@@ -1427,20 +1495,27 @@ TEE_Result TEE_AEEncryptFinal(TEE_OperationHandle operation,
 		goto out;
 	}
 
-	tmp_dlen = *destLen - acc_dlen;
-	res = tee_buffer_update(operation, utee_authenc_update_payload, srcData,
-				srcLen, dst, &tmp_dlen);
-	if (res != TEE_SUCCESS)
-		goto out;
-
-	dst += tmp_dlen;
-	acc_dlen += tmp_dlen;
-
-	tmp_dlen = *destLen - acc_dlen;
 	tl = *tagLen;
-	res = utee_authenc_enc_final(operation->state, operation->buffer,
-				     operation->buffer_offs, dst, &tmp_dlen,
-				     tag, &tl);
+	tmp_dlen = *destLen - acc_dlen;
+	if (operation->block_size > 1) {
+		res = tee_buffer_update(operation, utee_authenc_update_payload,
+					srcData, srcLen, dst, &tmp_dlen);
+		if (res != TEE_SUCCESS)
+			goto out;
+
+		dst += tmp_dlen;
+		acc_dlen += tmp_dlen;
+
+		tmp_dlen = *destLen - acc_dlen;
+		res = utee_authenc_enc_final(operation->state,
+					     operation->buffer,
+					     operation->buffer_offs, dst,
+					     &tmp_dlen, tag, &tl);
+	} else {
+		res = utee_authenc_enc_final(operation->state, srcData,
+					     srcLen, dst, &tmp_dlen,
+					     tag, &tl);
+	}
 	*tagLen = tl;
 	if (res != TEE_SUCCESS)
 		goto out;
@@ -1461,7 +1536,7 @@ out:
 }
 
 TEE_Result TEE_AEDecryptFinal(TEE_OperationHandle operation,
-			      void *srcData, uint32_t srcLen,
+			      const void *srcData, uint32_t srcLen,
 			      void *destData, uint32_t *destLen, void *tag,
 			      uint32_t tagLen)
 {
@@ -1503,18 +1578,25 @@ TEE_Result TEE_AEDecryptFinal(TEE_OperationHandle operation,
 	}
 
 	tmp_dlen = *destLen - acc_dlen;
-	res = tee_buffer_update(operation, utee_authenc_update_payload, srcData,
-				srcLen, dst, &tmp_dlen);
-	if (res != TEE_SUCCESS)
-		goto out;
+	if (operation->block_size > 1) {
+		res = tee_buffer_update(operation, utee_authenc_update_payload,
+					srcData, srcLen, dst, &tmp_dlen);
+		if (res != TEE_SUCCESS)
+			goto out;
 
-	dst += tmp_dlen;
-	acc_dlen += tmp_dlen;
+		dst += tmp_dlen;
+		acc_dlen += tmp_dlen;
 
-	tmp_dlen = *destLen - acc_dlen;
-	res = utee_authenc_dec_final(operation->state, operation->buffer,
-				     operation->buffer_offs, dst, &tmp_dlen,
-				     tag, tagLen);
+		tmp_dlen = *destLen - acc_dlen;
+		res = utee_authenc_dec_final(operation->state,
+					     operation->buffer,
+					     operation->buffer_offs, dst,
+					     &tmp_dlen, tag, tagLen);
+	} else {
+		res = utee_authenc_dec_final(operation->state, srcData,
+					     srcLen, dst, &tmp_dlen,
+					     tag, tagLen);
+	}
 	if (res != TEE_SUCCESS)
 		goto out;
 
@@ -1541,8 +1623,8 @@ out:
 /* Cryptographic Operations API - Asymmetric Functions */
 
 TEE_Result TEE_AsymmetricEncrypt(TEE_OperationHandle operation,
-				 TEE_Attribute *params,
-				 uint32_t paramCount, void *srcData,
+				 const TEE_Attribute *params,
+				 uint32_t paramCount, const void *srcData,
 				 uint32_t srcLen, void *destData,
 				 uint32_t *destLen)
 {
@@ -1577,8 +1659,8 @@ TEE_Result TEE_AsymmetricEncrypt(TEE_OperationHandle operation,
 }
 
 TEE_Result TEE_AsymmetricDecrypt(TEE_OperationHandle operation,
-				 TEE_Attribute *params,
-				 uint32_t paramCount, void *srcData,
+				 const TEE_Attribute *params,
+				 uint32_t paramCount, const void *srcData,
 				 uint32_t srcLen, void *destData,
 				 uint32_t *destLen)
 {
@@ -1613,8 +1695,8 @@ TEE_Result TEE_AsymmetricDecrypt(TEE_OperationHandle operation,
 }
 
 TEE_Result TEE_AsymmetricSignDigest(TEE_OperationHandle operation,
-				    TEE_Attribute *params,
-				    uint32_t paramCount, void *digest,
+				    const TEE_Attribute *params,
+				    uint32_t paramCount, const void *digest,
 				    uint32_t digestLen, void *signature,
 				    uint32_t *signatureLen)
 {
@@ -1649,9 +1731,10 @@ TEE_Result TEE_AsymmetricSignDigest(TEE_OperationHandle operation,
 }
 
 TEE_Result TEE_AsymmetricVerifyDigest(TEE_OperationHandle operation,
-				      TEE_Attribute *params,
-				      uint32_t paramCount, void *digest,
-				      uint32_t digestLen, void *signature,
+				      const TEE_Attribute *params,
+				      uint32_t paramCount, const void *digest,
+				      uint32_t digestLen,
+				      const void *signature,
 				      uint32_t signatureLen)
 {
 	TEE_Result res;
@@ -1710,7 +1793,7 @@ void TEE_DeriveKey(TEE_OperationHandle operation,
 
 	res = utee_cryp_obj_get_info((unsigned long)derivedKey, &key_info);
 	if (res != TEE_SUCCESS)
-		TEE_Panic(0);
+		TEE_Panic(res);
 
 	if (key_info.objectType != TEE_TYPE_GENERIC_SECRET)
 		TEE_Panic(0);

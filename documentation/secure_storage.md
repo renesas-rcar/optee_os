@@ -2,7 +2,7 @@
 
 ## Background
 
-Secure Storage (SST) in OP-TEE is implemented according to what has been defined
+Secure Storage in OP-TEE is implemented according to what has been defined
 in GloblaPlatform’s TEE Internal API specification (here called Trusted
 Storage). This specification mandates that it should be possible to store
 general-purpose data and key material that guarantees confidentiality and
@@ -10,7 +10,7 @@ integrity of the data stored and the atomicity of the operations that modifies
 the storage (atomicity here means that either the entire operation completes
 successfully or no write is done).
 
-There are currently three secure storage implementations in OP-TEE:
+There are currently two secure storage implementations in OP-TEE:
 
 - The first one relies on the normal world (REE) file system. It is described in
 this document and is the default implementation. It is enabled at compile time
@@ -18,16 +18,13 @@ by CFG_REE_FS=y.
 - The second one makes use of the Replay Protected Memory Block (RPMB) partition
 of an eMMC device, and is enabled by setting `CFG_RPMB_FS=y`. It is described
 in [secure_storage_rpmb.md](secure_storage_rpmb.md).
-- The third one stores objects in a SQLite database in normal world. It is
-enabled by `CFG_SQL_FS=y`. See [secure_storage_sql.md](secure_storage_sql.db).
 
 It is possible to use the normal world filesystems and the RPMB implementations
-simultaneously. For this, three OP-TEE specific storage identifiers have been
-defined: TEE_STORAGE_PRIVATE_REE, TEE_STORAGE_PRIVATE_RPMB and
-TEE_STORAGE_PRIVATE_SQL. Depending on the
+simultaneously. For this, two OP-TEE specific storage identifiers have been
+defined: TEE_STORAGE_PRIVATE_REE and TEE_STORAGE_PRIVATE_RPMB. Depending on the
 compile-time configuration, one or several values may be used.
 The value TEE_STORAGE_PRIVATE selects the REE FS when available, otherwise the
-RPMB FS if available, otherwise the SQL FS (in this order).
+RPMB FS (in this order).
 
 The rest of this document describes the REE FS only.
 
@@ -42,6 +39,7 @@ The rest of this document describes the REE FS only.
 storage service calls
 - **[core/tee/tee_ree_fs.c](../core/tee/tee_ree_fs):** TEE file system & REE
 file operation interface
+- **[core/tee/fs_htree.c](../core/tee/fs_htree.c):** Hash tree
 - **[core/tee/tee_fs_key_manager.c](../core/tee/tee_fs_key_manager.c):** Key
 manager
 - **[lib/libutee/](../lib/libutee/):** GlobalPlatform Internal API library
@@ -52,7 +50,7 @@ When a TA is calling the write function provided by GP Trusted Storage API to
 write data to a persistent object, a corresponding syscall implemented in TEE
 Trusted Storage Service will be called, which in turn will invoke a series of
 TEE file operations to store the data. TEE file system will then encrypt the
-data (when CFG_ENC_FS=y) and send REE file operation commands and the encrypted
+data and send REE file operation commands and the encrypted
 data to TEE supplicant by a series of RPC messages. TEE supplicant will receive
 the messages and store the encrypted data accordingly to the Linux file
 system. Reading files are handled in a similar manner.
@@ -72,41 +70,22 @@ Below is an excerpt from the specification listing the most vital requirements:
    instances of that TA but separated from the other TAs.
 5. The Trusted Storage must provide a minimum level of protection against
    rollback attacks. It is accepted that the actually physical storage may be in
-   an unsecure areas and so is vulnerable to actions from outside of the TEE.
+   an insecure area and so is vulnerable to actions from outside of the TEE.
    Typically, an implementation may rely on the REE for that purpose (protection
    level 100) or on hardware assets controlled by the TEE (protection level
    1000).
+   If configured with CFG_RPMB_FS=y the protection against rollback is is
+   controlled by the TEE and is set to 1000. If CFG_RPMB_FS=n, there's no
+   protection against rollback, and the protection level is set to 0.
 
 ### TEE File Structure In Linux File System
 
-![TEE File Structure](images/secure_storage/tee_file_structure.png
-"TEE file structure in Linux file system")
-
-OP-TEE by default use "/data/tee/" as the secure storage space in Linux
-file system. For each TA, OP-TEE use the TA's UUID to create a standalone folder
-for it under the secure storage space folder. For a persistent object belonging
-to a specific TA, OP-TEE creates a TEE file folder which's name is object-id
-under the TA folder.
-
-In a TEE file folder, there is a meta file and several block files. Meta file is
-for storing the information of the TEE file which is used by TEE file system to
-manage the TEE file; block file is for storing the data of the persistent
-object.
-
-If the compile time flag CFG_ENC_FS is set to 'y', the  data stored in block
-files will be encrypted, otherwise, the data will not be encrypted. The
-information stored in meta file are always encrypted. By default, CFG_ENC_FS is
-set to 'y' to keep the confidentiality of TEE files; It is recommended to
-change CFG_ENC_FS to 'n' only for TA debugging.
-
-The reason why we store the TEE file content in many small blocks is to
-accelerate the file update speed when handling a large file. The block size
-(FILE_BLOCK_SIZE) and the maximum number of blocks of a TEE file
-(NUM_BLOCKS_PER_FILE) are defined in
-[core/tee/tee_ree_fs.c](../core/tee/tee_ree_fs.c).
-
-For now, the default block size is 4KB and the maximum number of blocks of a
-TEE file is 1024.
+OP-TEE by default uses `/data/tee/` as the secure storage space in the Linux
+file system. Each persistent object is assigned an internal identifier. It is
+an integer which is visible in the Linux file system as
+`/data/tee/<file number>`. A directory file, `/data/tee/dirf.db`, lists all the
+objects that are in the secure storage. All normal world files are integrity
+protected and encrypted, as described below.
 
 ## Key Manager
 
@@ -132,7 +111,7 @@ per-device keys for different subsystems using the same algorithm as we
 generate the SSK; An easy way to generate different per-device keys for
 different subsystems is using different static strings to generate the keys.
 
-### Trusted Application Storage Key (TKS)
+### Trusted Application Storage Key (TSK)
 
 The TSK is a per-Trusted Application key, which is generated from the SSK and
 the TA's identifier (UUID). It is used to protect the FEK, in other words,
@@ -148,22 +127,57 @@ PRNG (pesudo random number generator) for the TEE file and store the encrypted
 FEK in meta file. FEK is used for encrypting/decrypting the TEE file information
 stored in meta file or the data stored in block file.
 
+## Hash Tree
+
+The hash tree is responsible for handling data encryption and decryption of
+a secure storage file.
+
+The hash tree is implemented as a binary tree where
+each node (`struct tee_fs_htree_node_image` below) in the tree protects its
+two child nodes and a data block.
+
+The meta data is stored in a header (`struct tee_fs_htree_image` below)
+which also protects the top node.
+
+All fields (header, nodes, and blocks) are duplicated with two versions, 0
+and 1, to ensure atomic updates. See
+[core/tee/fs_htree.c](../core/tee/fs_htree.c) for details.
+
 ### Meta Data Encryption Flow
 
 ![Meta Data Encryption](images/secure_storage/meta_data_encryption.png
 "Meta data encryption")
 
 A new meta IV will be generated by PRNG when a meta data needs to be updated.
-The default size of meta IV is defined in
-[core/include/tee/tee_fs_key_manager.h](../core/include/tee/tee_fs_key_manager.h)
+The size of meta IV is defined in
+[core/include/tee/fs_htree.h](../core/include/tee/fs_htree.h)
 
-The data structure of meta data is defined in
-[core/tee/tee_fs_private.h](../core/tee/tee_fs_private.h) as follows:
+The data structures of meta data and node data are defined in
+[core/include/tee/fs_htree.h](../core/include/tee/fs_htree.h) as follows:
 
 ```
-struct tee_fs_file_info {
-    size_t length;
-    uint32_t backup_version_table[NUM_BLOCKS_PER_FILE / 32];
+struct tee_fs_htree_node_image {
+        uint8_t hash[TEE_FS_HTREE_HASH_SIZE];
+        uint8_t iv[TEE_FS_HTREE_IV_SIZE];
+        uint8_t tag[TEE_FS_HTREE_TAG_SIZE];
+        uint16_t flags;
+};
+
+struct tee_fs_htree_meta {
+        uint64_t length;
+};
+
+struct tee_fs_htree_imeta {
+        struct tee_fs_htree_meta meta;
+        uint32_t max_node_id;
+};
+
+struct tee_fs_htree_image {
+        uint8_t iv[TEE_FS_HTREE_IV_SIZE];
+        uint8_t tag[TEE_FS_HTREE_TAG_SIZE];
+        uint8_t enc_fek[TEE_FS_HTREE_FEK_SIZE];
+        uint8_t imeta[sizeof(struct tee_fs_htree_imeta)];
+        uint32_t counter;
 };
 ```
 
@@ -173,8 +187,8 @@ struct tee_fs_file_info {
 "Block data encryption")
 
 A new block IV will be generated by PRNG when a block data needs to be updated.
-The default size of block IV is defined in
-[core/include/tee/tee_fs_key_manager.h](../core/include/tee/tee_fs_key_manager.h)
+The size of block IV is defined in
+[core/include/tee/fs_htree.h](../core/include/tee/fs_htree.h)
 
 ## Atomic Operation
 
@@ -185,73 +199,30 @@ following operations should support atomic update:
 The strategy used in OP-TEE secure storage to guarantee the atomicity is
 out-of-place update.
 
-### Out-Of-Place Update
+## Important caveats
 
-When modifying a meta file or a block file, TEE file system should create a
-backup version of the file and then modify it.  For the block file, the backup
-version is kept in its filename and in meta data, and for the meta file, the
-backup version is only kept in filename.
+Currently **no OP-TEE platform is able to support retrieval of the Hardware
+Unique Key or Chip ID required for secure operation**.
 
-Naming rule as follows:
+For all platforms, a constant key is used, resulting in no protection against
+decryption, or Secure Storage duplication to other devices.
+
+This is because information about how to retrieve key data from the SoC is
+considered sensitive by the vendors and it is not freely available.
+
+In OP-TEE, there are apis for reading the keys generically from "One-Time
+Programmable" memory, or OTP.  But there are no existing platform implementations.
+
+To allow Secure Storage to operate securely on your platform, you must define
+implementations in your platform code for:
+
 ```
-meta.<backup_version>
-block<block_num>.<backup_version>
+ void tee_otp_get_hw_unique_key(struct tee_hw_unique_key *hwkey);
+ int tee_otp_get_die_id(uint8_t *buffer, size_t len);
 ```
 
-### 3-Stage Update
-
-An atomic operation can be split into three stages as described below:
-
-- **Out-Of-Place update stage**
-
-In this stage, TEE file system will do out-of-place update on the meta file
-or the block files to be modified. Any failure occurring at this stage will
-cause the operation to fail and no changes will be made.
-
-- **Commit stage**
-
-In this stage, TEE file system will commit the new meta file into Linux file
-system and delete the old meta file. Any failure occurring at this stage will
-cause the operation to fail and no changes will be made.
-
-- **Clean up stage**
-
-In this stage, TEE file system will clean up unnecessary or old block files.
-If an error occurs, the operation still be treated as a success but some
-garbage files may be left over in Linux file system.
-
-## Future Work
-
-- **TA storage space isolation**
-
-OP-TEE provides different folders for different TAs in Linux file system for
-storing their own TEE files, but OP-TEE cannot prevent an attacker from
-directly copying a TEE file from one TA's folder to another TA's folder in
-Linux file system. TEE OS should have the ability to detect those kind of
-attack, but for now OP-TEE secure storage doesn't meet the requirement.
-
-A simple solution to detect the attack is using TA's UUID as AAD
-when calculating the tag of meta file, so that OP-TEE will know if a TEE file
-belongs to a specific TA when the TA tries to open the TEE file.
-
-- **TEE file renaming attack detection**
-
-OP-TEE creates a specific folder under the TA's folder for each TEE file in
-Linux file system and use the filename of the TEE file as the folder's name.
-If an attacker directly rename the name of a TEE file folder, the renamed
-TEE file is still a valid TEE file in OP-TEE.
-
-A solution to detect the attack is using TEE filename as AAD when calculating
-the tag of meta file.
-
-- **Rollback attack detection**
-
-An attacker can backup each version of a TEE file directly from Linux file
-system and can replace the TEE file by an old version one sooner or later.
-
-The basic idea of detecting rollback attack is to add write counter both in
-meta file and another storage which has anti-rollback capability such as eMMC
-RPMB partition.
+These implementations should fetch the key data from your SoC-specific e-fuses,
+or crypto unit according to the method defined by your SoC vendor.
 
 ## Reference
 

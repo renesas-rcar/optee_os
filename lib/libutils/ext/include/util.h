@@ -27,7 +27,15 @@
 #ifndef UTIL_H
 #define UTIL_H
 
+#include <compiler.h>
 #include <stdint.h>
+
+#define SIZE_4K	UINTPTR_C(0x1000)
+#define SIZE_1M	UINTPTR_C(0x100000)
+#define SIZE_2M	UINTPTR_C(0x200000)
+#define SIZE_4M	UINTPTR_C(0x400000)
+#define SIZE_8M	UINTPTR_C(0x800000)
+#define SIZE_2G	UINTPTR_C(0x80000000)
 
 #ifndef MAX
 #define MAX(a, b) \
@@ -43,11 +51,17 @@
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
+#ifndef ASM
 /* Round up the even multiple of size, size has to be a multiple of 2 */
-#define ROUNDUP(v, size) (((v) + ((size) - 1)) & ~((size) - 1))
+#define ROUNDUP(v, size) (((v) + ((__typeof__(v))(size) - 1)) & \
+			  ~((__typeof__(v))(size) - 1))
 
 /* Round down the even multiple of size, size has to be a multiple of 2 */
-#define ROUNDDOWN(v, size) ((v) & ~((size) - 1))
+#define ROUNDDOWN(v, size) ((v) & ~((__typeof__(v))(size) - 1))
+#else
+#define ROUNDUP(x, y)			((((x) + (y) - 1) / (y)) * (y))
+#define ROUNDDOWN(x, y)		(((x) / (y)) * (y))
+#endif
 
 /* x has to be of an unsigned type */
 #define IS_POWER_OF_TWO(x) (((x) != 0) && (((x) & (~(x) + 1)) == (x)))
@@ -64,6 +78,8 @@
 		(type *)((unsigned long)(__ptr) - offsetof(type, member)); \
 	}))
 
+#define MEMBER_SIZE(type, member) sizeof(((type *)0)->member)
+
 #ifdef ASM
 #define BIT32(nr)		(1 << (nr))
 #define BIT64(nr)		(1 << (nr))
@@ -76,5 +92,36 @@
 #define SHIFT_U64(v, shift)	((uint64_t)(v) << (shift))
 #endif
 #define BIT(nr)			BIT32(nr)
+
+/*
+ * Create a contiguous bitmask starting at bit position @l and ending at
+ * position @h. For example
+ * GENMASK_64(39, 21) gives us the 64bit vector 0x000000ffffe00000.
+ */
+#define GENMASK_32(h, l) \
+	(((~UINT32_C(0)) << (l)) & (~UINT32_C(0) >> (32 - 1 - (h))))
+
+#define GENMASK_64(h, l) \
+	(((~UINT64_C(0)) << (l)) & (~UINT64_C(0) >> (64 - 1 - (h))))
+
+/*
+ * Checking overflow for addition, subtraction and multiplication. Result
+ * of operation is stored in res which is a pointer to some kind of
+ * integer.
+ *
+ * The macros return true if an overflow occurred and *res is undefined.
+ */
+#define ADD_OVERFLOW(a, b, res) __compiler_add_overflow((a), (b), (res))
+#define SUB_OVERFLOW(a, b, res) __compiler_sub_overflow((a), (b), (res))
+#define MUL_OVERFLOW(a, b, res) __compiler_mul_overflow((a), (b), (res))
+
+/* Return a signed +1, 0 or -1 value based on data comparison */
+#define CMP_TRILEAN(a, b) \
+	(__extension__({ \
+		__typeof__(a) _a = (a); \
+		__typeof__(b) _b = (b); \
+		\
+		_a > _b ? 1 : _a < _b ? -1 : 0; \
+	}))
 
 #endif /*UTIL_H*/

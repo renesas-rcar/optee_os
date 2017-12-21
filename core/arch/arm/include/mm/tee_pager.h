@@ -33,15 +33,37 @@
 #include <kernel/panic.h>
 #include <kernel/user_ta.h>
 #include <mm/tee_mm.h>
+#include <mm/core_mmu.h>
+#include <string.h>
 #include <trace.h>
 
-/*
- * Reference to translation table used to map the virtual memory range
- * covered by the pager.
- */
-extern struct core_mmu_table_info tee_pager_tbl_info;
-
 struct tee_pager_area_head;
+
+/*
+ * tee_pager_early_init() - Perform early initialization of pager
+ *
+ * Panics if some error occurs
+ */
+void tee_pager_early_init(void);
+
+/*
+ * tee_pager_get_table_info() - Fills in table info for address mapped in
+ * translation table managed by the pager.
+ * @va:		address to look up
+ * @ti:		filled in table info
+ *
+ * Returns true if address is in the pager translation tables else false
+ */
+bool tee_pager_get_table_info(vaddr_t va, struct core_mmu_table_info *ti);
+
+/*
+ * tee_pager_phys_to_virt() - Translate physical address to virtual address
+ * looking in the pager page tables
+ * @pa:	address to translate
+ *
+ * Returns found virtual address or NULL on error
+ */
+void *tee_pager_phys_to_virt(paddr_t pa);
 
 /*
  * tee_pager_init() - Initialized the pager
@@ -71,11 +93,9 @@ void tee_pager_init(tee_mm_entry_t *mm_alias);
  *
  * Invalid use of flags or non-page aligned base or size or size == 0 will
  * cause a panic.
- *
- * Return true on success or false if area can't be added.
  */
-bool tee_pager_add_core_area(vaddr_t base, size_t size, uint32_t flags,
-			const void *store, const void *hashes);
+void tee_pager_add_core_area(vaddr_t base, size_t size, uint32_t flags,
+			     const void *store, const void *hashes);
 
 /*
  * tee_pager_add_uta_area() - Adds a pageable user ta area
@@ -85,14 +105,14 @@ bool tee_pager_add_core_area(vaddr_t base, size_t size, uint32_t flags,
  *
  * The mapping is created suitable to initialize the memory content while
  * loading the TA. Once the TA is properly loaded the areas should be
- * finalized with tee_pager_set_uta_area() to get more strict settings.
+ * finalized with tee_pager_set_uta_area_attr() to get more strict settings.
  *
  * Return true on success of false if the area can't be added
  */
 bool tee_pager_add_uta_area(struct user_ta_ctx *utc, vaddr_t base, size_t size);
 
 /*
- * tee_pager_set_uta_area() - Set attributes of a initialized memory area
+ * tee_pager_set_uta_area_attr() - Set attributes of a initialized memory area
  * @utc:	user ta context of the area
  * @base:	base of covered memory area
  * @size:	size of covered memory area
@@ -100,8 +120,16 @@ bool tee_pager_add_uta_area(struct user_ta_ctx *utc, vaddr_t base, size_t size);
  *
  * Return true on success of false if the area can't be updated
  */
-bool tee_pager_set_uta_area(struct user_ta_ctx *utc, vaddr_t base, size_t size,
-			    uint32_t flags);
+bool tee_pager_set_uta_area_attr(struct user_ta_ctx *utc, vaddr_t base,
+				 size_t size, uint32_t flags);
+
+void tee_pager_transfer_uta_region(struct user_ta_ctx *src_utc,
+				   vaddr_t src_base,
+				   struct user_ta_ctx *dst_utc,
+				   vaddr_t dst_base, struct pgt **dst_pgt,
+				   size_t size);
+void tee_pager_rem_uta_region(struct user_ta_ctx *utc, vaddr_t base,
+			      size_t size);
 
 /*
  * tee_pager_rem_uta_areas() - Remove all user ta areas

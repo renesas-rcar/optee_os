@@ -31,12 +31,6 @@
 /* Make stacks aligned to data cache line length */
 #define STACK_ALIGNMENT		64
 
-#ifdef ARM64
-#ifdef CFG_WITH_PAGER
-#error "Pager not supported for ARM64"
-#endif
-#endif /* ARM64 */
-
 /* UART */
 #define PERI_SUB_CTRL_ADDR	0x80000000
 #define CONSOLE_UART_BASE       (PERI_SUB_CTRL_ADDR + 0x00300000)
@@ -109,7 +103,7 @@
 #define CFG_TA_RAM_START	ROUNDUP(TZDRAM_BASE, CORE_MMU_DEVICE_SIZE)
 #define CFG_TA_RAM_SIZE		ROUNDDOWN(TZDRAM_SIZE, CORE_MMU_DEVICE_SIZE)
 
-#define CFG_TEE_RAM_VA_SIZE	(1 * 1024 * 1024)
+#define CFG_TEE_RAM_VA_SIZE	(2 * 1024 * 1024)
 
 #else /* CFG_WITH_PAGER */
 

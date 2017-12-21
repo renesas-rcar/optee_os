@@ -38,28 +38,38 @@ typedef int64_t tee_fs_off_t;
 typedef uint32_t tee_fs_mode_t;
 
 struct tee_fs_dirent {
-	char *d_name;
+	uint8_t oid[TEE_OBJECT_ID_MAX_LEN];
+	size_t oidlen;
 };
 
+struct tee_fs_dir;
+struct tee_file_handle;
+struct tee_pobj;
+
 /*
- * tee_fs implemets a POSIX like secure file system with GP extension
+ * tee_fs implements a POSIX like secure file system with GP extension
  */
 struct tee_file_operations {
-	int (*open)(TEE_Result *errno, const char *file, int flags, ...);
-	int (*close)(int fd);
-	int (*read)(TEE_Result *errno, int fd, void *buf, size_t len);
-	int (*write)(TEE_Result *errno, int fd, const void *buf, size_t len);
-	tee_fs_off_t (*lseek)(TEE_Result *errno,
-			      int fd, tee_fs_off_t offset, int whence);
-	int (*rename)(const char *old, const char *new);
-	int (*unlink)(const char *file);
-	int (*ftruncate)(TEE_Result *errno, int fd, tee_fs_off_t length);
-	int (*mkdir)(const char *path, tee_fs_mode_t mode);
-	struct tee_fs_dir *(*opendir)(const char *name);
-	int (*closedir)(struct tee_fs_dir *d);
-	struct tee_fs_dirent *(*readdir)(struct tee_fs_dir *d);
-	int (*rmdir)(const char *pathname);
-	int (*access)(const char *name, int mode);
+	TEE_Result (*open)(struct tee_pobj *po, size_t *size,
+			   struct tee_file_handle **fh);
+	TEE_Result (*create)(struct tee_pobj *po, bool overwrite,
+			     const void *head, size_t head_size,
+			     const void *attr, size_t attr_size,
+			     const void *data, size_t data_size,
+			     struct tee_file_handle **fh);
+	void (*close)(struct tee_file_handle **fh);
+	TEE_Result (*read)(struct tee_file_handle *fh, size_t pos,
+			   void *buf, size_t *len);
+	TEE_Result (*write)(struct tee_file_handle *fh, size_t pos,
+			    const void *buf, size_t len);
+	TEE_Result (*rename)(struct tee_pobj *old_po, struct tee_pobj *new_po,
+			     bool overwrite);
+	TEE_Result (*remove)(struct tee_pobj *po);
+	TEE_Result (*truncate)(struct tee_file_handle *fh, size_t size);
+
+	TEE_Result (*opendir)(const TEE_UUID *uuid, struct tee_fs_dir **d);
+	TEE_Result (*readdir)(struct tee_fs_dir *d, struct tee_fs_dirent **ent);
+	void (*closedir)(struct tee_fs_dir *d);
 };
 
 #ifdef CFG_REE_FS
@@ -67,9 +77,9 @@ extern const struct tee_file_operations ree_fs_ops;
 #endif
 #ifdef CFG_RPMB_FS
 extern const struct tee_file_operations rpmb_fs_ops;
-#endif
-#ifdef CFG_SQL_FS
-extern const struct tee_file_operations sql_fs_ops;
+
+TEE_Result tee_rpmb_fs_raw_open(const char *fname, bool create,
+				struct tee_file_handle **fh);
 #endif
 #ifdef CFG_STANDALONE_FS
 extern const struct tee_file_operations standalone_fs_ops;
@@ -77,4 +87,4 @@ extern const struct tee_file_operations standalone_fs_ops;
 
 const struct tee_file_operations *file_ops(uint32_t storage_id);
 
-#endif
+#endif /*TEE_FS_H*/

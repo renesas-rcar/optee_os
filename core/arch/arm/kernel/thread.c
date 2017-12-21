@@ -32,51 +32,55 @@
 #include <assert.h>
 #include <keep.h>
 #include <kernel/misc.h>
+#include <kernel/msg_param.h>
 #include <kernel/panic.h>
+#include <kernel/spinlock.h>
 #include <kernel/tee_ta_manager.h>
-#include <kernel/thread.h>
 #include <kernel/thread_defs.h>
-#include <kernel/tz_proc.h>
-#include <kernel/tz_proc_def.h>
+#include <kernel/thread.h>
 #include <mm/core_memprot.h>
+#include <mm/mobj.h>
 #include <mm/tee_mm.h>
 #include <mm/tee_mmu.h>
-#include <mm/tee_mmu_defs.h>
 #include <mm/tee_pager.h>
 #include <optee_msg.h>
 #include <sm/optee_smc.h>
-#include <sm/sm_defs.h>
 #include <sm/sm.h>
+#include <tee/tee_fs_rpc.h>
+#include <tee/tee_cryp_utl.h>
 #include <trace.h>
 #include <util.h>
 
 #include "thread_private.h"
 
+#ifdef CFG_WITH_ARM_TRUSTED_FW
+#define STACK_TMP_OFFS		0
+#else
+#define STACK_TMP_OFFS		SM_STACK_TMP_RESERVE_SIZE
+#endif
+
+
 #ifdef ARM32
 #ifdef CFG_CORE_SANITIZE_KADDRESS
-#define STACK_TMP_SIZE		3072
+#define STACK_TMP_SIZE		(3072 + STACK_TMP_OFFS)
 #else
-#define STACK_TMP_SIZE		1024
+#define STACK_TMP_SIZE		(1536 + STACK_TMP_OFFS)
 #endif
 #define STACK_THREAD_SIZE	8192
 
-#if TRACE_LEVEL > 0
 #ifdef CFG_CORE_SANITIZE_KADDRESS
 #define STACK_ABT_SIZE		3072
 #else
 #define STACK_ABT_SIZE		2048
-#endif
-#else
-#define STACK_ABT_SIZE		1024
 #endif
 
 #endif /*ARM32*/
 
 #ifdef ARM64
 #ifndef ENABLE_CRYPTOENGINE
-#define STACK_TMP_SIZE		2048
+#define STACK_TMP_SIZE		(2048 + STACK_TMP_OFFS)
 #else
-#define STACK_TMP_SIZE		2048*4
+#define STACK_TMP_SIZE		((2048 * 4) + STACK_TMP_OFFS)
 #endif
 #define STACK_THREAD_SIZE	8192
 
@@ -87,11 +91,9 @@
 #endif
 #endif /*ARM64*/
 
-#define RPC_MAX_NUM_PARAMS	2
-
 struct thread_ctx threads[CFG_NUM_THREADS];
 
-static struct thread_core_local thread_core_local[CFG_TEE_CORE_NB_CORE];
+struct thread_core_local thread_core_local[CFG_TEE_CORE_NB_CORE];
 
 #ifdef CFG_WITH_STACK_CANARIES
 #ifdef ARM32
@@ -121,23 +123,26 @@ linkage uint32_t name[num_stacks] \
 #define GET_STACK(stack) \
 	((vaddr_t)(stack) + STACK_SIZE(stack))
 
-DECLARE_STACK(stack_tmp, CFG_TEE_CORE_NB_CORE, STACK_TMP_SIZE, /* global */);
+DECLARE_STACK(stack_tmp, CFG_TEE_CORE_NB_CORE, STACK_TMP_SIZE, static);
 DECLARE_STACK(stack_abt, CFG_TEE_CORE_NB_CORE, STACK_ABT_SIZE, static);
-#if !defined(CFG_WITH_ARM_TRUSTED_FW)
-DECLARE_STACK(stack_sm, CFG_TEE_CORE_NB_CORE, SM_STACK_SIZE, static);
-#endif
 #ifndef CFG_WITH_PAGER
 DECLARE_STACK(stack_thread, CFG_NUM_THREADS, STACK_THREAD_SIZE, static);
 #endif
 
-const uint32_t stack_tmp_stride = STACK_SIZE(stack_tmp[0]);
+const void *stack_tmp_export = (uint8_t *)stack_tmp + sizeof(stack_tmp[0]) -
+			       (STACK_TMP_OFFS + STACK_CANARY_SIZE / 2);
+const uint32_t stack_tmp_stride = sizeof(stack_tmp[0]);
 
-KEEP_PAGER(stack_tmp);
+/*
+ * These stack setup info are required by secondary boot cores before they
+ * each locally enable the pager (the mmu). Hence kept in pager sections.
+ */
+KEEP_PAGER(stack_tmp_export);
 KEEP_PAGER(stack_tmp_stride);
 
 thread_smc_handler_t thread_std_smc_handler_ptr;
 static thread_smc_handler_t thread_fast_smc_handler_ptr;
-thread_fiq_handler_t thread_fiq_handler_ptr;
+thread_nintr_handler_t thread_nintr_handler_ptr;
 thread_pm_handler_t thread_cpu_on_handler_ptr;
 thread_pm_handler_t thread_cpu_off_handler_ptr;
 thread_pm_handler_t thread_cpu_suspend_handler_ptr;
@@ -167,9 +172,6 @@ static void init_canaries(void)
 
 	INIT_CANARY(stack_tmp);
 	INIT_CANARY(stack_abt);
-#if !defined(CFG_WITH_ARM_TRUSTED_FW)
-	INIT_CANARY(stack_sm);
-#endif
 #ifndef CFG_WITH_PAGER
 	INIT_CANARY(stack_thread);
 #endif
@@ -201,14 +203,6 @@ void thread_check_canaries(void)
 			CANARY_DIED(stack_abt, end, n);
 
 	}
-#if !defined(CFG_WITH_ARM_TRUSTED_FW)
-	for (n = 0; n < ARRAY_SIZE(stack_sm); n++) {
-		if (GET_START_CANARY(stack_sm, n) != START_CANARY_VALUE)
-			CANARY_DIED(stack_sm, start, n);
-		if (GET_END_CANARY(stack_sm, n) != END_CANARY_VALUE)
-			CANARY_DIED(stack_sm, end, n);
-	}
-#endif
 #ifndef CFG_WITH_PAGER
 	for (n = 0; n < ARRAY_SIZE(stack_thread); n++) {
 		if (GET_START_CANARY(stack_thread, n) != START_CANARY_VALUE)
@@ -242,6 +236,10 @@ void thread_set_exceptions(uint32_t exceptions)
 {
 	uint32_t cpsr = read_cpsr();
 
+	/* Foreign interrupts must not be unmasked while holding a spinlock */
+	if (!(exceptions & THREAD_EXCP_FOREIGN_INTR))
+		assert_have_no_spinlock();
+
 	cpsr &= ~(THREAD_EXCP_ALL << CPSR_F_SHIFT);
 	cpsr |= ((exceptions & THREAD_EXCP_ALL) << CPSR_F_SHIFT);
 	write_cpsr(cpsr);
@@ -259,6 +257,10 @@ uint32_t thread_get_exceptions(void)
 void thread_set_exceptions(uint32_t exceptions)
 {
 	uint32_t daif = read_daif();
+
+	/* Foreign interrupts must not be unmasked while holding a spinlock */
+	if (!(exceptions & THREAD_EXCP_FOREIGN_INTR))
+		assert_have_no_spinlock();
 
 	daif &= ~(THREAD_EXCP_ALL << DAIF_F_SHIFT);
 	daif |= ((exceptions & THREAD_EXCP_ALL) << DAIF_F_SHIFT);
@@ -285,11 +287,11 @@ struct thread_core_local *thread_get_core_local(void)
 	uint32_t cpu_id = get_core_pos();
 
 	/*
-	 * IRQs must be disabled before playing with core_local since
-	 * we otherwise may be rescheduled to a different core in the
+	 * Foreign interrupts must be disabled before playing with core_local
+	 * since we otherwise may be rescheduled to a different core in the
 	 * middle of this function.
 	 */
-	assert(thread_get_exceptions() & THREAD_EXCP_IRQ);
+	assert(thread_get_exceptions() & THREAD_EXCP_FOREIGN_INTR);
 
 	assert(cpu_id < CFG_TEE_CORE_NB_CORE);
 	return &thread_core_local[cpu_id];
@@ -338,11 +340,12 @@ static void init_regs(struct thread_ctx *thread,
 	thread->regs.pc = (uint32_t)thread_std_smc_entry;
 
 	/*
-	 * Stdcalls starts in SVC mode with masked IRQ, masked Asynchronous
-	 * abort and unmasked FIQ.
-	  */
+	 * Stdcalls starts in SVC mode with masked foreign interrupts, masked
+	 * Asynchronous abort and unmasked native interrupts.
+	 */
 	thread->regs.cpsr = read_cpsr() & ARM32_CPSR_E;
-	thread->regs.cpsr |= CPSR_MODE_SVC | CPSR_I | CPSR_A;
+	thread->regs.cpsr |= CPSR_MODE_SVC | CPSR_A |
+			(THREAD_EXCP_FOREIGN_INTR << ARM32_CPSR_F_SHIFT);
 	/* Enable thumb mode if it's a thumb instruction */
 	if (thread->regs.pc & 1)
 		thread->regs.cpsr |= CPSR_T;
@@ -371,11 +374,11 @@ static void init_regs(struct thread_ctx *thread,
 	thread->regs.pc = (uint64_t)thread_std_smc_entry;
 
 	/*
-	 * Stdcalls starts in SVC mode with masked IRQ, masked Asynchronous
-	 * abort and unmasked FIQ.
-	  */
+	 * Stdcalls starts in SVC mode with masked foreign interrupts, masked
+	 * Asynchronous abort and unmasked native interrupts.
+	 */
 	thread->regs.cpsr = SPSR_64(SPSR_64_MODE_EL1, SPSR_64_MODE_SP_EL0,
-				    DAIFBIT_IRQ | DAIFBIT_ABT);
+				THREAD_EXCP_FOREIGN_INTR | DAIFBIT_ABT);
 	/* Reinitialize stack pointer */
 	thread->regs.sp = thread->stack_va_end;
 
@@ -405,9 +408,7 @@ void thread_init_boot_thread(void)
 	for (n = 0; n < CFG_NUM_THREADS; n++) {
 		TAILQ_INIT(&threads[n].mutexes);
 		TAILQ_INIT(&threads[n].tsd.sess_stack);
-#ifdef CFG_SMALL_PAGE_USER_TA
 		SLIST_INIT(&threads[n].tsd.pgt_cache);
-#endif
 	}
 
 	for (n = 0; n < CFG_TEE_CORE_NB_CORE; n++)
@@ -499,6 +500,30 @@ static void copy_a0_to_a5(struct thread_ctx_regs *regs,
 }
 #endif /*ARM64*/
 
+#ifdef ARM32
+static bool is_from_user(uint32_t cpsr)
+{
+	return (cpsr & ARM32_CPSR_MODE_MASK) == ARM32_CPSR_MODE_USR;
+}
+#endif
+
+#ifdef ARM64
+static bool is_from_user(uint32_t cpsr)
+{
+	if (cpsr & (SPSR_MODE_RW_32 << SPSR_MODE_RW_SHIFT))
+		return true;
+	if (((cpsr >> SPSR_64_MODE_EL_SHIFT) & SPSR_64_MODE_EL_MASK) ==
+	     SPSR_64_MODE_EL0)
+		return true;
+	return false;
+}
+#endif
+
+static bool is_user_mode(struct thread_ctx_regs *regs)
+{
+	return is_from_user((uint32_t)regs->cpsr);
+}
+
 static void thread_resume_from_rpc(struct thread_smc_args *args)
 {
 	size_t n = args->a3; /* thread id */
@@ -525,11 +550,14 @@ static void thread_resume_from_rpc(struct thread_smc_args *args)
 
 	l->curr_thread = n;
 
+	if (is_user_mode(&threads[n].regs))
+		tee_ta_update_session_utime_resume();
+
 	if (threads[n].have_user_map)
 		core_mmu_set_user_map(&threads[n].user_map);
 
 	/*
-	 * Return from RPC to request service of an IRQ must not
+	 * Return from RPC to request service of a foreign interrupt must not
 	 * get parameters from non-secure world.
 	 */
 	if (threads[n].flags & THREAD_FLAGS_COPY_ARGS_ON_RETURN) {
@@ -559,36 +587,27 @@ void thread_handle_std_smc(struct thread_smc_args *args)
 		thread_alloc_and_run(args);
 }
 
-/* Helper routine for the assembly function thread_std_smc_entry() */
-void __thread_std_smc_entry(struct thread_smc_args *args)
+/*
+ * Helper routine for the assembly function thread_std_smc_entry()
+ *
+ * Note: this function is weak just to make it possible to exclude it from
+ * the unpaged area.
+ */
+void __weak __thread_std_smc_entry(struct thread_smc_args *args)
 {
-	struct thread_ctx *thr = threads + thread_get_id();
-
-	if (!thr->rpc_arg) {
-		paddr_t parg;
-		uint64_t carg;
-		void *arg;
-
-		thread_rpc_alloc_arg(
-			OPTEE_MSG_GET_ARG_SIZE(RPC_MAX_NUM_PARAMS),
-			&parg, &carg);
-		if (!parg || !ALIGNMENT_IS_OK(parg, struct optee_msg_arg) ||
-		    !(arg = phys_to_virt(parg, CORE_MEM_NSEC_SHM))) {
-			thread_rpc_free_arg(carg);
-			args->a0 = OPTEE_SMC_RETURN_ENOMEM;
-			return;
-		}
-
-		thr->rpc_arg = arg;
-		thr->rpc_carg = carg;
-	}
-
 	thread_std_smc_handler_ptr(args);
 
-	if (!thread_prealloc_rpc_cache) {
-		thread_rpc_free_arg(thr->rpc_carg);
-		thr->rpc_carg = 0;
-		thr->rpc_arg = 0;
+	if (args->a0 == OPTEE_SMC_RETURN_OK) {
+		struct thread_ctx *thr = threads + thread_get_id();
+
+		tee_fs_rpc_cache_clear(&thr->tsd);
+		if (!thread_prealloc_rpc_cache) {
+			thread_rpc_free_arg(thr->rpc_carg);
+			mobj_free(thr->rpc_mobj);
+			thr->rpc_carg = 0;
+			thr->rpc_arg = 0;
+			thr->rpc_mobj = NULL;
+		}
 	}
 }
 
@@ -610,13 +629,51 @@ vaddr_t thread_get_saved_thread_sp(void)
 }
 #endif /*ARM64*/
 
-bool thread_addr_is_in_stack(vaddr_t va)
+vaddr_t thread_stack_start(void)
 {
-	struct thread_ctx *thr = threads + thread_get_id();
+	struct thread_ctx *thr;
+	int ct = thread_get_id_may_fail();
 
-	return va < thr->stack_va_end &&
-	       va >= (thr->stack_va_end - STACK_THREAD_SIZE);
+	if (ct == -1)
+		return 0;
+
+	thr = threads + ct;
+	return thr->stack_va_end - STACK_THREAD_SIZE;
 }
+
+size_t thread_stack_size(void)
+{
+	return STACK_THREAD_SIZE;
+}
+
+bool thread_is_from_abort_mode(void)
+{
+	struct thread_core_local *l = thread_get_core_local();
+
+	return (l->flags >> THREAD_CLF_SAVED_SHIFT) & THREAD_CLF_ABORT;
+}
+
+#ifdef ARM32
+bool thread_is_in_normal_mode(void)
+{
+	return (read_cpsr() & ARM32_CPSR_MODE_MASK) == ARM32_CPSR_MODE_SVC;
+}
+#endif
+
+#ifdef ARM64
+bool thread_is_in_normal_mode(void)
+{
+	uint32_t exceptions = thread_mask_exceptions(THREAD_EXCP_FOREIGN_INTR);
+	struct thread_core_local *l = thread_get_core_local();
+	bool ret;
+
+	/* If any bit in l->flags is set we're handling some exception. */
+	ret = !l->flags;
+	thread_unmask_exceptions(exceptions);
+
+	return ret;
+}
+#endif
 
 void thread_state_free(void)
 {
@@ -641,36 +698,29 @@ void thread_state_free(void)
 	unlock_global();
 }
 
-#ifdef ARM32
-static bool is_from_user(uint32_t cpsr)
-{
-	return (cpsr & ARM32_CPSR_MODE_MASK) == ARM32_CPSR_MODE_USR;
-}
-#endif
-
-#ifdef ARM64
-static bool is_from_user(uint32_t cpsr)
-{
-	if (cpsr & (SPSR_MODE_RW_32 << SPSR_MODE_RW_SHIFT))
-		return true;
-	if (((cpsr >> SPSR_64_MODE_EL_SHIFT) & SPSR_64_MODE_EL_MASK) ==
-	     SPSR_64_MODE_EL0)
-		return true;
-	return false;
-}
-#endif
-
 #ifdef CFG_WITH_PAGER
-static void release_unused_kernel_stack(struct thread_ctx *thr)
+static void release_unused_kernel_stack(struct thread_ctx *thr,
+					uint32_t cpsr __maybe_unused)
 {
+#ifdef ARM64
+	/*
+	 * If we're from user mode then thr->regs.sp is the saved user
+	 * stack pointer and thr->kern_sp holds the last kernel stack
+	 * pointer. But if we're from kernel mode then thr->kern_sp isn't
+	 * up to date so we need to read from thr->regs.sp instead.
+	 */
+	vaddr_t sp = is_from_user(cpsr) ?  thr->kern_sp : thr->regs.sp;
+#else
 	vaddr_t sp = thr->regs.svc_sp;
+#endif
 	vaddr_t base = thr->stack_va_end - STACK_THREAD_SIZE;
 	size_t len = sp - base;
 
 	tee_pager_release_phys((void *)base, len);
 }
 #else
-static void release_unused_kernel_stack(struct thread_ctx *thr __unused)
+static void release_unused_kernel_stack(struct thread_ctx *thr __unused,
+					uint32_t cpsr __unused)
 {
 }
 #endif
@@ -684,10 +734,13 @@ int thread_state_suspend(uint32_t flags, uint32_t cpsr, vaddr_t pc)
 
 	thread_check_canaries();
 
-	release_unused_kernel_stack(threads + ct);
+	release_unused_kernel_stack(threads + ct, cpsr);
 
-	if (is_from_user(cpsr))
+	if (is_from_user(cpsr)) {
 		thread_user_save_vfp();
+		tee_ta_update_session_utime_suspend();
+		tee_ta_gprof_sample_pc(pc);
+	}
 	thread_lazy_restore_ns_vfp();
 
 	lock_global();
@@ -719,9 +772,11 @@ static void set_tmp_stack(struct thread_core_local *l, vaddr_t sp)
 	thread_set_fiq_sp(sp);
 }
 
-static void set_abt_stack(struct thread_core_local *l __unused, vaddr_t sp)
+static void set_abt_stack(struct thread_core_local *l, vaddr_t sp)
 {
-	thread_set_abt_sp(sp);
+	l->abt_stack_va_end = sp;
+	thread_set_abt_sp((vaddr_t)l);
+	thread_set_und_sp((vaddr_t)l);
 }
 #endif /*ARM32*/
 
@@ -752,8 +807,10 @@ bool thread_init_stack(uint32_t thread_id, vaddr_t sp)
 
 int thread_get_id_may_fail(void)
 {
-	/* thread_get_core_local() requires IRQs to be disabled */
-	uint32_t exceptions = thread_mask_exceptions(THREAD_EXCP_IRQ);
+	/*
+	 * thread_get_core_local() requires foreign interrupts to be disabled
+	 */
+	uint32_t exceptions = thread_mask_exceptions(THREAD_EXCP_FOREIGN_INTR);
 	struct thread_core_local *l = thread_get_core_local();
 	int ct = l->curr_thread;
 
@@ -773,7 +830,7 @@ static void init_handlers(const struct thread_handlers *handlers)
 {
 	thread_std_smc_handler_ptr = handlers->std_smc;
 	thread_fast_smc_handler_ptr = handlers->fast_smc;
-	thread_fiq_handler_ptr = handlers->fiq;
+	thread_nintr_handler_ptr = handlers->nintr;
 	thread_cpu_on_handler_ptr = handlers->cpu_on;
 	thread_cpu_off_handler_ptr = handlers->cpu_off;
 	thread_cpu_suspend_handler_ptr = handlers->cpu_suspend;
@@ -843,8 +900,7 @@ static void init_sec_mon(size_t pos __maybe_unused)
 {
 #if !defined(CFG_WITH_ARM_TRUSTED_FW)
 	/* Initialize secure monitor */
-	sm_init(GET_STACK(stack_sm[pos]));
-	sm_set_entry_vector(thread_vector_table);
+	sm_init(GET_STACK(stack_tmp[pos]));
 #endif
 }
 
@@ -855,7 +911,7 @@ void thread_init_per_cpu(void)
 
 	init_sec_mon(pos);
 
-	set_tmp_stack(l, GET_STACK(stack_tmp[pos]));
+	set_tmp_stack(l, GET_STACK(stack_tmp[pos]) - STACK_TMP_OFFS);
 	set_abt_stack(l, GET_STACK(stack_abt[pos]));
 
 	thread_init_vbar();
@@ -874,10 +930,10 @@ struct thread_ctx_regs *thread_get_ctx_regs(void)
 	return &threads[l->curr_thread].regs;
 }
 
-void thread_set_irq(bool enable)
+void thread_set_foreign_intr(bool enable)
 {
-	/* thread_get_core_local() requires IRQs to be disabled */
-	uint32_t exceptions = thread_mask_exceptions(THREAD_EXCP_IRQ);
+	/* thread_get_core_local() requires foreign interrupts to be disabled */
+	uint32_t exceptions = thread_mask_exceptions(THREAD_EXCP_FOREIGN_INTR);
 	struct thread_core_local *l;
 
 	l = thread_get_core_local();
@@ -885,35 +941,37 @@ void thread_set_irq(bool enable)
 	assert(l->curr_thread != -1);
 
 	if (enable) {
-		threads[l->curr_thread].flags |= THREAD_FLAGS_IRQ_ENABLE;
-		thread_set_exceptions(exceptions & ~THREAD_EXCP_IRQ);
+		threads[l->curr_thread].flags |=
+					THREAD_FLAGS_FOREIGN_INTR_ENABLE;
+		thread_set_exceptions(exceptions & ~THREAD_EXCP_FOREIGN_INTR);
 	} else {
 		/*
-		 * No need to disable IRQ here since it's already disabled
-		 * above.
+		 * No need to disable foreign interrupts here since they're
+		 * already disabled above.
 		 */
-		threads[l->curr_thread].flags &= ~THREAD_FLAGS_IRQ_ENABLE;
+		threads[l->curr_thread].flags &=
+					~THREAD_FLAGS_FOREIGN_INTR_ENABLE;
 	}
 }
 
-void thread_restore_irq(void)
+void thread_restore_foreign_intr(void)
 {
-	/* thread_get_core_local() requires IRQs to be disabled */
-	uint32_t exceptions = thread_mask_exceptions(THREAD_EXCP_IRQ);
+	/* thread_get_core_local() requires foreign interrupts to be disabled */
+	uint32_t exceptions = thread_mask_exceptions(THREAD_EXCP_FOREIGN_INTR);
 	struct thread_core_local *l;
 
 	l = thread_get_core_local();
 
 	assert(l->curr_thread != -1);
 
-	if (threads[l->curr_thread].flags & THREAD_FLAGS_IRQ_ENABLE)
-		thread_set_exceptions(exceptions & ~THREAD_EXCP_IRQ);
+	if (threads[l->curr_thread].flags & THREAD_FLAGS_FOREIGN_INTR_ENABLE)
+		thread_set_exceptions(exceptions & ~THREAD_EXCP_FOREIGN_INTR);
 }
 
 #ifdef CFG_WITH_VFP
 uint32_t thread_kernel_enable_vfp(void)
 {
-	uint32_t exceptions = thread_mask_exceptions(THREAD_EXCP_IRQ);
+	uint32_t exceptions = thread_mask_exceptions(THREAD_EXCP_FOREIGN_INTR);
 	struct thread_ctx *thr = threads + thread_get_id();
 	struct thread_user_vfp_state *tuv = thr->vfp_state.uvfp;
 
@@ -951,9 +1009,9 @@ void thread_kernel_disable_vfp(uint32_t state)
 
 	vfp_disable();
 	exceptions = thread_get_exceptions();
-	assert(exceptions & THREAD_EXCP_IRQ);
-	exceptions &= ~THREAD_EXCP_IRQ;
-	exceptions |= state & THREAD_EXCP_IRQ;
+	assert(exceptions & THREAD_EXCP_FOREIGN_INTR);
+	exceptions &= ~THREAD_EXCP_FOREIGN_INTR;
+	exceptions |= state & THREAD_EXCP_FOREIGN_INTR;
 	thread_set_exceptions(exceptions);
 }
 
@@ -961,7 +1019,7 @@ void thread_kernel_save_vfp(void)
 {
 	struct thread_ctx *thr = threads + thread_get_id();
 
-	assert(thread_get_exceptions() & THREAD_EXCP_IRQ);
+	assert(thread_get_exceptions() & THREAD_EXCP_FOREIGN_INTR);
 	if (vfp_is_enabled()) {
 		vfp_lazy_save_state_init(&thr->vfp_state.sec);
 		thr->vfp_state.sec_lazy_saved = true;
@@ -972,7 +1030,7 @@ void thread_kernel_restore_vfp(void)
 {
 	struct thread_ctx *thr = threads + thread_get_id();
 
-	assert(thread_get_exceptions() & THREAD_EXCP_IRQ);
+	assert(thread_get_exceptions() & THREAD_EXCP_FOREIGN_INTR);
 	assert(!vfp_is_enabled());
 	if (thr->vfp_state.sec_lazy_saved) {
 		vfp_lazy_restore_state(&thr->vfp_state.sec,
@@ -987,7 +1045,7 @@ void thread_user_enable_vfp(struct thread_user_vfp_state *uvfp)
 	struct thread_ctx *thr = threads + thread_get_id();
 	struct thread_user_vfp_state *tuv = thr->vfp_state.uvfp;
 
-	assert(thread_get_exceptions() & THREAD_EXCP_IRQ);
+	assert(thread_get_exceptions() & THREAD_EXCP_FOREIGN_INTR);
 	assert(!vfp_is_enabled());
 
 	if (!thr->vfp_state.ns_saved) {
@@ -1014,7 +1072,7 @@ void thread_user_save_vfp(void)
 	struct thread_ctx *thr = threads + thread_get_id();
 	struct thread_user_vfp_state *tuv = thr->vfp_state.uvfp;
 
-	assert(thread_get_exceptions() & THREAD_EXCP_IRQ);
+	assert(thread_get_exceptions() & THREAD_EXCP_FOREIGN_INTR);
 	if (!vfp_is_enabled())
 		return;
 
@@ -1077,6 +1135,8 @@ uint32_t thread_enter_user_mode(unsigned long a0, unsigned long a1,
 {
 	uint32_t spsr;
 
+	tee_ta_update_session_utime_resume();
+
 	if (!get_spsr(is_32bit, entry_func, &spsr)) {
 		*exit_status0 = 1; /* panic */
 		*exit_status1 = 0xbadbadba;
@@ -1092,7 +1152,7 @@ void thread_add_mutex(struct mutex *m)
 	int ct = l->curr_thread;
 
 	assert(ct != -1 && threads[ct].state == THREAD_STATE_ACTIVE);
-	assert(m->owner_id == -1);
+	assert(m->owner_id == MUTEX_OWNER_ID_NONE);
 	m->owner_id = ct;
 	TAILQ_INSERT_TAIL(&threads[ct].mutexes, m, link);
 }
@@ -1104,7 +1164,7 @@ void thread_rem_mutex(struct mutex *m)
 
 	assert(ct != -1 && threads[ct].state == THREAD_STATE_ACTIVE);
 	assert(m->owner_id == ct);
-	m->owner_id = -1;
+	m->owner_id = MUTEX_OWNER_ID_NONE;
 	TAILQ_REMOVE(&threads[ct].mutexes, m, link);
 }
 
@@ -1112,7 +1172,7 @@ bool thread_disable_prealloc_rpc_cache(uint64_t *cookie)
 {
 	bool rv;
 	size_t n;
-	uint32_t exceptions = thread_mask_exceptions(THREAD_EXCP_IRQ);
+	uint32_t exceptions = thread_mask_exceptions(THREAD_EXCP_FOREIGN_INTR);
 
 	lock_global();
 
@@ -1126,6 +1186,7 @@ bool thread_disable_prealloc_rpc_cache(uint64_t *cookie)
 	rv = true;
 	for (n = 0; n < CFG_NUM_THREADS; n++) {
 		if (threads[n].rpc_arg) {
+			mobj_free(threads[n].rpc_mobj);
 			*cookie = threads[n].rpc_carg;
 			threads[n].rpc_carg = 0;
 			threads[n].rpc_arg = NULL;
@@ -1145,7 +1206,7 @@ bool thread_enable_prealloc_rpc_cache(void)
 {
 	bool rv;
 	size_t n;
-	uint32_t exceptions = thread_mask_exceptions(THREAD_EXCP_IRQ);
+	uint32_t exceptions = thread_mask_exceptions(THREAD_EXCP_FOREIGN_INTR);
 
 	lock_global();
 
@@ -1164,61 +1225,6 @@ out:
 	return rv;
 }
 
-static uint32_t rpc_cmd_nolock(uint32_t cmd, size_t num_params,
-		struct optee_msg_param *params)
-{
-	uint32_t rpc_args[THREAD_RPC_NUM_ARGS] = { OPTEE_SMC_RETURN_RPC_CMD };
-	struct thread_ctx *thr = threads + thread_get_id();
-	struct optee_msg_arg *arg = thr->rpc_arg;
-	uint64_t carg = thr->rpc_carg;
-	const size_t params_size = sizeof(struct optee_msg_param) * num_params;
-	size_t n;
-
-	assert(arg && carg && num_params <= RPC_MAX_NUM_PARAMS);
-
-	memset(arg, 0, OPTEE_MSG_GET_ARG_SIZE(RPC_MAX_NUM_PARAMS));
-	arg->cmd = cmd;
-	arg->ret = TEE_ERROR_GENERIC; /* in case value isn't updated */
-	arg->num_params = num_params;
-	memcpy(OPTEE_MSG_GET_PARAMS(arg), params, params_size);
-
-	reg_pair_from_64(carg, rpc_args + 1, rpc_args + 2);
-	thread_rpc(rpc_args);
-	for (n = 0; n < num_params; n++) {
-		switch (params[n].attr & OPTEE_MSG_ATTR_TYPE_MASK) {
-		case OPTEE_MSG_ATTR_TYPE_VALUE_OUTPUT:
-		case OPTEE_MSG_ATTR_TYPE_VALUE_INOUT:
-		case OPTEE_MSG_ATTR_TYPE_RMEM_OUTPUT:
-		case OPTEE_MSG_ATTR_TYPE_RMEM_INOUT:
-		case OPTEE_MSG_ATTR_TYPE_TMEM_OUTPUT:
-		case OPTEE_MSG_ATTR_TYPE_TMEM_INOUT:
-			memcpy(params + n, OPTEE_MSG_GET_PARAMS(arg) + n,
-			       sizeof(struct optee_msg_param));
-			break;
-		default:
-			break;
-		}
-	}
-	return arg->ret;
-}
-
-uint32_t thread_rpc_cmd(uint32_t cmd, size_t num_params,
-		struct optee_msg_param *params)
-{
-	uint32_t ret;
-
-	ret = rpc_cmd_nolock(cmd, num_params, params);
-
-	return ret;
-}
-
-static bool check_alloced_shm(paddr_t pa, size_t len, size_t align)
-{
-	if (pa & (align - 1))
-		return false;
-	return core_pbuf_is(CORE_MEM_NSEC_SHM, pa, len);
-}
-
 void thread_rpc_free_arg(uint64_t cookie)
 {
 	if (cookie) {
@@ -1231,51 +1237,145 @@ void thread_rpc_free_arg(uint64_t cookie)
 	}
 }
 
-void thread_rpc_alloc_arg(size_t size, paddr_t *arg, uint64_t *cookie)
+struct mobj *thread_rpc_alloc_arg(size_t size, uint64_t *cookie)
 {
 	paddr_t pa;
 	uint64_t co;
 	uint32_t rpc_args[THREAD_RPC_NUM_ARGS] = {
 		OPTEE_SMC_RETURN_RPC_ALLOC, size
 	};
+	struct mobj *mobj = NULL;
 
 	thread_rpc(rpc_args);
 
 	pa = reg_pair_to_64(rpc_args[1], rpc_args[2]);
 	co = reg_pair_to_64(rpc_args[4], rpc_args[5]);
-	if (!check_alloced_shm(pa, size, sizeof(uint64_t))) {
-		thread_rpc_free_arg(co);
-		pa = 0;
-		co = 0;
+
+	if (!ALIGNMENT_IS_OK(pa, struct optee_msg_arg))
+		goto err;
+
+	/* Check if this region is in static shared space */
+	if (core_pbuf_is(CORE_MEM_NSEC_SHM, pa, size))
+		mobj = mobj_shm_alloc(pa, size);
+	else if ((!(pa & SMALL_PAGE_MASK)) && size <= SMALL_PAGE_SIZE)
+		mobj = mobj_mapped_shm_alloc(&pa, 1, 0, co);
+
+	if (!mobj)
+		goto err;
+
+	*cookie = co;
+	return mobj;
+err:
+	thread_rpc_free_arg(co);
+	mobj_free(mobj);
+	*cookie = 0;
+	return NULL;
+}
+
+static bool get_rpc_arg(uint32_t cmd, size_t num_params,
+			struct optee_msg_arg **arg_ret, uint64_t *carg_ret)
+{
+	struct thread_ctx *thr = threads + thread_get_id();
+	struct optee_msg_arg *arg = thr->rpc_arg;
+	struct mobj *mobj;
+	size_t sz = OPTEE_MSG_GET_ARG_SIZE(THREAD_RPC_MAX_NUM_PARAMS);
+	uint64_t c;
+
+	if (num_params > THREAD_RPC_MAX_NUM_PARAMS)
+		return false;
+
+	if (!arg) {
+		mobj = thread_rpc_alloc_arg(sz, &c);
+		if (!mobj)
+			return false;
+
+		arg = mobj_get_va(mobj, 0);
+		if (!arg)
+			goto bad;
+
+		thr->rpc_arg = arg;
+		thr->rpc_carg = c;
+		thr->rpc_mobj = mobj;
 	}
 
-	*arg = pa;
-	*cookie = co;
+	memset(arg, 0, OPTEE_MSG_GET_ARG_SIZE(num_params));
+	arg->cmd = cmd;
+	arg->num_params = num_params;
+	arg->ret = TEE_ERROR_GENERIC; /* in case value isn't updated */
+
+	*arg_ret = arg;
+	*carg_ret = thr->rpc_carg;
+	return true;
+
+bad:
+	thread_rpc_free_arg(c);
+	return false;
+}
+
+uint32_t thread_rpc_cmd(uint32_t cmd, size_t num_params,
+			struct optee_msg_param *params)
+{
+	uint32_t rpc_args[THREAD_RPC_NUM_ARGS] = { OPTEE_SMC_RETURN_RPC_CMD };
+	struct optee_msg_arg *arg;
+	uint64_t carg;
+	size_t n;
+
+	/*
+	 * Break recursion in case plat_prng_add_jitter_entropy_norpc()
+	 * sleeps on a mutex or unlocks a mutex with a sleeper (contended
+	 * mutex).
+	 */
+	if (cmd != OPTEE_MSG_RPC_CMD_WAIT_QUEUE)
+		plat_prng_add_jitter_entropy_norpc();
+
+	if (!get_rpc_arg(cmd, num_params, &arg, &carg))
+		return TEE_ERROR_OUT_OF_MEMORY;
+
+	memcpy(arg->params, params, sizeof(*params) * num_params);
+
+	reg_pair_from_64(carg, rpc_args + 1, rpc_args + 2);
+	thread_rpc(rpc_args);
+	for (n = 0; n < num_params; n++) {
+		switch (params[n].attr & OPTEE_MSG_ATTR_TYPE_MASK) {
+		case OPTEE_MSG_ATTR_TYPE_VALUE_OUTPUT:
+		case OPTEE_MSG_ATTR_TYPE_VALUE_INOUT:
+		case OPTEE_MSG_ATTR_TYPE_RMEM_OUTPUT:
+		case OPTEE_MSG_ATTR_TYPE_RMEM_INOUT:
+		case OPTEE_MSG_ATTR_TYPE_TMEM_OUTPUT:
+		case OPTEE_MSG_ATTR_TYPE_TMEM_INOUT:
+			params[n] = arg->params[n];
+			break;
+		default:
+			break;
+		}
+	}
+	return arg->ret;
 }
 
 /**
  * Free physical memory previously allocated with thread_rpc_alloc()
  *
  * @cookie:	cookie received when allocating the buffer
- * @bt:		 must be the same as supplied when allocating
+ * @bt:		must be the same as supplied when allocating
+ * @mobj:	mobj that describes allocated buffer
+ *
+ * This function also frees corresponding mobj.
  */
-static void thread_rpc_free(unsigned int bt, uint64_t cookie)
+static void thread_rpc_free(unsigned int bt, uint64_t cookie, struct mobj *mobj)
 {
 	uint32_t rpc_args[THREAD_RPC_NUM_ARGS] = { OPTEE_SMC_RETURN_RPC_CMD };
-	struct thread_ctx *thr = threads + thread_get_id();
-	struct optee_msg_arg *arg = thr->rpc_arg;
-	uint64_t carg = thr->rpc_carg;
-	struct optee_msg_param *params = OPTEE_MSG_GET_PARAMS(arg);
+	struct optee_msg_arg *arg;
+	uint64_t carg;
 
-	memset(arg, 0, OPTEE_MSG_GET_ARG_SIZE(1));
-	arg->cmd = OPTEE_MSG_RPC_CMD_SHM_FREE;
-	arg->ret = TEE_ERROR_GENERIC; /* in case value isn't updated */
-	arg->num_params = 1;
+	if (!get_rpc_arg(OPTEE_MSG_RPC_CMD_SHM_FREE, 1, &arg, &carg))
+		return;
 
-	params[0].attr = OPTEE_MSG_ATTR_TYPE_VALUE_INPUT;
-	params[0].u.value.a = bt;
-	params[0].u.value.b = cookie;
-	params[0].u.value.c = 0;
+	arg->params[0].attr = OPTEE_MSG_ATTR_TYPE_VALUE_INPUT;
+	arg->params[0].u.value.a = bt;
+	arg->params[0].u.value.b = cookie;
+	arg->params[0].u.value.c = 0;
+
+	mobj_free(mobj);
 
 	reg_pair_from_64(carg, rpc_args + 1, rpc_args + 2);
 	thread_rpc(rpc_args);
@@ -1291,55 +1391,65 @@ static void thread_rpc_free(unsigned int bt, uint64_t cookie)
  *		failed.
  * @cookie:	returned cookie used when freeing the buffer
  */
-static void thread_rpc_alloc(size_t size, size_t align, unsigned int bt,
-			paddr_t *payload, uint64_t *cookie)
+static struct mobj *thread_rpc_alloc(size_t size, size_t align, unsigned int bt,
+				     uint64_t *cookie)
 {
 	uint32_t rpc_args[THREAD_RPC_NUM_ARGS] = { OPTEE_SMC_RETURN_RPC_CMD };
-	struct thread_ctx *thr = threads + thread_get_id();
-	struct optee_msg_arg *arg = thr->rpc_arg;
-	uint64_t carg = thr->rpc_carg;
-	struct optee_msg_param *params = OPTEE_MSG_GET_PARAMS(arg);
+	struct optee_msg_arg *arg;
+	uint64_t carg;
+	struct mobj *mobj = NULL;
 
-	memset(arg, 0, OPTEE_MSG_GET_ARG_SIZE(1));
-	arg->cmd = OPTEE_MSG_RPC_CMD_SHM_ALLOC;
-	arg->ret = TEE_ERROR_GENERIC; /* in case value isn't updated */
-	arg->num_params = 1;
+	if (!get_rpc_arg(OPTEE_MSG_RPC_CMD_SHM_ALLOC, 1, &arg, &carg))
+		goto fail;
 
-	params[0].attr = OPTEE_MSG_ATTR_TYPE_VALUE_INPUT;
-	params[0].u.value.a = bt;
-	params[0].u.value.b = size;
-	params[0].u.value.c = align;
+	arg->params[0].attr = OPTEE_MSG_ATTR_TYPE_VALUE_INPUT;
+	arg->params[0].u.value.a = bt;
+	arg->params[0].u.value.b = size;
+	arg->params[0].u.value.c = align;
 
 	reg_pair_from_64(carg, rpc_args + 1, rpc_args + 2);
 	thread_rpc(rpc_args);
+
 	if (arg->ret != TEE_SUCCESS)
 		goto fail;
 
 	if (arg->num_params != 1)
 		goto fail;
 
-	if (params[0].attr != OPTEE_MSG_ATTR_TYPE_TMEM_OUTPUT)
+	if (arg->params[0].attr == OPTEE_MSG_ATTR_TYPE_TMEM_OUTPUT) {
+		*cookie = arg->params[0].u.tmem.shm_ref;
+		mobj = mobj_shm_alloc(arg->params[0].u.tmem.buf_ptr,
+				      arg->params[0].u.tmem.size);
+	} else if (arg->params[0].attr == (OPTEE_MSG_ATTR_TYPE_TMEM_OUTPUT |
+					   OPTEE_MSG_ATTR_NONCONTIG)) {
+		*cookie = arg->params[0].u.tmem.shm_ref;
+		mobj = msg_param_mobj_from_noncontig(
+			arg->params[0].u.tmem.buf_ptr,
+			arg->params[0].u.tmem.size,
+			*cookie,
+			true);
+	} else
 		goto fail;
 
-	if (!check_alloced_shm(params[0].u.tmem.buf_ptr, size, align)) {
-		thread_rpc_free(bt, params[0].u.tmem.shm_ref);
-		goto fail;
-	}
+	if (!mobj)
+		goto free_first;
 
-	*payload = params[0].u.tmem.buf_ptr;
-	*cookie = params[0].u.tmem.shm_ref;
-	return;
+	assert(mobj_is_nonsec(mobj));
+	return mobj;
+
+free_first:
+	thread_rpc_free(bt, *cookie, mobj);
 fail:
-	*payload = 0;
 	*cookie = 0;
+	return NULL;
 }
 
-void thread_rpc_alloc_payload(size_t size, paddr_t *payload, uint64_t *cookie)
+struct mobj *thread_rpc_alloc_payload(size_t size, uint64_t *cookie)
 {
-	thread_rpc_alloc(size, 8, OPTEE_MSG_RPC_SHM_TYPE_APPL, payload, cookie);
+	return thread_rpc_alloc(size, 8, OPTEE_MSG_RPC_SHM_TYPE_APPL, cookie);
 }
 
-void thread_rpc_free_payload(uint64_t cookie)
+void thread_rpc_free_payload(uint64_t cookie, struct mobj *mobj)
 {
-	thread_rpc_free(OPTEE_MSG_RPC_SHM_TYPE_APPL, cookie);
+	thread_rpc_free(OPTEE_MSG_RPC_SHM_TYPE_APPL, cookie, mobj);
 }

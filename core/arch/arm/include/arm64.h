@@ -36,6 +36,7 @@
 #define SCTLR_C		BIT32(2)
 #define SCTLR_SA	BIT32(3)
 #define SCTLR_I		BIT32(12)
+#define SCTLR_WXN	BIT32(19)
 
 #define TTBR_ASID_MASK		0xff
 #define TTBR_ASID_SHIFT		48
@@ -206,6 +207,10 @@
 #define PAR_PA_SHIFT		12
 #define PAR_PA_MASK		(BIT64(36) - 1)
 
+#define TLBI_MVA_SHIFT		12
+#define TLBI_ASID_SHIFT		48
+#define TLBI_ASID_MASK		0xff
+
 #ifndef ASM
 static inline void isb(void)
 {
@@ -215,6 +220,16 @@ static inline void isb(void)
 static inline void dsb(void)
 {
 	asm volatile ("dsb sy");
+}
+
+static inline void dsb_ish(void)
+{
+	asm volatile ("dsb ish");
+}
+
+static inline void dsb_ishst(void)
+{
+	asm volatile ("dsb ishst");
 }
 
 static inline void write_at_s1e1r(uint64_t va)
@@ -236,6 +251,19 @@ static __always_inline uint64_t read_fp(void)
 
 	asm volatile ("mov %0, x29" : "=r" (val));
 	return val;
+}
+
+static inline uint64_t read_pmu_ccnt(void)
+{
+	uint64_t val;
+
+	asm volatile("mrs %0, PMCCNTR_EL0" : "=r"(val));
+	return val;
+}
+
+static inline void tlbi_vaae1is(uint64_t mva)
+{
+	asm volatile ("tlbi	vaae1is, %0" : : "r" (mva));
 }
 
 /*
@@ -289,7 +317,11 @@ DEFINE_U32_REG_READWRITE_FUNCS(fpsr)
 DEFINE_U32_REG_READ_FUNC(contextidr_el1)
 DEFINE_U32_REG_READ_FUNC(sctlr_el1)
 
+/* ARM Generic timer functions */
 DEFINE_REG_READ_FUNC_(cntfrq, uint32_t, cntfrq_el0)
+DEFINE_REG_READ_FUNC_(cntpct, uint64_t, cntpct_el0)
+DEFINE_REG_READ_FUNC_(cntkctl, uint32_t, cntkctl_el1)
+DEFINE_REG_WRITE_FUNC_(cntkctl, uint32_t, cntkctl_el1)
 
 DEFINE_U64_REG_READWRITE_FUNCS(ttbr0_el1)
 DEFINE_U64_REG_READWRITE_FUNCS(ttbr1_el1)
@@ -302,8 +334,12 @@ DEFINE_U64_REG_READ_FUNC(par_el1)
 
 DEFINE_U64_REG_WRITE_FUNC(mair_el1)
 
-DEFINE_REG_READ_FUNC_(cntpct, uint64_t, cntpct_el0)
-
+/* Register read/write functions for GICC registers by using system interface */
+DEFINE_REG_READ_FUNC_(icc_ctlr, uint32_t, S3_0_C12_C12_4)
+DEFINE_REG_WRITE_FUNC_(icc_ctlr, uint32_t, S3_0_C12_C12_4)
+DEFINE_REG_WRITE_FUNC_(icc_pmr, uint32_t, S3_0_C4_C6_0)
+DEFINE_REG_READ_FUNC_(icc_iar0, uint32_t, S3_0_c12_c8_0)
+DEFINE_REG_WRITE_FUNC_(icc_eoir0, uint32_t, S3_0_c12_c8_1)
 #endif /*ASM*/
 
 #endif /*ARM64_H*/

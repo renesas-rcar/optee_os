@@ -186,7 +186,6 @@ struct flash_control_operations {
 uint32_t common_wait_spi_transfer(uint32_t *dataL);
 uint32_t common_wait(uint32_t (*read_status)(uint32_t *), uint32_t *data,
 					uint32_t timeout, uint32_t wait);
-void soft_delay(uint32_t delay_ms);
 uint32_t set_rpc_clock_mode(uint32_t mode);
 
 #endif /* QSPI_HYPER_FLASH_COMMON_H */

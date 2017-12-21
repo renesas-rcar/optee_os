@@ -30,6 +30,7 @@
 #include <tee/entry_fast.h>
 #include <optee_msg.h>
 #include <sm/optee_smc.h>
+#include <kernel/generic_boot.h>
 #include <kernel/tee_l2cc_mutex.h>
 #include <kernel/misc.h>
 #include <mm/core_mmu.h>
@@ -81,23 +82,37 @@ static void tee_entry_fastcall_l2cc_mutex(struct thread_smc_args *args)
 
 static void tee_entry_exchange_capabilities(struct thread_smc_args *args)
 {
-	if (args->a1) {
-		/*
-		 * Either unknown capability or
-		 * OPTEE_SMC_NSEC_CAP_UNIPROCESSOR, in either case we can't
-		 * deal with it.
-		 *
-		 * The memory mapping of shared memory is defined as normal
-		 * shared memory for SMP systems and normal memory for UP
-		 * systems. Currently we map all memory as shared in secure
-		 * world.
-		 */
+	bool dyn_shm_en = false;
+
+	/*
+	 * Currently we ignore OPTEE_SMC_NSEC_CAP_UNIPROCESSOR.
+	 *
+	 * The memory mapping of shared memory is defined as normal
+	 * shared memory for SMP systems and normal memory for UP
+	 * systems. Currently we map all memory as shared in secure
+	 * world.
+	 *
+	 * When translation tables are created with shared bit cleared for
+	 * uniprocessor systems we'll need to check
+	 * OPTEE_SMC_NSEC_CAP_UNIPROCESSOR.
+	 */
+
+	if (args->a1 & ~OPTEE_SMC_NSEC_CAP_UNIPROCESSOR) {
+		/* Unknown capability. */
 		args->a0 = OPTEE_SMC_RETURN_ENOTAVAIL;
 		return;
 	}
 
 	args->a0 = OPTEE_SMC_RETURN_OK;
 	args->a1 = OPTEE_SMC_SEC_CAP_HAVE_RESERVED_SHM;
+
+#if defined(CFG_DYN_SHM_CAP)
+	dyn_shm_en = core_mmu_nsec_ddr_is_defined();
+	if (dyn_shm_en)
+		args->a1 |= OPTEE_SMC_SEC_CAP_DYNAMIC_SHM;
+#endif
+
+	IMSG("Dynamic shared memory is %sabled", dyn_shm_en ? "en" : "dis");
 }
 
 static void tee_entry_disable_shm_cache(struct thread_smc_args *args)
@@ -125,6 +140,18 @@ static void tee_entry_enable_shm_cache(struct thread_smc_args *args)
 		args->a0 = OPTEE_SMC_RETURN_OK;
 	else
 		args->a0 = OPTEE_SMC_RETURN_EBUSY;
+}
+
+static void tee_entry_boot_secondary(struct thread_smc_args *args)
+{
+#if defined(CFG_BOOT_SECONDARY_REQUEST)
+	if (!generic_boot_core_release(args->a1, (paddr_t)(args->a3)))
+		args->a0 = OPTEE_SMC_RETURN_OK;
+	else
+		args->a0 = OPTEE_SMC_RETURN_EBADCMD;
+#else
+	args->a0 = OPTEE_SMC_RETURN_ENOTAVAIL;
+#endif
 }
 
 void tee_entry_fast(struct thread_smc_args *args)
@@ -163,6 +190,9 @@ void tee_entry_fast(struct thread_smc_args *args)
 		break;
 	case OPTEE_SMC_ENABLE_SHM_CACHE:
 		tee_entry_enable_shm_cache(args);
+		break;
+	case OPTEE_SMC_BOOT_SECONDARY:
+		tee_entry_boot_secondary(args);
 		break;
 
 	default:

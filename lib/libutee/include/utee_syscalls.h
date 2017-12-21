@@ -55,14 +55,16 @@ void utee_return(unsigned long ret) __noreturn;
 
 void utee_log(const void *buf, size_t len);
 
-void utee_panic(unsigned long code) __noreturn;
+/* This is not __noreturn because AArch32 stack unwinding fails otherwise */
+void utee_panic(unsigned long code);
 
 /* prop_set is TEE_PROPSET_xxx*/
 TEE_Result utee_get_property(unsigned long prop_set, unsigned long index,
 			     void *name, uint32_t *name_len,
 			     void *buf, uint32_t *blen,
 				uint32_t *prop_type);
-TEE_Result utee_get_property_name_to_index(unsigned long prop_set, void *name,
+TEE_Result utee_get_property_name_to_index(unsigned long prop_set,
+					   const void *name,
 					   unsigned long name_len,
 					   uint32_t *index);
 
@@ -171,7 +173,8 @@ TEE_Result utee_asymm_verify(unsigned long state,
 
 /* Persistant Object Functions */
 /* obj is of type TEE_ObjectHandle */
-TEE_Result utee_storage_obj_open(unsigned long storage_id, void *object_id,
+TEE_Result utee_storage_obj_open(unsigned long storage_id,
+				 const void *object_id,
 				 size_t object_id_len, unsigned long flags,
 				 uint32_t *obj);
 
@@ -179,10 +182,11 @@ TEE_Result utee_storage_obj_open(unsigned long storage_id, void *object_id,
  * attr is of type TEE_ObjectHandle
  * obj is of type TEE_ObjectHandle
  */
-TEE_Result utee_storage_obj_create(unsigned long storage_id, void *object_id,
-				size_t object_id_len, unsigned long flags,
-				unsigned long attr, const void *data,
-				size_t len, uint32_t *obj);
+TEE_Result utee_storage_obj_create(unsigned long storage_id,
+				   const void *object_id,
+				   size_t object_id_len, unsigned long flags,
+				   unsigned long attr, const void *data,
+				   size_t len, uint32_t *obj);
 
 /* obj is of type TEE_ObjectHandle */
 TEE_Result utee_storage_obj_del(unsigned long obj);
@@ -293,6 +297,8 @@ TEE_Result utee_se_channel_close(unsigned long c);
 
 /* op is of type enum utee_cache_operation */
 TEE_Result utee_cache_operation(void *va, size_t l, unsigned long op);
+
+TEE_Result utee_gprof_send(void *buf, size_t size, uint32_t *id);
 
 TEE_Result urcar_aes_unwrap(void *srcData, uint32_t srcLen, void *keyData,
 	uint32_t keySize, uint32_t isSecretKey, void *destData, uint32_t *dstLen);

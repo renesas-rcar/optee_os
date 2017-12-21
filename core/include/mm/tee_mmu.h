@@ -42,27 +42,43 @@ TEE_Result tee_mmu_init(struct user_ta_ctx *utc);
 void tee_mmu_final(struct user_ta_ctx *utc);
 
 /* Map stack of a user TA.  */
-void tee_mmu_map_stack(struct user_ta_ctx *utc, paddr_t pa, size_t size,
-			uint32_t prot);
+void tee_mmu_map_stack(struct user_ta_ctx *utc, struct mobj *mobj);
 /*
  * Map a code segment of a user TA, this function may be called multiple
  * times if there's several segments.
  */
-TEE_Result tee_mmu_map_add_segment(struct user_ta_ctx *utc, paddr_t base_pa,
-			size_t offs, size_t size, uint32_t prot);
+TEE_Result tee_mmu_map_add_segment(struct user_ta_ctx *utc, struct mobj *mobj,
+				   size_t offs, size_t size, uint32_t prot);
 
 void tee_mmu_map_clear(struct user_ta_ctx *utc);
 
 /* Map parameters for a user TA */
 TEE_Result tee_mmu_map_param(struct user_ta_ctx *utc,
-			struct tee_ta_param *param);
+		struct tee_ta_param *param, void *param_va[TEE_NUM_PARAMS]);
 
+/*
+ * If the rwmem area covers more than one page directory @pgdir_offset has
+ * to be honoured unless it's -1.
+ */
+TEE_Result tee_mmu_add_rwmem(struct user_ta_ctx *utc, struct mobj *mobj,
+			     int pgdir_offset, vaddr_t *va);
+void tee_mmu_rem_rwmem(struct user_ta_ctx *utc, struct mobj *mobj, vaddr_t va);
 
+/*
+ * TA private memory is defined as TA image static segment (code, ro/rw static
+ * data, heap, stack). The sole other virtual memory mapped to TA are memref
+ * parameters. These later are considered outside TA private memory as it
+ * might be accessed by the TA and its client(s).
+ */
 bool tee_mmu_is_vbuf_inside_ta_private(const struct user_ta_ctx *utc,
 				       const void *va, size_t size);
 
 bool tee_mmu_is_vbuf_intersect_ta_private(const struct user_ta_ctx *utc,
 					  const void *va, size_t size);
+
+TEE_Result tee_mmu_vbuf_to_mobj_offs(const struct user_ta_ctx *utc,
+				     const void *va, size_t size,
+				     struct mobj **mobj, size_t *offs);
 
 /*-----------------------------------------------------------------------------
  * tee_mmu_user_va2pa - Translate virtual user address to physical address
@@ -84,7 +100,7 @@ TEE_Result tee_mmu_user_pa2va_helper(const struct user_ta_ctx *utc,
  * tee_mmu_check_access_rights -
  *---------------------------------------------------------------------------*/
 TEE_Result tee_mmu_check_access_rights(const struct user_ta_ctx *utc,
-				       uint32_t flags, tee_uaddr_t uaddr,
+				       uint32_t flags, uaddr_t uaddr,
 				       size_t len);
 
 /*-----------------------------------------------------------------------------

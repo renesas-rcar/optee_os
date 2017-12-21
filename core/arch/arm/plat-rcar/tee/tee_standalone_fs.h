@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, Renesas Electronics Corporation
+ * Copyright (c) 2016-2017, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -149,6 +149,14 @@ struct spio_find_info {
 };
 
 /**
+ * Other information. 'Write data Information'
+ */
+struct spio_write_data {
+	const void *data;
+	size_t size;
+};
+
+/**
  * Volatile information. 'Sector Information'
  */
 struct spim_sector_info {
@@ -172,8 +180,6 @@ struct spim_record_descriptor {
  * Volatile information. 'File Descriptor Information'
  */
 struct spim_file_descriptor {
-	uint32_t fpos;
-	int32_t flags;
 	struct spim_record_descriptor *ag_rdesc; 	/* aggregation */
 	int32_t fd;
 };

@@ -45,55 +45,53 @@ int trace_ext_get_thread_id(void)
 	return -1;
 }
 
-
 /*
  * printf and puts - stdio printf support
  *
  * 'printf()' and 'puts()' traces have the 'info' trace level.
- * Traces are prefixed with string "[ta log] ".
  */
 int printf(const char *fmt, ...)
 {
 	char to_format[MAX_PRINT_SIZE];
-	static const char prefix[] = "[ta log] ";
-	static const char failed[] = "uta trace failed";
-	static const char trunc[] = "...\n";
 	va_list ap;
 	int s;
 
 	if (trace_get_level() < TRACE_PRINTF_LEVEL)
 		return 0;
 
-	s = strlcpy(to_format, prefix, sizeof(to_format));
-	if ((unsigned int)s >= sizeof(to_format)) {
-		puts(failed);
-		return 0;
-	}
-
 	va_start(ap, fmt);
-	s = vsnprintf(to_format + s, sizeof(to_format) - s, fmt, ap);
+	s = vsnprintf(to_format, sizeof(to_format), fmt, ap);
 	va_end(ap);
 
-	if (s < 0) {
-		puts(failed);
+	if (s < 0)
 		return s;
-	}
-	if (((unsigned int)s >= (sizeof(to_format) - strlen(prefix)))) {
-		memcpy(&to_format[sizeof(to_format) - sizeof(trunc)], trunc,
-		       sizeof(trunc));
-		s = sizeof(to_format) - sizeof(prefix) - sizeof(trunc);
-	}
 
-	puts(to_format);
+	trace_ext_puts(to_format);
 
 	return s;
 }
 
 int puts(const char *str)
 {
+	if (trace_get_level() >= TRACE_PRINTF_LEVEL) {
+		trace_ext_puts(str);
+		trace_ext_puts("\n");
+	}
+	return 1;
+}
+
+int putchar(int c)
+{
+	char str[2] = { (char)c, '\0' };
+
 	if (trace_get_level() >= TRACE_PRINTF_LEVEL)
 		trace_ext_puts(str);
-	return 1;
+	/*
+	 * From the putchar() man page:
+	 * "fputc(), putc() and putchar() return the character written as an
+	 * unsigned char cast to an int or EOF on error."
+	 */
+	return (int)(unsigned char)c;
 }
 
 #else
@@ -106,6 +104,11 @@ int printf(const char *fmt __unused, ...)
 int puts(const char *str __unused)
 {
 	return 0;
+}
+
+int putchar(int c)
+{
+	return (int)(unsigned char)c;
 }
 
 #endif

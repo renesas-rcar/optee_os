@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2016, Linaro Limited
  * Copyright (c) 2014, STMicroelectronics International N.V.
  * All rights reserved.
  *
@@ -27,21 +28,7 @@
 #ifndef SM_PRIVATE_H
 #define SM_PRIVATE_H
 
-struct sm_reg_r0_to_r3 {
-	uint32_t r0;
-	uint32_t r1;
-	uint32_t r2;
-	uint32_t r3;
-};
-
-/* Selects entrypoint depending on value in regs->r0 */
-void sm_set_sec_smc_entry(const struct sm_reg_r0_to_r3 *regs);
-
-/* Selects entrypoint to process a FIQ */
-void sm_set_sec_fiq_entry(void);
-
-/* Sets return values for return to normal world */
-void sm_set_nsec_ret_vals(struct sm_reg_r0_to_r3 *regs, uint32_t r4);
-
+/* Returns true if returning to sec, false if returning to nsec */
+bool sm_from_nsec(struct sm_ctx *ctx);
 #endif /*SM_PRIVATE_H*/
 

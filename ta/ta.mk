@@ -28,14 +28,6 @@ libname = utils
 libdir = lib/libutils
 include mk/lib.mk
 
-libname = zlib
-libdir = lib/libzlib
-include mk/lib.mk
-
-libname = png
-libdir = lib/libpng
-include mk/lib.mk
-
 libname = mpa
 libdir = lib/libmpa
 include mk/lib.mk
@@ -53,6 +45,7 @@ incfiles-extra-host += lib/libutils/ext/include/types_ext.h
 incfiles-extra-host += $(conf-file)
 incfiles-extra-host += $(conf-mk-file)
 incfiles-extra-host += core/include/tee/tee_fs_key_manager.h
+incfiles-extra-host += core/include/tee/fs_htree.h
 incfiles-extra-host += core/include/signed_hdr.h
 
 #
@@ -67,7 +60,7 @@ $2/$$(notdir $1): $1
 	cp $$< $$@
 
 cleanfiles += $2/$$(notdir $1)
-all: $2/$$(notdir $1)
+ta_dev_kit: $2/$$(notdir $1)
 endef
 
 # Copy the .a files
@@ -75,9 +68,8 @@ $(foreach f, $(libfiles), \
 	$(eval $(call copy-file, $(f), $(out-dir)/export-$(sm)/lib)))
 
 # Copy .mk files
-ta-mkfiles = mk/compile.mk mk/subdir.mk mk/gcc.mk \
-	$(wildcard ta/arch/$(ARCH)/link.mk) \
-	ta/mk/ta_dev_kit.mk
+ta-mkfiles = mk/compile.mk mk/subdir.mk mk/gcc.mk mk/cleandirs.mk \
+	ta/arch/$(ARCH)/link.mk ta/mk/ta_dev_kit.mk
 
 $(foreach f, $(ta-mkfiles), \
 	$(eval $(call copy-file, $(f), $(out-dir)/export-$(sm)/mk)))
@@ -98,8 +90,7 @@ $(foreach f, $(incfiles-extra-host), \
 	$(eval $(call copy-file, $(f), $(out-dir)/export-$(sm)/host_include)))
 
 # Copy the src files
-ta-srcfiles = ta/arch/$(ARCH)/user_ta_header.c \
-	$(wildcard ta/arch/$(ARCH)/ta.ld.S)
+ta-srcfiles = ta/arch/$(ARCH)/user_ta_header.c ta/arch/$(ARCH)/ta.ld.S
 $(foreach f, $(ta-srcfiles), \
 	$(eval $(call copy-file, $(f), $(out-dir)/export-$(sm)/src)))
 
@@ -109,21 +100,26 @@ $(foreach f, $(ta-keys), \
 	$(eval $(call copy-file, $(f), $(out-dir)/export-$(sm)/keys)))
 
 # Copy the scripts
-ta-scripts = $(wildcard scripts/sign.py)
+ta-scripts = scripts/sign.py scripts/symbolize.py
 $(foreach f, $(ta-scripts), \
 	$(eval $(call copy-file, $(f), $(out-dir)/export-$(sm)/scripts)))
 
 # Create config file
 conf-mk-file-export := $(out-dir)/export-$(sm)/mk/conf.mk
 sm-$(conf-mk-file-export) := $(sm)
+define mk-file-export
 $(conf-mk-file-export): $(conf-mk-file)
-	@$(cmd-echo-silent) '  GEN    ' $@
-	$(q)echo sm := $(sm-$(@)) > $@
-	$(q)echo sm-$(sm-$(@)) := y >> $@
-	$(q)echo CFG_TA_FLOAT_SUPPORT := $(CFG_TA_FLOAT_SUPPORT) >> $@
-	$(q)($(foreach v, $(ta-mk-file-export-vars-$(sm-$(@))), \
-		echo $(v) := $($(v));)) >> $@
-	$(q)echo '$(ta-mk-file-export-add-$(sm-$(@)))' | sed 's/_nl_ */\n/g' >> $@
+	@$$(cmd-echo-silent) '  GEN    ' $$@
+	$(q)echo sm := $$(sm-$(conf-mk-file-export)) > $$@
+	$(q)echo sm-$$(sm-$(conf-mk-file-export)) := y >> $$@
+	$(q)echo CFG_TA_FLOAT_SUPPORT := $$(CFG_TA_FLOAT_SUPPORT) >> $$@
+	$(q)($$(foreach v, $$(ta-mk-file-export-vars-$$(sm-$(conf-mk-file-export))), \
+		echo $$(v) := $$($$(v));)) >> $$@
+	$(q)echo '$$(ta-mk-file-export-add-$$(sm-$(conf-mk-file-export)))' | sed 's/_nl_ */\n/g' >> $$@
+endef
+$(eval $(mk-file-export))
 
 cleanfiles := $(cleanfiles) $(conf-mk-file-export)
-all: $(conf-mk-file-export)
+ta_dev_kit: $(conf-mk-file-export)
+
+all: ta_dev_kit

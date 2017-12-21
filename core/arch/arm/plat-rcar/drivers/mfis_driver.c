@@ -28,6 +28,7 @@
 #include <io.h>
 #include <kernel/panic.h>
 #include <kernel/interrupt.h>
+#include <kernel/spinlock.h>
 #include <initcall.h>
 #include <drivers/mfis_driver.h>
 #include "rcar_common.h"
@@ -70,6 +71,7 @@ static void mfis_err_itr_del(void);
 /******************************************************************************/
 /* Global                                                                     */
 /******************************************************************************/
+static uint32_t		thread_global_lock = (uint32_t)SPINLOCK_UNLOCK;
 static uint32_t		mfis_state = MFIS_STATE_NOACTIVE;
 static uint32_t		mfis_reg_num = MFIS_ERR_DET_MAX;
 static uint32_t		mfis_suspend_flag = 0U;
@@ -139,6 +141,7 @@ int32_t mfis_error_detection_start(MFIS_ERR_SETTING_T *err,
 	uint32_t loop;
 	uint32_t reg;
 	uint32_t enable_flag = 0U;
+	uint32_t exceptions;
 
 	if (NULL == err) {
 		ret = MFIS_ERR_PARAMETER;
@@ -158,6 +161,7 @@ int32_t mfis_error_detection_start(MFIS_ERR_SETTING_T *err,
 		enable_flag = 0U;
 	}
 
+	exceptions = cpu_spin_lock_xsave(&thread_global_lock);
 	if ((MFIS_SUCCESS == ret) && (MFIS_STATE_NOACTIVE != mfis_state)) {
 		ret = MFIS_ERR_SEQUENCE;
 	}
@@ -172,7 +176,7 @@ int32_t mfis_error_detection_start(MFIS_ERR_SETTING_T *err,
 				*(mfis_reg.array[loop].MFIERRCTLR) =
 						err->control[loop];
 
-				itr_enable(&mfis_err_itr[loop]);
+				itr_enable(mfis_err_itr[loop].it);
 				
 				enable_flag = 1U;
 			}
@@ -190,7 +194,7 @@ int32_t mfis_error_detection_start(MFIS_ERR_SETTING_T *err,
 			ret = MFIS_ERR_PARAMETER;
 		}
 	}
-
+	cpu_spin_unlock_xrestore(&thread_global_lock, exceptions);
 	return ret;
 }
 
@@ -199,14 +203,16 @@ int32_t mfis_error_detection_stop(void)
 	uint32_t reg;
 	uint32_t loop;
 	int32_t ret = MFIS_SUCCESS;
+	uint32_t exceptions;
 
+	exceptions = cpu_spin_lock_xsave(&thread_global_lock);
 	if (MFIS_STATE_ACTIVE != mfis_state) {
 		ret = MFIS_ERR_SEQUENCE;
 	} else {
 		
 		for (loop = 0U; loop < mfis_reg_num; loop++) {
 			if (0U != local_setting.control[loop]) {
-				itr_disable(&mfis_err_itr[loop]);
+				itr_disable(mfis_err_itr[loop].it);
 				reg = *(mfis_reg.array[loop].MFIERRSTSR);
 				*(mfis_reg.array[loop].MFIERRSTSR) = reg;
 				*(mfis_reg.array[loop].MFIERRTGTR) = 0U;
@@ -220,7 +226,7 @@ int32_t mfis_error_detection_stop(void)
 
 		mfis_state = MFIS_STATE_NOACTIVE;
 	}
-
+	cpu_spin_unlock_xrestore(&thread_global_lock, exceptions);
 	return ret;
 }
 

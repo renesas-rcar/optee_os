@@ -86,9 +86,25 @@
 #define TEE_STORAGE_PRIVATE_REE	 0x80000000
 /* Storage is the Replay Protected Memory Block partition of an eMMC device */
 #define TEE_STORAGE_PRIVATE_RPMB 0x80000100
-/* Storage is provided by a SQLite database in the normal world filesystem */
-#define TEE_STORAGE_PRIVATE_SQL  0x80000200
+/* Was TEE_STORAGE_PRIVATE_SQL, which isn't supported any longer */
+#define TEE_STORAGE_PRIVATE_SQL_RESERVED  0x80000200
 /* Storage is provided by the QSPI/Hyper Flash */
 #define TEE_STORAGE_PRIVATE_STANDALONE 0x80001000
+
+/*
+ * Extension of "Memory Access Rights Constants"
+ * #define TEE_MEMORY_ACCESS_READ             0x00000001
+ * #define TEE_MEMORY_ACCESS_WRITE            0x00000002
+ * #define TEE_MEMORY_ACCESS_ANY_OWNER        0x00000004
+ *
+ * TEE_MEMORY_ACCESS_NONSECURE : if set TEE_CheckMemoryAccessRights()
+ * successfully returns only if target vmem range is mapped non-secure.
+ *
+ * TEE_MEMORY_ACCESS_SECURE : if set TEE_CheckMemoryAccessRights()
+ * successfully returns only if target vmem range is mapped secure.
+
+ */
+#define TEE_MEMORY_ACCESS_NONSECURE          0x10000000
+#define TEE_MEMORY_ACCESS_SECURE             0x20000000
 
 #endif /* TEE_API_DEFINES_EXTENSIONS_H */

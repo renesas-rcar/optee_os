@@ -45,15 +45,14 @@
 
 /* memory atttributes */
 enum buf_is_attr {
-	CORE_MEM_SEC,
+	CORE_MEM_CACHED,
+	CORE_MEM_NSEC_SHM,
 	CORE_MEM_NON_SEC,
+	CORE_MEM_SEC,
 	CORE_MEM_TEE_RAM,
 	CORE_MEM_TA_RAM,
-	CORE_MEM_NSEC_SHM,
-	CORE_MEM_MULTPURPOSE,
-	CORE_MEM_EXTRAM,
-	CORE_MEM_INTRAM,
-	CORE_MEM_CACHED,
+	CORE_MEM_SDP_MEM,
+	CORE_MEM_REG_SHM,
 };
 
 /* redirect legacy tee_vbuf_is() and tee_pbuf_is() to our routines */
@@ -62,10 +61,10 @@ enum buf_is_attr {
 
 /* Convenience macros */
 #define tee_pbuf_is_non_sec(buf, len) \
-		core_pbuf_is(CORE_MEM_NON_SEC, (tee_paddr_t)(buf), (len))
+		core_pbuf_is(CORE_MEM_NON_SEC, (paddr_t)(buf), (len))
 
 #define tee_pbuf_is_sec(buf, len) \
-		core_pbuf_is(CORE_MEM_SEC, (tee_paddr_t)(buf), (len))
+		core_pbuf_is(CORE_MEM_SEC, (paddr_t)(buf), (len))
 
 #define tee_vbuf_is_non_sec(buf, len) \
 		core_vbuf_is(CORE_MEM_NON_SEC, (void *)(buf), (len))
@@ -81,7 +80,7 @@ enum buf_is_attr {
  * Note that returning false doesn't guarantee that buf complies with
  * the complement of the supplied flags.
  */
-bool core_pbuf_is(uint32_t flags, tee_paddr_t pbuf, size_t len);
+bool core_pbuf_is(uint32_t flags, paddr_t pbuf, size_t len);
 
 /*
  * Translates the supplied virtual address to a physical address and uses
@@ -96,9 +95,22 @@ bool core_vbuf_is(uint32_t flags, const void *vbuf, size_t len);
 void *phys_to_virt(paddr_t pa, enum teecore_memtypes m);
 
 /*
+ * Translate physical address to virtual address trying MEM_AREA_IO_SEC
+ * first then MEM_AREA_IO_NSEC if not found.
+ * Returns NULL on failure or a valid virtual address on success.
+ */
+void *phys_to_virt_io(paddr_t pa);
+
+/*
  * Translate virtual address to physical address
  * Returns 0 on failure or a valid physical address on success.
  */
 paddr_t virt_to_phys(void *va);
+
+/*
+ * Return runtime usable address, irrespective of whether
+ * the MMU is enabled or not.
+ */
+vaddr_t core_mmu_get_va(paddr_t pa, enum teecore_memtypes type);
 
 #endif /* CORE_MEMPROT_H */

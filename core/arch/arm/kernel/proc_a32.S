@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2016, ARM Limited and Contributors. All rights reserved.
  * Copyright (c) 2014, STMicroelectronics International N.V.
  * All rights reserved.
  *
@@ -11,6 +12,10 @@
  * 2. Redistributions in binary form must reproduce the above copyright notice,
  * this list of conditions and the following disclaimer in the documentation
  * and/or other materials provided with the distribution.
+ *
+ * Neither the name of ARM nor the names of its contributors may be used
+ * to endorse or promote products derived from this software without specific
+ * prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
@@ -25,69 +30,11 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-/*
- * ARMv7 core support routines
- */
-
-#include <kernel/tz_proc.h>
-#include <kernel/tz_proc_def.h>
-#include <kernel/unwind.h>
-#include <asm.S>
 #include <arm.h>
 #include <arm32_macros.S>
-
-	.section .text.proc
-
-/* void cpu_spin_lock(lock address) - lock mutex */
-FUNC cpu_spin_lock , :
-UNWIND(	.fnstart)
-	mov r2, #SPINLOCK_LOCK
-_spinlock_loop:
-	ldrex r1, [r0]
-	cmp r1, #SPINLOCK_UNLOCK
-	wfene
-	bne _spinlock_loop
-	strex r1, r2, [r0]
-	cmp r1, #0
-	wfene
-	bne _spinlock_loop
-	dmb
-	bx lr
-UNWIND(	.fnend)
-END_FUNC cpu_spin_lock
-
-/* int cpu_spin_trylock(lock address) - return 0 on success */
-FUNC cpu_spin_trylock , :
-UNWIND(	.fnstart)
-	mov r2, #SPINLOCK_LOCK
-	mov r1, r0
-_trylock_loop:
-	ldrex r0, [r1]
-	cmp r0, #0
-	bne _trylock_out
-	strex r0, r2, [r1]
-	cmp r0, #0
-	bne _trylock_loop
-	dmb
-	bx lr
-_trylock_out:
-	clrex
-	dmb
-	bx lr
-UNWIND(	.fnend)
-END_FUNC cpu_spin_trylock
-
-/* void cpu_spin_unlock(lock address) - unlock mutex */
-FUNC cpu_spin_unlock , :
-UNWIND(	.fnstart)
-	dmb
-	mov r1, #SPINLOCK_UNLOCK
-	str r1, [r0]
-	dsb
-	sev
-	bx lr
-UNWIND(	.fnend)
-END_FUNC cpu_spin_unlock
+#include <asm.S>
+#include <keep.h>
+#include <kernel/unwind.h>
 
 /*
  * void cpu_mmu_enable(void) - enable MMU
@@ -111,6 +58,7 @@ UNWIND(	.fnstart)
 	bx	lr
 UNWIND(	.fnend)
 END_FUNC cpu_mmu_enable
+KEEP_PAGER cpu_mmu_enable
 
 /* void cpu_mmu_enable_icache(void) - enable instruction cache */
 FUNC cpu_mmu_enable_icache , :
@@ -130,6 +78,7 @@ UNWIND(	.fnstart)
 	bx	lr
 UNWIND(	.fnend)
 END_FUNC cpu_mmu_enable_icache
+KEEP_PAGER cpu_mmu_enable_icache
 
 /* void cpu_mmu_enable_dcache(void) - enable data cache */
 FUNC cpu_mmu_enable_dcache , :
@@ -144,3 +93,4 @@ UNWIND(	.fnstart)
 	bx	lr
 UNWIND(	.fnend)
 END_FUNC cpu_mmu_enable_dcache
+KEEP_PAGER cpu_mmu_enable_dcache

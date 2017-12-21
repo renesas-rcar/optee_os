@@ -1,24 +1,21 @@
 CFG_LTC_OPTEE_THREAD ?= y
-# Size of emulated TrustZone protected SRAM, 300 kB.
+# Size of emulated TrustZone protected SRAM, 448 kB.
 # Only applicable when paging is enabled.
-CFG_CORE_TZSRAM_EMUL_SIZE ?= 307200
+CFG_CORE_TZSRAM_EMUL_SIZE ?= 458752
+CFG_LPAE_ADDR_SPACE_SIZE ?= (1ull << 32)
 
-# When used together with ARM Trusted FW, arguments shall
-# come from the Firwmware. Do not allow built-in arguments
-
-ifeq ($(CFG_BUILT_IN_ARGS),y)
-ifeq ($(CFG_WITH_ARM_TRUSTED_FW),y)
-$(error error: CFG_BUILD_IN_ARGS is incompatible with CFG_WITH_ARM_TRUSTED_FW)
-endif
-endif
+CFG_MMAP_REGIONS ?= 13
 
 ifeq ($(CFG_ARM64_core),y)
 CFG_KERN_LINKER_FORMAT ?= elf64-littleaarch64
 CFG_KERN_LINKER_ARCH ?= aarch64
-endif
+else
 ifeq ($(CFG_ARM32_core),y)
 CFG_KERN_LINKER_FORMAT ?= elf32-littlearm
 CFG_KERN_LINKER_ARCH ?= arm
+else
+$(error Error: CFG_ARM64_core or CFG_ARM32_core should be defined)
+endif
 endif
 
 ifeq ($(CFG_TA_FLOAT_SUPPORT),y)
@@ -34,15 +31,34 @@ platform-hard-float-enabled := y
 endif
 endif
 
+CFG_CORE_RWDATA_NOEXEC ?= y
+CFG_CORE_RODATA_NOEXEC ?= n
+ifeq ($(CFG_CORE_RODATA_NOEXEC),y)
+$(call force,CFG_CORE_RWDATA_NOEXEC,y)
+endif
+# 'y' to set the Alignment Check Enable bit in SCTLR/SCTLR_EL1, 'n' to clear it
+CFG_SCTLR_ALIGNMENT_CHECK ?= y
+
 ifeq ($(CFG_WITH_PAGER),y)
 ifeq ($(CFG_CORE_SANITIZE_KADDRESS),y)
 $(error Error: CFG_CORE_SANITIZE_KADDRESS not compatible with CFG_WITH_PAGER)
 endif
 endif
 
+ifeq ($(CFG_CORE_LARGE_PHYS_ADDR),y)
+$(call force,CFG_WITH_LPAE,y)
+endif
+
+ifeq ($(CFG_ARM32_core),y)
+# Configration directive related to ARMv7 optee boot arguments.
+# CFG_PAGEABLE_ADDR: if defined, forces pageable data physical address.
+# CFG_NS_ENTRY_ADDR: if defined, forces NS World physical entry address.
+# CFG_DT_ADDR:       if defined, forces Device Tree data physical address.
+endif
+
 core-platform-cppflags	+= -I$(arch-dir)/include
 core-platform-subdirs += \
-	$(addprefix $(arch-dir)/, kernel mm tee sta) $(platform-dir)
+	$(addprefix $(arch-dir)/, kernel mm tee pta) $(platform-dir)
 
 ifneq ($(CFG_WITH_ARM_TRUSTED_FW),y)
 core-platform-subdirs += $(arch-dir)/sm
@@ -54,7 +70,7 @@ arm32-platform-cppflags += -DARM32=1 -D__ILP32__=1
 platform-cflags-generic ?= -g -ffunction-sections -fdata-sections -pipe
 platform-aflags-generic ?= -g -pipe
 
-arm32-platform-cflags-no-hard-float ?= -mno-apcs-float -mfloat-abi=soft
+arm32-platform-cflags-no-hard-float ?= -mfloat-abi=soft
 arm32-platform-cflags-hard-float ?= -mfloat-abi=hard -funsafe-math-optimizations
 arm32-platform-cflags-generic ?= -mthumb -mthumb-interwork \
 			-fno-short-enums -fno-common -mno-unaligned-access
@@ -92,7 +108,7 @@ arch-bits-core := 32
 core-platform-cppflags += $(arm32-platform-cppflags)
 core-platform-cflags += $(arm32-platform-cflags)
 core-platform-cflags += $(arm32-platform-cflags-no-hard-float)
-ifeq ($(CFG_CORE_UNWIND),y)
+ifeq ($(CFG_UNWIND),y)
 core-platform-cflags += -funwind-tables
 endif
 core-platform-cflags += $(arm32-platform-cflags-generic)
@@ -115,6 +131,10 @@ ta_arm32-platform-cflags += $(arm32-platform-cflags-hard-float)
 else
 ta_arm32-platform-cflags += $(arm32-platform-cflags-no-hard-float)
 endif
+ifeq ($(CFG_UNWIND),y)
+ta_arm32-platform-cflags += -funwind-tables
+endif
+ta_arm32-platform-aflags += $(platform-aflags-generic)
 ta_arm32-platform-aflags += $(platform-aflags-debug-info)
 ta_arm32-platform-aflags += $(arm32-platform-aflags)
 
@@ -123,6 +143,7 @@ ta-mk-file-export-vars-ta_arm32 += ta_arm32-platform-cppflags
 ta-mk-file-export-vars-ta_arm32 += ta_arm32-platform-cflags
 ta-mk-file-export-vars-ta_arm32 += ta_arm32-platform-aflags
 
+ta-mk-file-export-add-ta_arm32 += CROSS_COMPILE ?= arm-linux-gnueabihf-_nl_
 ta-mk-file-export-add-ta_arm32 += CROSS_COMPILE32 ?= $$(CROSS_COMPILE)_nl_
 ta-mk-file-export-add-ta_arm32 += CROSS_COMPILE_ta_arm32 ?= $$(CROSS_COMPILE32)_nl_
 endif
@@ -142,6 +163,7 @@ ta_arm64-platform-cflags += $(arm64-platform-cflags-hard-float)
 else
 ta_arm64-platform-cflags += $(arm64-platform-cflags-no-hard-float)
 endif
+ta_arm64-platform-aflags += $(platform-aflags-generic)
 ta_arm64-platform-aflags += $(platform-aflags-debug-info)
 ta_arm64-platform-aflags += $(arm64-platform-aflags)
 

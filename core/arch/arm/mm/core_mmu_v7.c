@@ -25,23 +25,36 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#include <platform_config.h>
 
 #include <arm.h>
 #include <assert.h>
+#include <keep.h>
 #include <kernel/panic.h>
+#include <kernel/tlb_helpers.h>
 #include <kernel/thread.h>
-#include <mm/core_mmu.h>
 #include <mm/core_memprot.h>
-#include <mm/tee_mmu_defs.h>
+#include <mm/core_mmu.h>
 #include <mm/pgt_cache.h>
+#include <platform_config.h>
 #include <stdlib.h>
+#include <string.h>
 #include <trace.h>
 #include <util.h>
+
 #include "core_mmu_private.h"
 
 #ifdef CFG_WITH_LPAE
 #error This file is not to be used with LPAE
+#endif
+
+#ifndef DEBUG_XLAT_TABLE
+#define DEBUG_XLAT_TABLE 0
+#endif
+
+#if DEBUG_XLAT_TABLE
+#define debug_print(...) DMSG_RAW(__VA_ARGS__)
+#else
+#define debug_print(...) ((void)0)
 #endif
 
 /*
@@ -69,9 +82,16 @@
 /* Normal memory, Outer Write-Back Write-Allocate Cacheable */
 #define TEE_MMU_TTB_RNG_WBWA    (1 << 3)
 
+/* Normal memory, Outer Write-Back no Write-Allocate Cacheable */
+#define TEE_MMU_TTB_RNG_WB      (3 << 3)
+
+#ifndef CFG_NO_SMP
 #define TEE_MMU_DEFAULT_ATTRS \
 		(TEE_MMU_TTB_S | TEE_MMU_TTB_NOS | \
 		 TEE_MMU_TTB_IRGN_WBWA | TEE_MMU_TTB_RNG_WBWA)
+#else
+#define TEE_MMU_DEFAULT_ATTRS (TEE_MMU_TTB_IRGN_WB | TEE_MMU_TTB_RNG_WB)
+#endif
 
 
 #define INVALID_DESC		0x0
@@ -95,7 +115,7 @@
 					 (((texcb) & 0x1) << 2))
 #define SECTION_DEVICE			SECTION_TEXCB(ATTR_DEVICE_INDEX)
 #define SECTION_NORMAL			SECTION_TEXCB(ATTR_DEVICE_INDEX)
-#define SECTION_NORMAL_CACHED		SECTION_TEXCB(ATTR_IWBWA_OWBWA_INDEX)
+#define SECTION_NORMAL_CACHED		SECTION_TEXCB(ATTR_NORMAL_CACHED_INDEX)
 
 #define SECTION_XN			(1 << 4)
 #define SECTION_PXN			(1 << 0)
@@ -103,6 +123,8 @@
 
 #define SECTION_PT_NOTSECURE		(1 << 3)
 #define SECTION_PT_PT			(1 << 0)
+
+#define SECTION_PT_ATTR_MASK		~((1 << 10) - 1)
 
 #define SMALL_PAGE_SMALL_PAGE		(1 << 1)
 #define SMALL_PAGE_SHARED		(1 << 10)
@@ -112,7 +134,7 @@
 					 (((texcb) & 0x1) << 2))
 #define SMALL_PAGE_DEVICE		SMALL_PAGE_TEXCB(ATTR_DEVICE_INDEX)
 #define SMALL_PAGE_NORMAL		SMALL_PAGE_TEXCB(ATTR_DEVICE_INDEX)
-#define SMALL_PAGE_NORMAL_CACHED	SMALL_PAGE_TEXCB(ATTR_IWBWA_OWBWA_INDEX)
+#define SMALL_PAGE_NORMAL_CACHED	SMALL_PAGE_TEXCB(ATTR_NORMAL_CACHED_INDEX)
 #define SMALL_PAGE_ACCESS_FLAG		(1 << 4)
 #define SMALL_PAGE_UNPRIV		(1 << 5)
 #define SMALL_PAGE_RO			(1 << 9)
@@ -121,7 +143,7 @@
 
 /* The TEX, C and B bits concatenated */
 #define ATTR_DEVICE_INDEX		0x0
-#define ATTR_IWBWA_OWBWA_INDEX		0x1
+#define ATTR_NORMAL_CACHED_INDEX	0x1
 
 #define PRRR_IDX(idx, tr, nos)		(((tr) << (2 * (idx))) | \
 					 ((uint32_t)(nos) << ((idx) + 24)))
@@ -135,8 +157,38 @@
 #define ATTR_DEVICE_PRRR		PRRR_IDX(ATTR_DEVICE_INDEX, 1, 0)
 #define ATTR_DEVICE_NMRR		NMRR_IDX(ATTR_DEVICE_INDEX, 0, 0)
 
-#define ATTR_IWBWA_OWBWA_PRRR		PRRR_IDX(ATTR_IWBWA_OWBWA_INDEX, 2, 1)
-#define ATTR_IWBWA_OWBWA_NMRR		NMRR_IDX(ATTR_IWBWA_OWBWA_INDEX, 1, 1)
+#ifndef CFG_NO_SMP
+#define ATTR_NORMAL_CACHED_PRRR		PRRR_IDX(ATTR_NORMAL_CACHED_INDEX, 2, 1)
+#define ATTR_NORMAL_CACHED_NMRR		NMRR_IDX(ATTR_NORMAL_CACHED_INDEX, 1, 1)
+#else
+#define ATTR_NORMAL_CACHED_PRRR		PRRR_IDX(ATTR_NORMAL_CACHED_INDEX, 2, 0)
+#define ATTR_NORMAL_CACHED_NMRR		NMRR_IDX(ATTR_NORMAL_CACHED_INDEX, 3, 3)
+#endif
+
+#define NUM_L1_ENTRIES		4096
+#define NUM_L2_ENTRIES		256
+
+#define L1_TBL_SIZE		(NUM_L1_ENTRIES * 4)
+#define L2_TBL_SIZE		(NUM_L2_ENTRIES * 4)
+#define L1_ALIGNMENT		L1_TBL_SIZE
+#define L2_ALIGNMENT		L2_TBL_SIZE
+
+/* Defined to the smallest possible secondary L1 MMU table */
+#define TTBCR_N_VALUE		7
+
+/* Number of sections in ttbr0 when user mapping activated */
+#define NUM_UL1_ENTRIES         (1 << (12 - TTBCR_N_VALUE))
+#define UL1_ALIGNMENT		(NUM_UL1_ENTRIES * 4)
+/* TTB attributes */
+
+/* TTB0 of TTBR0 (depends on TTBCR_N_VALUE) */
+#define TTB_UL1_MASK		(~(UL1_ALIGNMENT - 1))
+/* TTB1 of TTBR1 */
+#define TTB_L1_MASK		(~(L1_ALIGNMENT - 1))
+
+#ifndef MAX_XLAT_TABLES
+#define MAX_XLAT_TABLES		4
+#endif
 
 enum desc_type {
 	DESC_TYPE_PAGE_TABLE,
@@ -148,14 +200,16 @@ enum desc_type {
 };
 
 /* Main MMU L1 table for teecore */
-static uint32_t main_mmu_l1_ttb[TEE_MMU_L1_NUM_ENTRIES]
-		__aligned(TEE_MMU_L1_ALIGNMENT) __section(".nozi.mmu.l1");
-static uint32_t main_mmu_l2_ttb[TEE_MMU_L2_NUM_ENTRIES]
-		__aligned(TEE_MMU_L2_ALIGNMENT) __section(".nozi.mmu.l2");
+static uint32_t main_mmu_l1_ttb[NUM_L1_ENTRIES]
+		__aligned(L1_ALIGNMENT) __section(".nozi.mmu.l1");
+
+/* L2 MMU tables */
+static uint32_t main_mmu_l2_ttb[MAX_XLAT_TABLES][NUM_L2_ENTRIES]
+		__aligned(L2_ALIGNMENT) __section(".nozi.mmu.l2");
 
 /* MMU L1 table for TAs, one for each thread */
-static uint32_t main_mmu_ul1_ttb[CFG_NUM_THREADS][TEE_MMU_UL1_NUM_ENTRIES]
-		__aligned(TEE_MMU_UL1_ALIGNMENT) __section(".nozi.mmu.ul1");
+static uint32_t main_mmu_ul1_ttb[CFG_NUM_THREADS][NUM_UL1_ENTRIES]
+		__aligned(UL1_ALIGNMENT) __section(".nozi.mmu.ul1");
 
 static vaddr_t core_mmu_get_main_ttb_va(void)
 {
@@ -164,10 +218,9 @@ static vaddr_t core_mmu_get_main_ttb_va(void)
 
 static paddr_t core_mmu_get_main_ttb_pa(void)
 {
-	/* Note that this depends on flat mapping of TEE Core */
-	paddr_t pa = (paddr_t)core_mmu_get_main_ttb_va();
+	paddr_t pa = virt_to_phys((void *)core_mmu_get_main_ttb_va());
 
-	if (pa & ~TEE_MMU_TTB_L1_MASK)
+	if (pa & ~TTB_L1_MASK)
 		panic("invalid core l1 table");
 	return pa;
 }
@@ -179,28 +232,28 @@ static vaddr_t core_mmu_get_ul1_ttb_va(void)
 
 static paddr_t core_mmu_get_ul1_ttb_pa(void)
 {
-	/* Note that this depends on flat mapping of TEE Core */
-	paddr_t pa = (paddr_t)core_mmu_get_ul1_ttb_va();
+	paddr_t pa = virt_to_phys((void *)core_mmu_get_ul1_ttb_va());
 
-	if (pa & ~TEE_MMU_TTB_UL1_MASK)
+	if (pa & ~TTB_UL1_MASK)
 		panic("invalid user l1 table");
 	return pa;
 }
 
-static void *core_mmu_alloc_l2(struct tee_mmap_region *mm)
+static void *core_mmu_alloc_l2(size_t size)
 {
 	/* Can't have this in .bss since it's not initialized yet */
-	static size_t l2_offs __attribute__((section(".data")));
-	const size_t l2_va_size = TEE_MMU_L2_NUM_ENTRIES * SMALL_PAGE_SIZE;
-	size_t l2_va_space = ((sizeof(main_mmu_l2_ttb) - l2_offs) /
-			     TEE_MMU_L2_SIZE) * l2_va_size;
+	static uint32_t tables_used;
+	uint32_t to_alloc = ROUNDUP(size, NUM_L2_ENTRIES * SMALL_PAGE_SIZE) /
+		(NUM_L2_ENTRIES * SMALL_PAGE_SIZE);
 
-	if (l2_offs)
+	DMSG("L2 table used: %d/%d", tables_used + to_alloc, MAX_XLAT_TABLES);
+	if (tables_used + to_alloc > MAX_XLAT_TABLES)
 		return NULL;
-	if (mm->size > l2_va_space)
-		return NULL;
-	l2_offs += ROUNDUP(mm->size, l2_va_size) / l2_va_size;
-	return main_mmu_l2_ttb;
+
+	memset(main_mmu_l2_ttb[tables_used], 0,
+		sizeof(main_mmu_l2_ttb[0]) * to_alloc);
+	tables_used += to_alloc;
+	return main_mmu_l2_ttb[tables_used - to_alloc];
 }
 
 static enum desc_type get_desc_type(unsigned level, uint32_t desc)
@@ -230,7 +283,7 @@ static enum desc_type get_desc_type(unsigned level, uint32_t desc)
 static uint32_t texcb_to_mattr(uint32_t texcb)
 {
 	COMPILE_TIME_ASSERT(ATTR_DEVICE_INDEX == TEE_MATTR_CACHE_NONCACHE);
-	COMPILE_TIME_ASSERT(ATTR_IWBWA_OWBWA_INDEX == TEE_MATTR_CACHE_CACHED);
+	COMPILE_TIME_ASSERT(ATTR_NORMAL_CACHED_INDEX == TEE_MATTR_CACHE_CACHED);
 
 	return texcb << TEE_MATTR_CACHE_SHIFT;
 }
@@ -244,10 +297,16 @@ static uint32_t mattr_to_texcb(uint32_t attr)
 
 static uint32_t desc_to_mattr(unsigned level, uint32_t desc)
 {
-	uint32_t a = TEE_MATTR_VALID_BLOCK;
+	uint32_t a;
 
 	switch (get_desc_type(level, desc)) {
+	case DESC_TYPE_PAGE_TABLE:
+		a = TEE_MATTR_TABLE;
+		if (!(desc & SECTION_PT_NOTSECURE))
+			a |= TEE_MATTR_SECURE;
+		break;
 	case DESC_TYPE_SECTION:
+		a = TEE_MATTR_VALID_BLOCK;
 		if (desc & SECTION_ACCESS_FLAG)
 			a |= TEE_MATTR_PRX | TEE_MATTR_URX;
 
@@ -270,6 +329,7 @@ static uint32_t desc_to_mattr(unsigned level, uint32_t desc)
 
 		break;
 	case DESC_TYPE_SMALL_PAGE:
+		a = TEE_MATTR_VALID_BLOCK;
 		if (desc & SMALL_PAGE_ACCESS_FLAG)
 			a |= TEE_MATTR_PRX | TEE_MATTR_URX;
 
@@ -317,7 +377,7 @@ static uint32_t mattr_to_desc(unsigned level, uint32_t attr)
 	}
 
 	if (!(a & TEE_MATTR_VALID_BLOCK))
-		return 0;
+		return INVALID_DESC;
 
 	if (a & (TEE_MATTR_PX | TEE_MATTR_PW))
 		a |= TEE_MATTR_PR;
@@ -332,7 +392,11 @@ static uint32_t mattr_to_desc(unsigned level, uint32_t attr)
 	texcb = mattr_to_texcb(a);
 
 	if (level == 1) {	/* Section */
+#ifndef CFG_NO_SMP
 		desc = SECTION_SECTION | SECTION_SHARED;
+#else
+		desc = SECTION_SECTION;
+#endif
 
 		if (!(a & (TEE_MATTR_PX | TEE_MATTR_UX)))
 			desc |= SECTION_XN;
@@ -359,7 +423,11 @@ static uint32_t mattr_to_desc(unsigned level, uint32_t attr)
 
 		desc |= SECTION_TEXCB(texcb);
 	} else {
+#ifndef CFG_NO_SMP
 		desc = SMALL_PAGE_SMALL_PAGE | SMALL_PAGE_SHARED;
+#else
+		desc = SMALL_PAGE_SMALL_PAGE;
+#endif
 
 		if (!(a & (TEE_MATTR_PX | TEE_MATTR_UX)))
 			desc |= SMALL_PAGE_XN;
@@ -391,25 +459,30 @@ void core_mmu_set_info_table(struct core_mmu_table_info *tbl_info,
 	assert(level <= 2);
 	if (level == 1) {
 		tbl_info->shift = SECTION_SHIFT;
-		tbl_info->num_entries = TEE_MMU_L1_NUM_ENTRIES;
+		tbl_info->num_entries = NUM_L1_ENTRIES;
 	} else {
 		tbl_info->shift = SMALL_PAGE_SHIFT;
-		tbl_info->num_entries = TEE_MMU_L2_NUM_ENTRIES;
+		tbl_info->num_entries = NUM_L2_ENTRIES;
 	}
+}
+
+void core_mmu_get_user_pgdir(struct core_mmu_table_info *pgd_info)
+{
+	void *tbl = (void *)core_mmu_get_ul1_ttb_va();
+
+	core_mmu_set_info_table(pgd_info, 1, 0, tbl);
+	pgd_info->num_entries = NUM_UL1_ENTRIES;
 }
 
 void core_mmu_create_user_map(struct user_ta_ctx *utc,
 			      struct core_mmu_user_map *map)
 {
 	struct core_mmu_table_info dir_info;
-	void *tbl = (void *)core_mmu_get_ul1_ttb_va();
 
-	COMPILE_TIME_ASSERT(sizeof(uint32_t) * TEE_MMU_L2_NUM_ENTRIES ==
-			    PGT_SIZE);
+	COMPILE_TIME_ASSERT(L2_TBL_SIZE == PGT_SIZE);
 
-	core_mmu_set_info_table(&dir_info, 1, 0, tbl);
-	dir_info.num_entries = TEE_MMU_UL1_NUM_ENTRIES;
-	memset(tbl, 0, sizeof(uint32_t) * TEE_MMU_UL1_NUM_ENTRIES);
+	core_mmu_get_user_pgdir(&dir_info);
+	memset(dir_info.table, 0, dir_info.num_entries * sizeof(uint32_t));
 	core_mmu_populate_user_map(&dir_info, utc);
 	map->ttbr0 = core_mmu_get_ul1_ttb_pa() | TEE_MMU_DEFAULT_ATTRS;
 	map->ctxid = utc->context & 0xff;
@@ -425,13 +498,55 @@ bool core_mmu_find_table(vaddr_t va, unsigned max_level,
 		core_mmu_set_info_table(tbl_info, 1, 0, tbl);
 	} else {
 		paddr_t ntbl = tbl[n] & ~((1 << 10) - 1);
-		void *l2tbl = phys_to_virt(ntbl, MEM_AREA_TEE_RAM);
+		void *l2tbl = phys_to_virt(ntbl, MEM_AREA_TEE_RAM_RW_DATA);
 
 		if (!l2tbl)
 			return false;
 
 		core_mmu_set_info_table(tbl_info, 2, n << SECTION_SHIFT, l2tbl);
 	}
+	return true;
+}
+
+bool core_mmu_prepare_small_page_mapping(struct core_mmu_table_info *tbl_info,
+					 unsigned int idx, bool secure)
+{
+	uint32_t *new_table;
+	uint32_t *entry;
+	uint32_t new_table_desc;
+	uint32_t attr;
+
+	if (tbl_info->level != 1)
+		return false;
+
+	if (idx >= NUM_L1_ENTRIES)
+		return false;
+
+	entry = (uint32_t *)tbl_info->table + idx;
+	if (*entry && get_desc_type(1, *entry) != DESC_TYPE_SECTION)
+		return false;
+
+	attr = desc_to_mattr(1, *entry);
+
+	if (attr) {
+		/* If pgdir maps something, check the secure attribute fits */
+		return secure == (attr & TEE_MATTR_SECURE);
+	}
+
+	if (secure)
+		attr = TEE_MATTR_SECURE;
+
+	new_table = core_mmu_alloc_l2(NUM_L2_ENTRIES * SMALL_PAGE_SIZE);
+	if (!new_table)
+		return false;
+
+	new_table_desc = SECTION_PT_PT | (uint32_t)new_table;
+	if (!secure)
+		new_table_desc |= SECTION_PT_NOTSECURE;
+
+	/* Update descriptor at current level */
+	*entry = new_table_desc;
+
 	return true;
 }
 
@@ -492,7 +607,7 @@ void core_mmu_get_user_va_range(vaddr_t *base, size_t *size)
 	}
 
 	if (size)
-		*size = (TEE_MMU_UL1_NUM_ENTRIES - 1) << SECTION_SHIFT;
+		*size = (NUM_UL1_ENTRIES - 1) << SECTION_SHIFT;
 }
 
 void core_mmu_get_user_map(struct core_mmu_user_map *map)
@@ -517,11 +632,13 @@ void core_mmu_set_user_map(struct core_mmu_user_map *map)
 		write_ttbr0(map->ttbr0);
 		isb();
 		write_contextidr(map->ctxid);
+		isb();
 	} else {
 		write_ttbr0(read_ttbr1());
+		isb();
 	}
-	isb();
-	core_tlb_maintenance(TLBINV_UNIFIEDTLB, 0);
+
+	tlbi_all();
 
 	/* Restore interrupts */
 	thread_unmask_exceptions(exceptions);
@@ -529,54 +646,127 @@ void core_mmu_set_user_map(struct core_mmu_user_map *map)
 
 bool core_mmu_user_mapping_is_active(void)
 {
-	return read_ttbr0() != read_ttbr1();
+	bool ret;
+	uint32_t exceptions = thread_mask_exceptions(THREAD_EXCP_ALL);
+
+	ret = read_ttbr0() != read_ttbr1();
+	thread_unmask_exceptions(exceptions);
+
+	return ret;
 }
 
-static paddr_t map_page_memarea(struct tee_mmap_region *mm)
+static void print_mmap_area(const struct tee_mmap_region *mm __maybe_unused,
+				const char *str __maybe_unused)
 {
-	uint32_t *l2 = core_mmu_alloc_l2(mm);
+	if (!(mm->attr & TEE_MATTR_VALID_BLOCK))
+		debug_print("%s [%08" PRIxVA " %08" PRIxVA "] not mapped",
+				str, mm->va, mm->va + mm->size);
+	else
+		debug_print("%s [%08" PRIxVA " %08" PRIxVA "] %s-%s-%s-%s",
+				str, mm->va, mm->va + mm->size,
+				mm->attr & (TEE_MATTR_CACHE_CACHED <<
+					TEE_MATTR_CACHE_SHIFT) ? "MEM" : "DEV",
+				mm->attr & TEE_MATTR_PW ? "RW" : "RO",
+				mm->attr & TEE_MATTR_PX ? "X" : "XN",
+				mm->attr & TEE_MATTR_SECURE ? "S" : "NS");
+}
+
+static paddr_t map_page_memarea(const struct tee_mmap_region *mm, uint32_t xlat)
+{
+	uint32_t *l2;
 	size_t pg_idx;
 	uint32_t attr;
 
-	if (!l2)
-		panic("no l2 table");
+	if (!xlat)
+		l2 = core_mmu_alloc_l2(mm->size);
+	else
+		l2 = phys_to_virt(xlat & SECTION_PT_ATTR_MASK,
+				  MEM_AREA_TEE_RAM_RW_DATA);
+
+	/*
+	 * If allocation above failed, it panicked.
+	 * If xlat was non null, it is expected already a valid entry.
+	 */
+	assert(l2);
 
 	attr = mattr_to_desc(2, mm->attr);
 
-	/* Zero fill initial entries */
-	pg_idx = 0;
-	while ((pg_idx * SMALL_PAGE_SIZE) < (mm->pa & SECTION_MASK)) {
-		l2[pg_idx] = 0;
-		pg_idx++;
-	}
-
-	/* Fill in the entries */
+	pg_idx = (mm->va & SECTION_MASK) >> SMALL_PAGE_SHIFT;
 	while ((pg_idx * SMALL_PAGE_SIZE) <
-		(mm->size + (mm->pa & SECTION_MASK))) {
-		l2[pg_idx] = ((mm->pa & ~SECTION_MASK) +
-				pg_idx * SMALL_PAGE_SIZE) | attr;
+	       (mm->size + (mm->va & SECTION_MASK))) {
+		uint32_t desc = attr;
+
+		if (attr != INVALID_DESC)
+			desc |= ((mm->pa & ~SECTION_MASK) +
+				pg_idx * SMALL_PAGE_SIZE);
+
+		assert(!desc || !l2[pg_idx] || l2[pg_idx] == desc);
+		l2[pg_idx] = desc;
 		pg_idx++;
 	}
 
-	/* Zero fill the rest */
-	while (pg_idx < ROUNDUP(mm->size, SECTION_SIZE) / SMALL_PAGE_SIZE) {
-		l2[pg_idx] = 0;
-		pg_idx++;
-	}
+	return virt_to_phys(l2);
+}
 
-	return (paddr_t)l2;
+static void map_page_memarea_in_pgdirs(const struct tee_mmap_region *mm,
+					uint32_t *ttb)
+{
+	uint32_t attr = INVALID_DESC;
+	size_t idx = mm->va >> SECTION_SHIFT;
+	paddr_t pa = 0;
+	size_t n;
+
+	if (core_mmap_is_end_of_table(mm))
+		return;
+
+	print_mmap_area(mm, "4k page map");
+
+	attr = mattr_to_desc(1, mm->attr | TEE_MATTR_TABLE);
+	pa = map_page_memarea(mm, ttb[idx]);
+
+	n = ROUNDUP(mm->size, SECTION_SIZE) >> SECTION_SHIFT;
+	while (n--) {
+		assert(!attr || !ttb[idx] || ttb[idx] == (pa | attr));
+		ttb[idx] = pa | attr;
+		idx++;
+		pa += SECTION_SIZE;
+	}
+}
+
+void map_memarea_sections(const struct tee_mmap_region *mm, uint32_t *ttb)
+{
+	uint32_t attr = mattr_to_desc(1, mm->attr);
+	size_t idx = mm->va >> SECTION_SHIFT;
+	paddr_t pa = 0;
+	size_t n;
+
+	if (core_mmap_is_end_of_table(mm))
+		return;
+
+	print_mmap_area(mm, "section map");
+
+	attr = mattr_to_desc(1, mm->attr);
+	if (attr != INVALID_DESC)
+		pa = mm->pa;
+
+	n = ROUNDUP(mm->size, SECTION_SIZE) >> SECTION_SHIFT;
+	while (n--) {
+		assert(!attr || !ttb[idx] || ttb[idx] == (pa | attr));
+
+		ttb[idx] = pa | attr;
+		idx++;
+		pa += SECTION_SIZE;
+	}
 }
 
 /*
 * map_memarea - load mapping in target L1 table
 * A finer mapping must be supported. Currently section mapping only!
 */
-static void map_memarea(struct tee_mmap_region *mm, uint32_t *ttb)
+static void map_memarea(const struct tee_mmap_region *mm, uint32_t *ttb)
 {
-	size_t m, n;
-	uint32_t attr;
-	paddr_t pa;
-	uint32_t region_size;
+	struct tee_mmap_region mm2;
+	size_t size;
 
 	assert(mm && ttb);
 
@@ -585,45 +775,26 @@ static void map_memarea(struct tee_mmap_region *mm, uint32_t *ttb)
 	 * user TA address space. This mapping will be overridden/hidden
 	 * later when a user TA is loaded since these low addresses are
 	 * used as TA virtual address space.
-	 *
-	 * Some SoCs have devices at low addresses, so we need to map at
-	 * least those devices at a virtual address which isn't the same
-	 * as the physical.
-	 *
-	 * TODO: support mapping devices at a virtual address which isn't
-	 * the same as the physical address.
 	 */
-	if (mm->va < (TEE_MMU_UL1_NUM_ENTRIES * SECTION_SIZE))
+	if (mm->va < (NUM_UL1_ENTRIES * SECTION_SIZE))
 		panic("va conflicts with user ta address");
 
-	if ((mm->va | mm->pa | mm->size) & SECTION_MASK) {
-		region_size = SMALL_PAGE_SIZE;
-
-		/*
-		 * Need finer grained mapping, if small pages aren't
-		 * good enough, panic.
-		 */
-		if ((mm->va | mm->pa | mm->size) & SMALL_PAGE_MASK)
-			panic("memarea can't be mapped");
-
-		attr = mattr_to_desc(1, mm->attr | TEE_MATTR_TABLE);
-		pa = map_page_memarea(mm);
-	} else {
-		region_size = SECTION_SIZE;
-
-		attr = mattr_to_desc(1, mm->attr);
-		pa = mm->pa;
+	if (!((mm->va | mm->pa | mm->size | mm->region_size) & SECTION_MASK)) {
+		map_memarea_sections(mm, ttb);
+		return;
 	}
+	if ((mm->va | mm->pa | mm->size | mm->region_size) & SMALL_PAGE_MASK)
+		panic("memarea can't be mapped");
 
-	m = (mm->va >> SECTION_SHIFT);
-	n = ROUNDUP(mm->size, SECTION_SIZE) >> SECTION_SHIFT;
-	while (n--) {
-		ttb[m] = pa | attr;
-		m++;
-		if (region_size == SECTION_SIZE)
-			pa += SECTION_SIZE;
-		else
-			pa += TEE_MMU_L2_SIZE;
+	mm2 = *mm;
+	size = mm->size;
+	while (size) {
+		mm2.size = MIN(size, SECTION_SIZE -
+				(mm2.va - ROUNDDOWN(mm2.va, SECTION_SIZE)));
+		map_page_memarea_in_pgdirs(&mm2, ttb);
+		size -= mm2.size;
+		mm2.pa += mm2.size;
+		mm2.va += mm2.size;
 	}
 }
 
@@ -633,10 +804,11 @@ void core_init_mmu_tables(struct tee_mmap_region *mm)
 	size_t n;
 
 	/* reset L1 table */
-	memset(ttb1, 0, TEE_MMU_L1_SIZE);
+	memset(ttb1, 0, L1_TBL_SIZE);
 
-	for (n = 0; mm[n].size; n++)
-		map_memarea(mm + n, ttb1);
+	for (n = 0; !core_mmap_is_end_of_table(mm + n); n++)
+		if (!core_mmu_is_dynamic_vaspace(mm + n))
+			map_memarea(mm + n, ttb1);
 }
 
 bool core_mmu_place_tee_ram_at_top(paddr_t paddr)
@@ -653,8 +825,8 @@ void core_init_mmu_regs(void)
 	/* Enable Access flag (simplified access permissions) and TEX remap */
 	write_sctlr(read_sctlr() | SCTLR_AFE | SCTLR_TRE);
 
-	prrr = ATTR_DEVICE_PRRR | ATTR_IWBWA_OWBWA_PRRR;
-	nmrr = ATTR_DEVICE_NMRR | ATTR_IWBWA_OWBWA_NMRR;
+	prrr = ATTR_DEVICE_PRRR | ATTR_NORMAL_CACHED_PRRR;
+	nmrr = ATTR_DEVICE_NMRR | ATTR_NORMAL_CACHED_NMRR;
 
 	prrr |= PRRR_NS1 | PRRR_DS1;
 
@@ -674,11 +846,12 @@ void core_init_mmu_regs(void)
 	 * Enable lookups using TTBR0 and TTBR1 with the split of addresses
 	 * defined by TEE_MMU_TTBCR_N_VALUE.
 	 */
-	write_ttbcr(TEE_MMU_TTBCR_N_VALUE);
+	write_ttbcr(TTBCR_N_VALUE);
 
 	write_ttbr0(ttb_pa | TEE_MMU_DEFAULT_ATTRS);
 	write_ttbr1(ttb_pa | TEE_MMU_DEFAULT_ATTRS);
 }
+KEEP_PAGER(core_init_mmu_regs);
 
 enum core_mmu_fault core_mmu_get_fault_type(uint32_t fsr)
 {

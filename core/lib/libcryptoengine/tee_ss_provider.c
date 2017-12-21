@@ -106,6 +106,7 @@ typedef enum {
 
 #define MAX_DATAIN_SIZE (64U*1024U)
 #define MAX_DATAIN_CCM_SIZE (512U*1024U)
+#define MAX_RSA_KEY_SIZE (512U)
 
 #define CONV_HASHMODE_TO_OAEP(hashMode) \
 do { \
@@ -1777,7 +1778,8 @@ static SSError_t ss_build_priv_key(CRYS_RSAUserPrivKey_t **userPrivKey,
 				sizeof(CRYS_RSAUserPrivKey_t), &res);
 	}
 	if (res == SS_SUCCESS) {
-		if (bn_num_bytes(key->p) == 0U) {
+		if ((bn_num_bytes(key->p) == 0U)
+				|| ((bn_num_bytes(key->n) >= MAX_RSA_KEY_SIZE))) {
 			PROV_DMSG("key->e=%p\n", key->e);
 			res = ss_copy_bn2bin_uint16(key->e, &e_ptr, &eSize);
 			if (res == SS_SUCCESS) {
@@ -6083,7 +6085,7 @@ static TEE_Result cipher_unwrap(void *srcData, uint32_t srcLen,
 	CRYS_AES_KeySize_t keySizeNum = CRYS_AES_KeySizeLast;
 	uint32_t dataOutLen;
 
-	dataOutLen = *dstLen;
+
 	if (0U == isSecretKey) {
 		switch (keySize) {
 		case 16U:
@@ -6110,6 +6112,13 @@ static TEE_Result cipher_unwrap(void *srcData, uint32_t srcLen,
 		}
 	}
 	if (SS_SUCCESS == res) {
+		if (dstLen == NULL) {
+			PROV_EMSG("But Parameters dstLen=%p",dstLen);
+			res = SS_ERROR_BAD_PARAMETERS;
+		}
+	}
+	if (SS_SUCCESS == res) {
+		dataOutLen = *dstLen;
 		PROV_DMSG("Call CRYS_AESUNWRAP() dataOutLen=%d\n", dataOutLen);
 		crys_res = CRYS_AESUNWRAP((uint8_t *)srcData, srcLen, unwrapKey,
 				keySizeNum, isSecretKey, (uint8_t *)destData,
@@ -6265,7 +6274,7 @@ static TEE_Result do_asset_unpack(uint32_t assetId,
 	TEE_Result tee_res;
 	SSError_t res = SS_SUCCESS;
 	CRYSError_t crys_res;
-	uint32_t dataOutLen = *pAssetDataLen;
+	uint32_t dataOutLen;
 	uint32_t check_crys_res;
 
 	PROV_INMSG("START: do_asset_unpack\n");
@@ -6277,6 +6286,7 @@ static TEE_Result do_asset_unpack(uint32_t assetId,
 	}
 	
 	if (SS_SUCCESS == res) {
+		dataOutLen = *pAssetDataLen;
 		crys_res = CRYS_ASSET_UNPACK(assetId, pAssetPackage,
 				assetPackagLen, pAssetData, &dataOutLen,
 				pUserData);

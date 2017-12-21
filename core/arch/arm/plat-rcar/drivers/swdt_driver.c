@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2016, Renesas Electronics Corporation
+ * Copyright (c) 2015-2017, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -28,6 +28,7 @@
 #include <io.h>
 #include <kernel/panic.h>
 #include <kernel/interrupt.h>
+#include <kernel/spinlock.h>
 #include <initcall.h>
 #include <drivers/swdt_driver.h>
 #include "rcar_suspend_to_ram.h"
@@ -72,6 +73,7 @@ static void swdt_itr_del(void);
 /******************************************************************************/
 /* Global                                                                     */
 /******************************************************************************/
+static uint32_t		thread_global_lock = (uint32_t)SPINLOCK_UNLOCK;
 static uint16_t		swdt_initial_count = 0U;
 static uint32_t		swdt_state = SWDT_STATE_NOACTIVE;
 static uint16_t		swdt_count = 0U;
@@ -140,12 +142,14 @@ int32_t swdt_start(uint16_t count, uint8_t clk,
 	int32_t ret = SWDT_SUCCESS;
 	uint32_t reg;
 	uint32_t reg_WTCSRA = 0U;
+	uint32_t exceptions;
 
 	/* parameter check */
 	if ((SWDT_FREQ_EXPANDED < clk) || (0U == count)) {
 		ret = SWDT_ERR_PARAMETER;	/* parameter error */
 	}
 
+	exceptions = cpu_spin_lock_xsave(&thread_global_lock);
 	if ((SWDT_SUCCESS == ret) && (SWDT_STATE_NOACTIVE != swdt_state)) {
 		ret = SWDT_ERR_SEQUENCE;
 	}
@@ -174,7 +178,7 @@ int32_t swdt_start(uint16_t count, uint8_t clk,
 			reg |= RST_WDTRSTCR_RSTMSK;
 			write32(reg | SWDT_WDTRSTCR_UPPER_BYTE, RST_WDTRSTCR);
 
-			itr_enable(swdt_itr);
+			itr_enable(swdt_itr[0].it);
 
 			/* enable interrupt */
 			reg_WTCSRA = SWDT_SWTCSRA_WOVFE;
@@ -197,7 +201,7 @@ int32_t swdt_start(uint16_t count, uint8_t clk,
 
 		swdt_state = SWDT_STATE_ACTIVE;
 	}
-
+	cpu_spin_unlock_xrestore(&thread_global_lock, exceptions);
 	return ret;
 }
 
@@ -205,12 +209,14 @@ int32_t swdt_stop(void)
 {
 	uint32_t reg;
 	int32_t ret = SWDT_SUCCESS;
+	uint32_t exceptions;
 
+	exceptions = cpu_spin_lock_xsave(&thread_global_lock);
 	if (SWDT_STATE_ACTIVE != swdt_state) {
 		ret = SWDT_ERR_SEQUENCE;
 	} else {
 
-		itr_disable(swdt_itr);
+		itr_disable(swdt_itr[0].it);
 
 		reg = read8(SWDT_SWTCSRA);
 		reg &= ~SWDT_SWTCSRA_TME;
@@ -224,13 +230,16 @@ int32_t swdt_stop(void)
 
 		swdt_state = SWDT_STATE_NOACTIVE;
 	}
+	cpu_spin_unlock_xrestore(&thread_global_lock, exceptions);
 	return ret;
 }
 
 int32_t swdt_kick(void)
 {
 	int32_t ret = SWDT_SUCCESS;
+	uint32_t exceptions;
 
+	exceptions = cpu_spin_lock_xsave(&thread_global_lock);
 	if (SWDT_STATE_ACTIVE != swdt_state) {
 		ret = SWDT_ERR_SEQUENCE;
 	} else {
@@ -238,6 +247,7 @@ int32_t swdt_kick(void)
 		
 		write32(SWDT_SWTCNT_UPPER_BYTE | swdt_initial_count, SWDT_SWTCNT);
 	}
+	cpu_spin_unlock_xrestore(&thread_global_lock, exceptions);
 	return ret;
 }
 

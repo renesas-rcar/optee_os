@@ -34,12 +34,13 @@
 #include <string.h>
 #include <trace.h>
 
-bool unwind_stack(struct unwind_state *frame)
+bool unwind_stack_arm64(struct unwind_state_arm64 *frame, uaddr_t stack,
+		      size_t stack_size)
 {
 	uint64_t fp;
 
 	fp = frame->fp;
-	if (!thread_addr_is_in_stack(fp))
+	if (fp < stack || fp >= stack + stack_size)
 		return false;
 
 	frame->sp = fp + 0x10;
@@ -51,34 +52,29 @@ bool unwind_stack(struct unwind_state *frame)
 	return true;
 }
 
-#if defined(CFG_CORE_UNWIND) && (TRACE_LEVEL > 0)
+#if defined(CFG_UNWIND) && (TRACE_LEVEL > 0)
 
-void print_stack(int level)
+void print_stack_arm64(int level, struct unwind_state_arm64 *state,
+		       uaddr_t stack, size_t stack_size)
 {
-	struct unwind_state state;
+	trace_printf_helper_raw(level, true, "Call stack:");
+	do {
+		trace_printf_helper_raw(level, true, " 0x%016" PRIx64,
+					state->pc);
+	} while (stack && unwind_stack_arm64(state, stack, stack_size));
+}
+
+void print_kernel_stack(int level)
+{
+	struct unwind_state_arm64 state;
+	uaddr_t stack = thread_stack_start();
+	size_t stack_size = thread_stack_size();
 
 	memset(&state, 0, sizeof(state));
 	state.pc = read_pc();
 	state.fp = read_fp();
 
-	do {
-		switch (level) {
-		case TRACE_FLOW:
-			FMSG_RAW("pc  0x%016" PRIx64, state.pc);
-			break;
-		case TRACE_DEBUG:
-			DMSG_RAW("pc  0x%016" PRIx64, state.pc);
-			break;
-		case TRACE_INFO:
-			IMSG_RAW("pc  0x%016" PRIx64, state.pc);
-			break;
-		case TRACE_ERROR:
-			EMSG_RAW("pc  0x%016" PRIx64, state.pc);
-			break;
-		default:
-			break;
-		}
-	} while (unwind_stack(&state));
+	print_stack_arm64(level, &state, stack, stack_size);
 }
 
-#endif /* defined(CFG_CORE_UNWIND) && (TRACE_LEVEL > 0) */
+#endif

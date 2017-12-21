@@ -24,8 +24,15 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+#include <assert.h>
 #include <drivers/pl011.h>
 #include <io.h>
+#include <keep.h>
+#include <kernel/dt.h>
+#include <stdlib.h>
+#include <trace.h>
+#include <types_ext.h>
+#include <util.h>
 
 #define UART_DR		0x00 /* data register */
 #define UART_RSR_ECR	0x04 /* receive status or error clear */
@@ -89,14 +96,76 @@
 #define UART_IMSC_RTIM		(1 << 6)
 #define UART_IMSC_RXIM		(1 << 4)
 
-void pl011_flush(vaddr_t base)
+static vaddr_t chip_to_base(struct serial_chip *chip)
 {
-	while (!(read32(base + UART_FR) & UART_FR_TXFE))
+	struct pl011_data *pd =
+		container_of(chip, struct pl011_data, chip);
+
+	return io_pa_or_va(&pd->base);
+}
+
+static void pl011_flush(struct serial_chip *chip)
+{
+	vaddr_t base = chip_to_base(chip);
+
+	/*
+	 * Wait for the transmit FIFO to be empty.
+	 * It can happen that Linux initializes the OP-TEE driver with the
+	 * console UART disabled; avoid an infinite loop by checking the UART
+	 * enabled flag. Checking it in the loop makes the code safe against
+	 * asynchronous disable.
+	 */
+	while ((read32(base + UART_CR) & UART_CR_UARTEN) &&
+	       !(read32(base + UART_FR) & UART_FR_TXFE))
 		;
 }
 
-void pl011_init(vaddr_t base, uint32_t uart_clk, uint32_t baud_rate)
+static bool pl011_have_rx_data(struct serial_chip *chip)
 {
+	vaddr_t base = chip_to_base(chip);
+
+	return !(read32(base + UART_FR) & UART_FR_RXFE);
+}
+
+static int pl011_getchar(struct serial_chip *chip)
+{
+	vaddr_t base = chip_to_base(chip);
+
+	while (!pl011_have_rx_data(chip))
+		;
+	return read32(base + UART_DR) & 0xff;
+}
+
+static void pl011_putc(struct serial_chip *chip, int ch)
+{
+	vaddr_t base = chip_to_base(chip);
+
+	/* Wait until there is space in the FIFO or device is disabled */
+	while (read32(base + UART_FR) & UART_FR_TXFF)
+		;
+
+	/* Send the character */
+	write32(ch, base + UART_DR);
+}
+
+static const struct serial_ops pl011_ops = {
+	.flush = pl011_flush,
+	.getchar = pl011_getchar,
+	.have_rx_data = pl011_have_rx_data,
+	.putc = pl011_putc,
+};
+KEEP_PAGER(pl011_ops);
+
+void pl011_init(struct pl011_data *pd, paddr_t pbase, uint32_t uart_clk,
+		uint32_t baud_rate)
+{
+	vaddr_t base;
+
+	pd->base.pa = pbase;
+	pd->chip.ops = &pl011_ops;
+
+	base = io_pa_or_va(&pd->base);
+
 	/* Clear all errors */
 	write32(0, base + UART_RSR_ECR);
 	/* Disable everything */
@@ -118,30 +187,67 @@ void pl011_init(vaddr_t base, uint32_t uart_clk, uint32_t baud_rate)
 	/* Enable UART and RX/TX */
 	write32(UART_CR_UARTEN | UART_CR_TXE | UART_CR_RXE, base + UART_CR);
 
-	pl011_flush(base);
+	pl011_flush(&pd->chip);
 }
 
-void pl011_putc(int ch, vaddr_t base)
+#ifdef CFG_DT
+
+static struct serial_chip *pl011_dev_alloc(void)
 {
-	/*
-	 * Wait until there is space in the FIFO
-	 */
-	while (read32(base + UART_FR) & UART_FR_TXFF)
-		;
+	struct pl011_data *pd = malloc(sizeof(*pd));
 
-	/* Send the character */
-	write32(ch, base + UART_DR);
+	if (!pd)
+		return NULL;
+	return &pd->chip;
 }
 
-bool pl011_have_rx_data(vaddr_t base)
+static int pl011_dev_init(struct serial_chip *chip, const void *fdt, int offs,
+			  const char *parms)
 {
-	return !(read32(base + UART_FR) & UART_FR_RXFE);
+	struct pl011_data *pd = container_of(chip, struct pl011_data, chip);
+	vaddr_t vbase;
+	paddr_t pbase;
+	size_t size;
+
+	if (parms && parms[0])
+		IMSG("pl011: device parameters ignored (%s)", parms);
+
+	if (dt_map_dev(fdt, offs, &vbase, &size) < 0)
+		return -1;
+
+	if (size != 0x1000) {
+		EMSG("pl011: unexpected register size: %zx", size);
+		return -1;
+	}
+
+	pbase = virt_to_phys((void *)vbase);
+	pl011_init(pd, pbase, 0, 0);
+
+	return 0;
 }
 
-int pl011_getchar(vaddr_t base)
+static void pl011_dev_free(struct serial_chip *chip)
 {
-	while (!pl011_have_rx_data(base))
-		;
-	return read32(base + UART_DR) & 0xff;
+	struct pl011_data *pd = container_of(chip, struct pl011_data, chip);
+
+	free(pd);
 }
 
+static const struct serial_driver pl011_driver = {
+	.dev_alloc = pl011_dev_alloc,
+	.dev_init = pl011_dev_init,
+	.dev_free = pl011_dev_free,
+};
+
+static const struct dt_device_match pl011_match_table[] = {
+	{ .compatible = "arm,pl011" },
+	{ 0 }
+};
+
+const struct dt_driver pl011_dt_driver __dt_driver = {
+	.name = "pl011",
+	.match_table = pl011_match_table,
+	.driver = &pl011_driver,
+};
+
+#endif /* CFG_DT */

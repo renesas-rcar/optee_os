@@ -54,19 +54,19 @@ static vaddr_t asan_va_base;
 static size_t asan_va_size;
 static bool asan_active;
 
-static int8_t *va_to_shadow(void *va)
+static int8_t *va_to_shadow(const void *va)
 {
 	vaddr_t sa = ((vaddr_t)va / ASAN_BLOCK_SIZE) + CFG_ASAN_SHADOW_OFFSET;
 
 	return (int8_t *)sa;
 }
 
-static size_t va_range_to_shadow_size(void *begin, void *end)
+static size_t va_range_to_shadow_size(const void *begin, const void *end)
 {
 	return ((vaddr_t)end - (vaddr_t)begin) / ASAN_BLOCK_SIZE;
 }
 
-static bool va_range_inside_shadow(void *begin, void *end)
+static bool va_range_inside_shadow(const void *begin, const void *end)
 {
 	vaddr_t b = (vaddr_t)begin;
 	vaddr_t e = (vaddr_t)end;
@@ -76,7 +76,7 @@ static bool va_range_inside_shadow(void *begin, void *end)
 	return (b >= asan_va_base) && (e <= (asan_va_base + asan_va_size));
 }
 
-static bool va_range_outside_shadow(void *begin, void *end)
+static bool va_range_outside_shadow(const void *begin, const void *end)
 {
 	vaddr_t b = (vaddr_t)begin;
 	vaddr_t e = (vaddr_t)end;
@@ -86,17 +86,17 @@ static bool va_range_outside_shadow(void *begin, void *end)
 	return (e <= asan_va_base) || (b >= (asan_va_base + asan_va_size));
 }
 
-static size_t va_misalignment(void *va)
+static size_t va_misalignment(const void *va)
 {
 	return (vaddr_t)va & ASAN_BLOCK_MASK;
 }
 
-static bool va_is_well_aligned(void *va)
+static bool va_is_well_aligned(const void *va)
 {
 	return !va_misalignment(va);
 }
 
-void asan_set_shadowed(void *begin, void *end)
+void asan_set_shadowed(const void *begin, const void *end)
 {
 	vaddr_t b = (vaddr_t)begin;
 	vaddr_t e = (vaddr_t)end;
@@ -110,17 +110,17 @@ void asan_set_shadowed(void *begin, void *end)
 	asan_va_size = e - b;
 }
 
-void asan_tag_no_access(void *begin, void *end)
+void asan_tag_no_access(const void *begin, const void *end)
 {
 	assert(va_is_well_aligned(begin));
 	assert(va_is_well_aligned(end));
 	assert(va_range_inside_shadow(begin, end));
 
-	memset(va_to_shadow(begin), ASAN_DATA_RED_ZONE,
-	       va_range_to_shadow_size(begin, end));
+	asan_memset_unchecked(va_to_shadow(begin), ASAN_DATA_RED_ZONE,
+			      va_range_to_shadow_size(begin, end));
 }
 
-void asan_tag_access(void *begin, void *end)
+void asan_tag_access(const void *begin, const void *end)
 {
 	if (!asan_va_base)
 		return;
@@ -128,12 +128,13 @@ void asan_tag_access(void *begin, void *end)
 	assert(va_range_inside_shadow(begin, end));
 	assert(va_is_well_aligned(begin));
 
-	memset(va_to_shadow(begin), 0, va_range_to_shadow_size(begin, end));
+	asan_memset_unchecked(va_to_shadow(begin), 0,
+			      va_range_to_shadow_size(begin, end));
 	if (!va_is_well_aligned(end))
 		*va_to_shadow(end) = ASAN_BLOCK_SIZE - va_misalignment(end);
 }
 
-void asan_tag_heap_free(void *begin, void *end)
+void asan_tag_heap_free(const void *begin, const void *end)
 {
 	if (!asan_va_base)
 		return;
@@ -142,8 +143,19 @@ void asan_tag_heap_free(void *begin, void *end)
 	assert(va_is_well_aligned(begin));
 	assert(va_is_well_aligned(end));
 
-	memset(va_to_shadow(begin), ASAN_HEAP_RED_ZONE,
-	       va_range_to_shadow_size(begin, end));
+	asan_memset_unchecked(va_to_shadow(begin), ASAN_HEAP_RED_ZONE,
+			      va_range_to_shadow_size(begin, end));
+}
+
+void *asan_memset_unchecked(void *s, int c, size_t n)
+{
+	uint8_t *b = s;
+	size_t m;
+
+	for (m = 0; m < n; m++)
+		b[m] = c;
+
+	return s;
 }
 
 void asan_start(void)
@@ -170,8 +182,8 @@ static void check_access(vaddr_t addr, size_t size)
 	if (!va_range_inside_shadow(begin, end))
 		panic();
 
-	e = va_to_shadow(end);
-	for (a = va_to_shadow(begin); a != e; a++)
+	e = va_to_shadow((void *)(addr + size - 1));
+	for (a = va_to_shadow(begin); a <= e; a++)
 		if (*a < 0)
 			panic();
 

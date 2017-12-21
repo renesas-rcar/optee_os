@@ -28,24 +28,28 @@
 #include <arm.h>
 #include <assert.h>
 #include <compiler.h>
+#include <console.h>
 #include <inttypes.h>
-#include <kernel/generic_boot.h>
-#include <kernel/thread.h>
-#include <kernel/panic.h>
-#include <kernel/misc.h>
+#include <keep.h>
 #include <kernel/asan.h>
+#include <kernel/generic_boot.h>
+#include <kernel/linker.h>
+#include <kernel/misc.h>
+#include <kernel/panic.h>
+#include <kernel/thread.h>
 #include <malloc.h>
-#include <mm/core_mmu.h>
 #include <mm/core_memprot.h>
+#include <mm/core_mmu.h>
 #include <mm/tee_mm.h>
 #include <mm/tee_mmu.h>
 #include <mm/tee_pager.h>
+#include <sm/psci.h>
 #include <sm/tee_mon.h>
-#include <trace.h>
+#include <stdio.h>
 #include <tee/tee_cryp_provider.h>
+#include <trace.h>
 #include <utee_defines.h>
 #include <util.h>
-#include <stdio.h>
 
 #include <platform_config.h>
 
@@ -69,11 +73,11 @@
  *
  * 64-bit systems on the other hand can use full 64-bit physical pointers.
  */
-
 #define PADDR_INVALID		ULONG_MAX
 
-#ifdef CFG_BOOT_SECONDARY_REQUEST
-uint32_t ns_entry_addrs[CFG_TEE_CORE_NB_CORE] __data;
+#if defined(CFG_BOOT_SECONDARY_REQUEST)
+paddr_t ns_entry_addrs[CFG_TEE_CORE_NB_CORE];
+static uint32_t spin_table[CFG_TEE_CORE_NB_CORE];
 #endif
 
 #ifdef CFG_BOOT_SYNC_CPU
@@ -82,11 +86,27 @@ uint32_t ns_entry_addrs[CFG_TEE_CORE_NB_CORE] __data;
  * When 0, the cpu has not started.
  * When 1, it has started
  */
-uint32_t sem_cpu_sync[CFG_TEE_CORE_NB_CORE] __early_bss;
+uint32_t sem_cpu_sync[CFG_TEE_CORE_NB_CORE];
+KEEP_PAGER(sem_cpu_sync);
+#endif
+
+#ifdef CFG_DT
+static void *dt_blob_addr;
 #endif
 
 /* May be overridden in plat-$(PLATFORM)/main.c */
+__weak void plat_cpu_reset_late(void)
+{
+}
+KEEP_PAGER(plat_cpu_reset_late);
+
+/* May be overridden in plat-$(PLATFORM)/main.c */
 __weak void main_init_gic(void)
+{
+}
+
+/* May be overridden in plat-$(PLATFORM)/main.c */
+__weak void main_secondary_init_gic(void)
 {
 }
 
@@ -164,22 +184,6 @@ static void init_vfp_sec(void)
 #endif
 
 #ifdef CFG_WITH_PAGER
-
-static size_t get_block_size(void)
-{
-	struct core_mmu_table_info tbl_info;
-	unsigned l;
-
-	if (!core_mmu_find_table(CFG_TEE_RAM_START, UINT_MAX, &tbl_info))
-		panic("can't find mmu tables");
-
-	l = tbl_info.level - 1;
-	if (!core_mmu_find_table(CFG_TEE_RAM_START, l, &tbl_info))
-		panic("can't find mmu table upper level");
-
-	return 1 << tbl_info.shift;
-}
-
 static void init_runtime(unsigned long pageable_part)
 {
 	size_t n;
@@ -190,29 +194,15 @@ static void init_runtime(unsigned long pageable_part)
 	tee_mm_entry_t *mm;
 	uint8_t *paged_store;
 	uint8_t *hashes;
-	size_t block_size;
 
 	assert(pageable_size % SMALL_PAGE_SIZE == 0);
 	assert(hash_size == (size_t)__tmp_hashes_size);
 
 	/*
-	 * Zero BSS area. Note that globals that would normally would go
-	 * into BSS which are used before this has to be put into .nozi.*
-	 * to avoid getting overwritten.
-	 */
-	memset(__bss_start, 0, __bss_end - __bss_start);
-
-	core_mmu_linear_map_end = (vaddr_t)__heap2_end;
-	/*
 	 * This needs to be initialized early to support address lookup
 	 * in MEM_AREA_TEE_RAM
 	 */
-	if (!core_mmu_find_table(CFG_TEE_RAM_START, UINT_MAX,
-				 &tee_pager_tbl_info))
-		panic("can't find mmu tables");
-
-	if (tee_pager_tbl_info.shift != SMALL_PAGE_SHIFT)
-		panic("Unsupported page size in translation table");
+	tee_pager_early_init();
 
 	thread_init_boot_thread();
 
@@ -220,6 +210,7 @@ static void init_runtime(unsigned long pageable_part)
 	malloc_add_pool(__heap2_start, __heap2_end - __heap2_start);
 
 	hashes = malloc(hash_size);
+	IMSG_RAW("\n");
 	IMSG("Pager is enabled. Hashes: %zu bytes", hash_size);
 	assert(hashes);
 	memcpy(hashes, __tmp_hashes_start, hash_size);
@@ -233,13 +224,17 @@ static void init_runtime(unsigned long pageable_part)
 	mm = tee_mm_alloc(&tee_mm_sec_ddr, pageable_size);
 	assert(mm);
 	paged_store = phys_to_virt(tee_mm_get_smem(mm), MEM_AREA_TA_RAM);
-	/* Copy init part into pageable area */
-	memcpy(paged_store, __init_start, init_size);
-	/* Copy pageable part after init part into pageable area */
-	memcpy(paged_store + init_size,
-	       phys_to_virt(pageable_part,
-			    core_mmu_get_type_by_pa(pageable_part)),
+	/*
+	 * Load pageable part in the dedicated allocated area:
+	 * - Move pageable non-init part into pageable area. Note bootloader
+	 *   may have loaded it anywhere in TA RAM hence use memmove().
+	 * - Copy pageable init part from current location into pageable area.
+	 */
+	memmove(paged_store + init_size,
+		phys_to_virt(pageable_part,
+			     core_mmu_get_type_by_pa(pageable_part)),
 		__pageable_part_end - __pageable_part_start);
+	memcpy(paged_store, __init_start, init_size);
 
 	/* Check that hashes of what's in pageable area is OK */
 	DMSG("Checking hashes of pageable area");
@@ -258,35 +253,18 @@ static void init_runtime(unsigned long pageable_part)
 	}
 
 	/*
-	 * Copy what's not initialized in the last init page. Needed
-	 * because we're not going fault in the init pages again. We can't
-	 * fault in pages until we've switched to the new vector by calling
-	 * thread_init_handlers() below.
+	 * Assert prepaged init sections are page aligned so that nothing
+	 * trails uninited at the end of the premapped init area.
 	 */
-	if (init_size % SMALL_PAGE_SIZE) {
-		uint8_t *p;
-
-		memcpy(__init_start + init_size, paged_store + init_size,
-			SMALL_PAGE_SIZE - (init_size % SMALL_PAGE_SIZE));
-
-		p = (uint8_t *)(((vaddr_t)__init_start + init_size) &
-				~SMALL_PAGE_MASK);
-
-		cache_maintenance_l1(DCACHE_AREA_CLEAN, p, SMALL_PAGE_SIZE);
-		cache_maintenance_l1(ICACHE_AREA_INVALIDATE, p,
-				     SMALL_PAGE_SIZE);
-	}
+	assert(!(init_size & SMALL_PAGE_MASK));
 
 	/*
 	 * Initialize the virtual memory pool used for main_mmu_l2_ttb which
 	 * is supplied to tee_pager_init() below.
 	 */
-	block_size = get_block_size();
-	if (!tee_mm_init(&tee_mm_vcore,
-			ROUNDDOWN(CFG_TEE_RAM_START, block_size),
-			ROUNDUP(CFG_TEE_RAM_START + CFG_TEE_RAM_VA_SIZE,
-				block_size),
-			SMALL_PAGE_SHIFT, 0))
+	if (!tee_mm_init(&tee_mm_vcore, TEE_RAM_VA_START,
+			 TEE_RAM_VA_START + CFG_TEE_RAM_VA_SIZE,
+			 SMALL_PAGE_SHIFT, TEE_MM_POOL_NO_FLAGS))
 		panic("tee_mm_vcore init failed");
 
 	/*
@@ -304,9 +282,10 @@ static void init_runtime(unsigned long pageable_part)
 	 * Claim virtual memory which isn't paged, note that there migth be
 	 * a gap between tee_mm_vcore.lo and TEE_RAM_START which is also
 	 * claimed to avoid later allocations to get that memory.
+	 * Linear memory (flat map core memory) ends there.
 	 */
 	mm = tee_mm_alloc2(&tee_mm_vcore, tee_mm_vcore.lo,
-			(vaddr_t)(__text_init_start - tee_mm_vcore.lo));
+			(vaddr_t)(__pageable_start - tee_mm_vcore.lo));
 	assert(mm);
 
 	/*
@@ -316,16 +295,13 @@ static void init_runtime(unsigned long pageable_part)
 	mm = tee_mm_alloc2(&tee_mm_vcore, (vaddr_t)__pageable_start,
 			   pageable_size);
 	assert(mm);
-	if (!tee_pager_add_core_area(tee_mm_get_smem(mm), tee_mm_get_bytes(mm),
-				     TEE_MATTR_PRX, paged_store, hashes))
-		panic("failed to add pageable to vcore");
+	tee_pager_add_core_area(tee_mm_get_smem(mm), tee_mm_get_bytes(mm),
+				TEE_MATTR_PRX, paged_store, hashes);
 
 	tee_pager_add_pages((vaddr_t)__pageable_start,
-		ROUNDUP(init_size, SMALL_PAGE_SIZE) / SMALL_PAGE_SIZE, false);
-	tee_pager_add_pages((vaddr_t)__pageable_start +
-				ROUNDUP(init_size, SMALL_PAGE_SIZE),
-			(pageable_size - ROUNDUP(init_size, SMALL_PAGE_SIZE)) /
-				SMALL_PAGE_SIZE, true);
+			init_size / SMALL_PAGE_SIZE, false);
+	tee_pager_add_pages((vaddr_t)__pageable_start + init_size,
+			(pageable_size - init_size) / SMALL_PAGE_SIZE, true);
 
 }
 #else
@@ -333,7 +309,7 @@ static void init_runtime(unsigned long pageable_part)
 #ifdef CFG_CORE_SANITIZE_KADDRESS
 static void init_run_constructors(void)
 {
-	vaddr_t *ctor;
+	const vaddr_t *ctor;
 
 	for (ctor = &__ctor_list; ctor < &__ctor_end; ctor++)
 		((void (*)(void))(*ctor))();
@@ -353,10 +329,10 @@ static void init_asan(void)
 	 */
 
 #define __ASAN_SHADOW_START \
-	ROUNDUP(CFG_TEE_RAM_START + (CFG_TEE_RAM_VA_SIZE * 8) / 9 - 8, 8)
+	ROUNDUP(TEE_RAM_VA_START + (CFG_TEE_RAM_VA_SIZE * 8) / 9 - 8, 8)
 	assert(__ASAN_SHADOW_START == (vaddr_t)&__asan_shadow_start);
 #define __CFG_ASAN_SHADOW_OFFSET \
-	(__ASAN_SHADOW_START - (CFG_TEE_RAM_START / 8))
+	(__ASAN_SHADOW_START - (TEE_RAM_VA_START / 8))
 	COMPILE_TIME_ASSERT(CFG_ASAN_SHADOW_OFFSET == __CFG_ASAN_SHADOW_OFFSET);
 #undef __ASAN_SHADOW_START
 #undef __CFG_ASAN_SHADOW_OFFSET
@@ -365,7 +341,7 @@ static void init_asan(void)
 	 * Assign area covered by the shadow area, everything from start up
 	 * to the beginning of the shadow area.
 	 */
-	asan_set_shadowed((void *)CFG_TEE_LOAD_ADDR, &__asan_shadow_start);
+	asan_set_shadowed((void *)TEE_TEXT_VA_START, &__asan_shadow_start);
 
 	/*
 	 * Add access to areas that aren't opened automatically by a
@@ -374,8 +350,9 @@ static void init_asan(void)
 	asan_tag_access(&__initcall_start, &__initcall_end);
 	asan_tag_access(&__ctor_list, &__ctor_end);
 	asan_tag_access(__rodata_start, __rodata_end);
-	asan_tag_access(__early_bss_start, __early_bss_end);
 	asan_tag_access(__nozi_start, __nozi_end);
+	asan_tag_access(__exidx_start, __exidx_end);
+	asan_tag_access(__extab_start, __extab_end);
 
 	init_run_constructors();
 
@@ -390,13 +367,6 @@ static void init_asan(void)
 
 static void init_runtime(unsigned long pageable_part __unused)
 {
-	/*
-	 * Zero BSS area. Note that globals that would normally would go
-	 * into BSS which are used before this has to be put into .nozi.*
-	 * to avoid getting overwritten.
-	 */
-	memset(__bss_start, 0, __bss_end - __bss_start);
-
 	thread_init_boot_thread();
 
 	init_asan();
@@ -407,17 +377,30 @@ static void init_runtime(unsigned long pageable_part __unused)
 	 * above
 	 */
 	teecore_init_ta_ram();
+	IMSG_RAW("\n");
 }
 #endif
 
 #ifdef CFG_DT
+void *get_dt_blob(void)
+{
+	assert(cpu_mmu_enabled());
+	return dt_blob_addr;
+}
+
+static void reset_dt_references(void)
+{
+	/* dt no more reached, reset pointer to invalid */
+	dt_blob_addr = NULL;
+}
+
 static int add_optee_dt_node(void *fdt)
 {
 	int offs;
 	int ret;
 
 	if (fdt_path_offset(fdt, "/firmware/optee") >= 0) {
-		IMSG("OP-TEE Device Tree node already exists!\n");
+		DMSG("OP-TEE Device Tree node already exists!\n");
 		return 0;
 	}
 
@@ -444,51 +427,155 @@ static int add_optee_dt_node(void *fdt)
 	return 0;
 }
 
-static int get_dt_cell_size(void *fdt, int offs, const char *cell_name,
-			    uint32_t *cell_size)
+#ifdef CFG_PSCI_ARM32
+static int append_psci_compatible(void *fdt, int offs, const char *str)
 {
-	int len;
-	const uint32_t *cell = fdt_getprop(fdt, offs, cell_name, &len);
+	return fdt_appendprop(fdt, offs, "compatible", str, strlen(str) + 1);
+}
 
-	if (len != sizeof(*cell))
+static int dt_add_psci_node(void *fdt)
+{
+	int offs;
+
+	if (fdt_path_offset(fdt, "/psci") >= 0) {
+		DMSG("PSCI Device Tree node already exists!\n");
+		return 0;
+	}
+
+	offs = fdt_path_offset(fdt, "/");
+	if (offs < 0)
 		return -1;
-	*cell_size = fdt32_to_cpu(*cell);
-	if (*cell_size != 1 && *cell_size != 2)
+	offs = fdt_add_subnode(fdt, offs, "psci");
+	if (offs < 0)
+		return -1;
+	if (append_psci_compatible(fdt, offs, "arm,psci-1.0"))
+		return -1;
+	if (append_psci_compatible(fdt, offs, "arm,psci-0.2"))
+		return -1;
+	if (append_psci_compatible(fdt, offs, "arm,psci"))
+		return -1;
+	if (fdt_setprop_string(fdt, offs, "method", "smc"))
+		return -1;
+	if (fdt_setprop_u32(fdt, offs, "cpu_suspend", PSCI_CPU_SUSPEND))
+		return -1;
+	if (fdt_setprop_u32(fdt, offs, "cpu_off", PSCI_CPU_OFF))
+		return -1;
+	if (fdt_setprop_u32(fdt, offs, "cpu_on", PSCI_CPU_ON))
+		return -1;
+	if (fdt_setprop_u32(fdt, offs, "sys_poweroff", PSCI_SYSTEM_OFF))
+		return -1;
+	if (fdt_setprop_u32(fdt, offs, "sys_reset", PSCI_SYSTEM_RESET))
 		return -1;
 	return 0;
 }
 
+static int check_node_compat_prefix(void *fdt, int offs, const char *prefix)
+{
+	const size_t prefix_len = strlen(prefix);
+	size_t l;
+	int plen;
+	const char *prop;
+
+	prop = fdt_getprop(fdt, offs, "compatible", &plen);
+	if (!prop)
+		return -1;
+
+	while (plen > 0) {
+		if (memcmp(prop, prefix, prefix_len) == 0)
+			return 0; /* match */
+
+		l = strlen(prop) + 1;
+		prop += l;
+		plen -= l;
+	}
+
+	return -1;
+}
+
+static int dt_add_psci_cpu_enable_methods(void *fdt)
+{
+	int offs = 0;
+
+	while (1) {
+		offs = fdt_next_node(fdt, offs, NULL);
+		if (offs < 0)
+			break;
+		if (fdt_getprop(fdt, offs, "enable-method", NULL))
+			continue; /* already set */
+		if (check_node_compat_prefix(fdt, offs, "arm,cortex-a"))
+			continue; /* no compatible */
+		if (fdt_setprop_string(fdt, offs, "enable-method", "psci"))
+			return -1;
+		/* Need to restart scanning as offsets may have changed */
+		offs = 0;
+	}
+	return 0;
+}
+
+static int config_psci(void *fdt)
+{
+	if (dt_add_psci_node(fdt))
+		return -1;
+	return dt_add_psci_cpu_enable_methods(fdt);
+}
+#else
+static int config_psci(void *fdt __unused)
+{
+	return 0;
+}
+#endif /*CFG_PSCI_ARM32*/
+
 static void set_dt_val(void *data, uint32_t cell_size, uint64_t val)
 {
 	if (cell_size == 1) {
-		uint32_t v = cpu_to_fdt32((uint32_t)val);
+		fdt32_t v = cpu_to_fdt32((uint32_t)val);
 
 		memcpy(data, &v, sizeof(v));
 	} else {
-		uint64_t v = cpu_to_fdt64(val);
+		fdt64_t v = cpu_to_fdt64(val);
 
 		memcpy(data, &v, sizeof(v));
 	}
 }
 
-static int add_optee_res_mem_dt_node(void *fdt)
+static uint64_t get_dt_val_and_advance(const void *data, size_t *offs,
+				       uint32_t cell_size)
+{
+	uint64_t rv;
+
+	if (cell_size == 1) {
+		uint32_t v;
+
+		memcpy(&v, (const uint8_t *)data + *offs, sizeof(v));
+		*offs += sizeof(v);
+		rv = fdt32_to_cpu(v);
+	} else {
+		uint64_t v;
+
+		memcpy(&v, (const uint8_t *)data + *offs, sizeof(v));
+		*offs += sizeof(v);
+		rv = fdt64_to_cpu(v);
+	}
+
+	return rv;
+}
+
+static int add_res_mem_dt_node(void *fdt, const char *name, paddr_t pa,
+			       size_t size)
 {
 	int offs;
 	int ret;
-	uint32_t addr_size = 2;
-	uint32_t len_size = 2;
-	vaddr_t shm_va_start;
-	vaddr_t shm_va_end;
-	paddr_t shm_pa;
+	int addr_size = 2;
+	int len_size = 2;
 	char subnode_name[80];
 
 	offs = fdt_path_offset(fdt, "/reserved-memory");
 	if (offs >= 0) {
-		ret = get_dt_cell_size(fdt, offs, "#address-cells", &addr_size);
-		if (ret < 0)
+		addr_size = fdt_address_cells(fdt, offs);
+		if (addr_size < 0)
 			return -1;
-		ret = get_dt_cell_size(fdt, offs, "#size-cells", &len_size);
-		if (ret < 0)
+		len_size = fdt_size_cells(fdt, offs);
+		if (len_size < 0)
 			return -1;
 	} else {
 		offs = fdt_path_offset(fdt, "/");
@@ -508,18 +595,16 @@ static int add_optee_res_mem_dt_node(void *fdt)
 			return -1;
 	}
 
-	core_mmu_get_mem_by_type(MEM_AREA_NSEC_SHM, &shm_va_start, &shm_va_end);
-	shm_pa = virt_to_phys((void *)shm_va_start);
 	snprintf(subnode_name, sizeof(subnode_name),
-		 "optee@0x%" PRIxPA, shm_pa);
+		 "%s@0x%" PRIxPA, name, pa);
 	offs = fdt_add_subnode(fdt, offs, subnode_name);
 	if (offs >= 0) {
-		uint32_t data[addr_size + len_size] ;
+		uint32_t data[FDT_MAX_NCELLS * 2];
 
-		set_dt_val(data, addr_size, shm_pa);
-		set_dt_val(data + addr_size, len_size,
-			   shm_va_end - shm_va_start);
-		ret = fdt_setprop(fdt, offs, "reg", data, sizeof(data));
+		set_dt_val(data, addr_size, pa);
+		set_dt_val(data + addr_size, len_size, size);
+		ret = fdt_setprop(fdt, offs, "reg", data,
+				  sizeof(uint32_t) * (addr_size + len_size));
 		if (ret < 0)
 			return -1;
 		ret = fdt_setprop(fdt, offs, "no-map", NULL, 0);
@@ -529,6 +614,85 @@ static int add_optee_res_mem_dt_node(void *fdt)
 		return -1;
 	}
 	return 0;
+}
+
+static struct core_mmu_phys_mem *get_memory(void *fdt, size_t *nelems)
+{
+	int offs;
+	int addr_size;
+	int len_size;
+	size_t prop_len;
+	const uint8_t *prop;
+	size_t prop_offs;
+	size_t n;
+	struct core_mmu_phys_mem *mem;
+
+	offs = fdt_subnode_offset(fdt, 0, "memory");
+	if (offs < 0)
+		return NULL;
+
+	prop = fdt_getprop(fdt, offs, "reg", &addr_size);
+	if (!prop)
+		return NULL;
+
+	prop_len = addr_size;
+	addr_size = fdt_address_cells(fdt, 0);
+	if (addr_size < 0)
+		return NULL;
+
+	len_size = fdt_size_cells(fdt, 0);
+	if (len_size < 0)
+		return NULL;
+
+	for (n = 0, prop_offs = 0; prop_offs < prop_len; n++) {
+		get_dt_val_and_advance(prop, &prop_offs, addr_size);
+		if (prop_offs >= prop_len) {
+			n--;
+			break;
+		}
+		get_dt_val_and_advance(prop, &prop_offs, len_size);
+	}
+
+	if (!n)
+		return NULL;
+
+	*nelems = n;
+	mem = calloc(n, sizeof(*mem));
+	if (!mem)
+		panic();
+
+	for (n = 0, prop_offs = 0; n < *nelems; n++) {
+		mem[n].type = MEM_AREA_RAM_NSEC;
+		mem[n].addr = get_dt_val_and_advance(prop, &prop_offs,
+						     addr_size);
+		mem[n].size = get_dt_val_and_advance(prop, &prop_offs,
+						     len_size);
+	}
+
+	return mem;
+}
+
+static int config_nsmem(void *fdt)
+{
+	struct core_mmu_phys_mem *mem;
+	size_t nelems;
+	vaddr_t shm_start;
+	vaddr_t shm_end;
+
+	mem = get_memory(fdt, &nelems);
+	if (mem)
+		core_mmu_set_discovered_nsec_ddr(mem, nelems);
+	else
+		DMSG("No non-secure memory found in FDT");
+
+	core_mmu_get_mem_by_type(MEM_AREA_NSEC_SHM, &shm_start, &shm_end);
+	if (shm_start != shm_end)
+		return add_res_mem_dt_node(fdt, "optee",
+					   virt_to_phys((void *)shm_start),
+					   shm_end - shm_start);
+
+	DMSG("No SHM configured");
+	return -1;
 }
 
 static void init_fdt(unsigned long phys_fdt)
@@ -566,8 +730,11 @@ static void init_fdt(unsigned long phys_fdt)
 	if (add_optee_dt_node(fdt))
 		panic("Failed to add OP-TEE Device Tree node");
 
-	if (add_optee_res_mem_dt_node(fdt))
-		panic("Failed to add OP-TEE reserved memory DT node");
+	if (config_psci(fdt))
+		panic("Failed to config PSCI");
+
+	if (config_nsmem(fdt))
+		panic("Failed to config non-secure memory");
 
 	ret = fdt_pack(fdt);
 	if (ret < 0) {
@@ -575,11 +742,19 @@ static void init_fdt(unsigned long phys_fdt)
 		     phys_fdt, ret);
 		panic();
 	}
+
+	dt_blob_addr = fdt;
 }
+
 #else
 static void init_fdt(unsigned long phys_fdt __unused)
 {
 }
+
+static void reset_dt_references(void)
+{
+}
+
 #endif /*!CFG_DT*/
 
 static void init_primary_helper(unsigned long pageable_part,
@@ -589,26 +764,31 @@ static void init_primary_helper(unsigned long pageable_part,
 	 * Mask asynchronous exceptions before switch to the thread vector
 	 * as the thread handler requires those to be masked while
 	 * executing with the temporary stack. The thread subsystem also
-	 * asserts that IRQ is blocked when using most if its functions.
+	 * asserts that the foreign interrupts are blocked when using most of
+	 * its functions.
 	 */
 	thread_set_exceptions(THREAD_EXCP_ALL);
 	init_vfp_sec();
-
 	init_runtime(pageable_part);
-
-	IMSG("Initializing (%s)\n", core_v_str);
 
 	thread_init_primary(generic_boot_get_handlers());
 	thread_init_per_cpu();
 	init_sec_mon(nsec_entry);
 	init_fdt(fdt);
+	configure_console_from_dt(fdt);
+
+	IMSG("OP-TEE version: %s", core_v_str);
+
 	main_init_gic();
 	init_vfp_nsec();
-
 	if (init_teecore() != TEE_SUCCESS)
 		panic();
+	reset_dt_references();
 	DMSG("Primary CPU switching to normal world boot\n");
 }
+
+/* What this function is using is needed each time another CPU is started */
+KEEP_PAGER(generic_boot_get_handlers);
 
 static void init_secondary_helper(unsigned long nsec_entry)
 {
@@ -616,12 +796,14 @@ static void init_secondary_helper(unsigned long nsec_entry)
 	 * Mask asynchronous exceptions before switch to the thread vector
 	 * as the thread handler requires those to be masked while
 	 * executing with the temporary stack. The thread subsystem also
-	 * asserts that IRQ is blocked when using most if its functions.
+	 * asserts that the foreign interrupts are blocked when using most of
+	 * its functions.
 	 */
 	thread_set_exceptions(THREAD_EXCP_ALL);
 
 	thread_init_per_cpu();
 	init_sec_mon(nsec_entry);
+	main_secondary_init_gic();
 	init_vfp_sec();
 	init_vfp_nsec();
 
@@ -629,12 +811,12 @@ static void init_secondary_helper(unsigned long nsec_entry)
 }
 
 #if defined(CFG_WITH_ARM_TRUSTED_FW)
-uint32_t *generic_boot_init_primary(unsigned long pageable_part,
-				    unsigned long u __unused,
-				    unsigned long fdt)
+struct thread_vector_table *
+generic_boot_init_primary(unsigned long pageable_part, unsigned long u __unused,
+			  unsigned long fdt)
 {
 	init_primary_helper(pageable_part, PADDR_INVALID, fdt);
-	return thread_vector_table;
+	return &thread_vector_table;
 }
 
 unsigned long generic_boot_cpu_on_handler(unsigned long a0 __maybe_unused,
@@ -654,5 +836,38 @@ void generic_boot_init_primary(unsigned long pageable_part,
 void generic_boot_init_secondary(unsigned long nsec_entry)
 {
 	init_secondary_helper(nsec_entry);
+}
+#endif
+
+#if defined(CFG_BOOT_SECONDARY_REQUEST)
+int generic_boot_core_release(size_t core_idx, paddr_t entry)
+{
+	if (!core_idx || core_idx >= CFG_TEE_CORE_NB_CORE)
+		return -1;
+
+	ns_entry_addrs[core_idx] = entry;
+	dmb();
+	spin_table[core_idx] = 1;
+	dsb();
+	sev();
+
+	return 0;
+}
+
+/*
+ * spin until secondary boot request, then returns with
+ * the secondary core entry address.
+ */
+paddr_t generic_boot_core_hpen(void)
+{
+#ifdef CFG_PSCI_ARM32
+	return ns_entry_addrs[get_core_pos()];
+#else
+	do {
+		wfe();
+	} while (!spin_table[get_core_pos()]);
+	dmb();
+	return ns_entry_addrs[get_core_pos()];
+#endif
 }
 #endif

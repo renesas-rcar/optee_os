@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
+ * Copyright (c) 2017, Linaro Limited
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -24,19 +25,19 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#include <tee_api.h>
-
+#include <printk.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
-#include <printk.h>
 #include <tee_api_defines.h>
+#include <tee_api.h>
 #include <tee_api_types.h>
-#include <user_ta_header.h>
-#include <tee_internal_api_extensions.h>
 #include <tee_arith_internal.h>
-#include <util.h>
+#include <tee_internal_api_extensions.h>
+#include <tee_isocket.h>
+#include <user_ta_header.h>
 #include <utee_syscalls.h>
+#include <util.h>
 
 #include "string_ext.h"
 #include "base64.h"
@@ -55,6 +56,16 @@ const struct user_ta_property tee_props[] = {
 		"gpd.tee.arith.maxBigIntSize",
 		USER_TA_PROP_TYPE_U32,
 		&(const uint32_t){TEE_MAX_NUMBER_OF_SUPPORTED_BITS}
+	},
+	{
+		"gpd.tee.sockets.version",
+		USER_TA_PROP_TYPE_U32,
+		&(const uint32_t){TEE_ISOCKET_VERSION}
+	},
+	{
+		"gpd.tee.sockets.tcp.version",
+		USER_TA_PROP_TYPE_U32,
+		&(const uint32_t){TEE_ISOCKET_VERSION}
 	},
 };
 
@@ -134,7 +145,7 @@ static TEE_Result propget_get_ext_prop(const struct user_ta_property *ep,
 	return TEE_SUCCESS;
 }
 
-static TEE_Result propget_get_property(TEE_PropSetHandle h, char *name,
+static TEE_Result propget_get_property(TEE_PropSetHandle h, const char *name,
 				       enum user_ta_prop_type *type,
 				       void *buf, uint32_t *len)
 {
@@ -191,7 +202,7 @@ static TEE_Result propget_get_property(TEE_PropSetHandle h, char *name,
 }
 
 TEE_Result TEE_GetPropertyAsString(TEE_PropSetHandle propsetOrEnumerator,
-				   char *name, char *value,
+				   const char *name, char *value,
 				   uint32_t *value_len)
 {
 	TEE_Result res;
@@ -293,7 +304,7 @@ out:
 }
 
 TEE_Result TEE_GetPropertyAsBool(TEE_PropSetHandle propsetOrEnumerator,
-				 char *name, bool *value)
+				 const char *name, bool *value)
 {
 	TEE_Result res;
 	enum user_ta_prop_type type;
@@ -324,7 +335,7 @@ out:
 }
 
 TEE_Result TEE_GetPropertyAsU32(TEE_PropSetHandle propsetOrEnumerator,
-				char *name, uint32_t *value)
+				const char *name, uint32_t *value)
 {
 	TEE_Result res;
 	enum user_ta_prop_type type;
@@ -351,7 +362,7 @@ out:
 }
 
 TEE_Result TEE_GetPropertyAsBinaryBlock(TEE_PropSetHandle propsetOrEnumerator,
-					char *name, void *value,
+					const char *name, void *value,
 					uint32_t *value_len)
 {
 	TEE_Result res;
@@ -379,7 +390,7 @@ out:
 }
 
 TEE_Result TEE_GetPropertyAsUUID(TEE_PropSetHandle propsetOrEnumerator,
-				 char *name, TEE_UUID *value)
+				 const char *name, TEE_UUID *value)
 {
 	TEE_Result res;
 	enum user_ta_prop_type type;
@@ -406,7 +417,7 @@ out:
 }
 
 TEE_Result TEE_GetPropertyAsIdentity(TEE_PropSetHandle propsetOrEnumerator,
-				     char *name, TEE_Identity *value)
+				     const char *name, TEE_Identity *value)
 {
 	TEE_Result res;
 	enum user_ta_prop_type type;

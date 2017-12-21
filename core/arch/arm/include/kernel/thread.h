@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2016, Linaro Limited
  * Copyright (c) 2014, STMicroelectronics International N.V.
+ * Copyright (c) 2016-2017, Linaro Limited
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,6 +30,7 @@
 #define KERNEL_THREAD_H
 
 #ifndef ASM
+#include <arm.h>
 #include <types_ext.h>
 #include <compiler.h>
 #include <optee_msg.h>
@@ -41,15 +42,58 @@
 #define THREAD_ID_0		0
 #define THREAD_ID_INVALID	-1
 
+#define THREAD_RPC_MAX_NUM_PARAMS	4
+
 #ifndef ASM
-extern uint32_t thread_vector_table[];
+
+#ifdef ARM64
+/*
+ * struct thread_core_local needs to have alignment suitable for a stack
+ * pointer since SP_EL1 points to this
+ */
+#define THREAD_CORE_LOCAL_ALIGNED __aligned(16)
+#else
+#define THREAD_CORE_LOCAL_ALIGNED
+#endif
+
+struct thread_core_local {
+	vaddr_t tmp_stack_va_end;
+	int curr_thread;
+	uint32_t flags;
+	vaddr_t abt_stack_va_end;
+#ifdef ARM32
+	paddr_t sm_pm_ctx_phys;
+	uint32_t r[2];
+#endif
+#ifdef ARM64
+	uint64_t x[4];
+#endif
+#ifdef CFG_TEE_CORE_DEBUG
+	unsigned int locked_count; /* Number of spinlocks held */
+#endif
+} THREAD_CORE_LOCAL_ALIGNED;
+
+struct thread_vector_table {
+	uint32_t std_smc_entry;
+	uint32_t fast_smc_entry;
+	uint32_t cpu_on_entry;
+	uint32_t cpu_off_entry;
+	uint32_t cpu_resume_entry;
+	uint32_t cpu_suspend_entry;
+	uint32_t fiq_entry;
+	uint32_t system_off_entry;
+	uint32_t system_reset_entry;
+};
+extern struct thread_vector_table thread_vector_table;
 
 struct thread_specific_data {
 	TAILQ_HEAD(, tee_ta_session) sess_stack;
 	struct tee_ta_ctx *ctx;
-#ifdef CFG_SMALL_PAGE_USER_TA
 	struct pgt_cache pgt_cache;
-#endif
+	void *rpc_fs_payload;
+	struct mobj *rpc_fs_payload_mobj;
+	uint64_t rpc_fs_payload_cookie;
+	size_t rpc_fs_payload_size;
 };
 
 struct thread_user_vfp_state {
@@ -186,7 +230,7 @@ struct thread_svc_regs {
 
 #ifndef ASM
 typedef void (*thread_smc_handler_t)(struct thread_smc_args *args);
-typedef void (*thread_fiq_handler_t)(void);
+typedef void (*thread_nintr_handler_t)(void);
 typedef unsigned long (*thread_pm_handler_t)(unsigned long a0,
 					     unsigned long a1);
 struct thread_handlers {
@@ -201,11 +245,12 @@ struct thread_handlers {
 	 *
 	 * fastcall handles fast calls which can't be preemted. This
 	 * handler is executed with a limited stack. This handler must not
-	 * cause any aborts or reenenable FIQs which are temporarily masked
-	 * while executing this handler.
+	 * cause any aborts or reenenable native interrupts which are
+	 * temporarily masked while executing this handler.
 	 *
-	 * TODO investigate if we should execute fastcalls and FIQs on
-	 * different stacks allowing FIQs to be enabled during a fastcall.
+	 * TODO investigate if we should execute fastcalls and native interrupts
+	 * on different stacks allowing native interrupts to be enabled during
+	 * a fastcall.
 	 */
 	thread_smc_handler_t std_smc;
 	thread_smc_handler_t fast_smc;
@@ -214,12 +259,12 @@ struct thread_handlers {
 	 * fiq is called as a regular function and normal ARM Calling
 	 * Convention applies.
 	 *
-	 * This handler handles FIQs which can't be preemted. This handler
-	 * is executed with a limited stack. This handler must not cause
-	 * any aborts or reenenable FIQs which are temporarily masked while
-	 * executing this handler.
+	 * This handler handles native interrupts which can't be preemted. This
+	 * handler is executed with a limited stack. This handler must not cause
+	 * any aborts or reenenable native interrupts which are temporarily
+	 * masked while executing this handler.
 	 */
-	thread_fiq_handler_t fiq;
+	thread_nintr_handler_t nintr;
 
 	/*
 	 * Power management handlers triggered from ARM Trusted Firmware.
@@ -234,6 +279,8 @@ struct thread_handlers {
 };
 void thread_init_primary(const struct thread_handlers *handlers);
 void thread_init_per_cpu(void);
+
+struct thread_core_local *thread_get_core_local(void);
 
 /*
  * Sets the stacks to be used by the different threads. Use THREAD_ID_0 for
@@ -268,28 +315,35 @@ int thread_get_id_may_fail(void);
 struct thread_specific_data *thread_get_tsd(void);
 
 /*
- * Sets IRQ status for current thread, must only be called from an
- * active thread context.
+ * Sets foreign interrupts status for current thread, must only be called
+ * from an active thread context.
  *
- * enable == true  -> enable IRQ
- * enable == false -> disable IRQ
+ * enable == true  -> enable foreign interrupts
+ * enable == false -> disable foreign interrupts
  */
-void thread_set_irq(bool enable);
+void thread_set_foreign_intr(bool enable);
 
 /*
- * Restores the IRQ status (in CPSR) for current thread, must only be called
- * from an active thread context.
+ * Restores the foreign interrupts status (in CPSR) for current thread, must
+ * only be called from an active thread context.
  */
-void thread_restore_irq(void);
+void thread_restore_foreign_intr(void);
 
 /*
  * Defines the bits for the exception mask used the the
  * thread_*_exceptions() functions below.
+ * These definitions are compatible with both ARM32 and ARM64.
  */
-#define THREAD_EXCP_FIQ	(1 << 0)
-#define THREAD_EXCP_IRQ	(1 << 1)
-#define THREAD_EXCP_ABT	(1 << 2)
-#define THREAD_EXCP_ALL	(THREAD_EXCP_FIQ | THREAD_EXCP_IRQ | THREAD_EXCP_ABT)
+#if defined(CFG_ARM_GICV3)
+#define THREAD_EXCP_FOREIGN_INTR	(ARM32_CPSR_F >> ARM32_CPSR_F_SHIFT)
+#define THREAD_EXCP_NATIVE_INTR		(ARM32_CPSR_I >> ARM32_CPSR_F_SHIFT)
+#else
+#define THREAD_EXCP_FOREIGN_INTR	(ARM32_CPSR_I >> ARM32_CPSR_F_SHIFT)
+#define THREAD_EXCP_NATIVE_INTR		(ARM32_CPSR_F >> ARM32_CPSR_F_SHIFT)
+#endif
+#define THREAD_EXCP_ALL			(THREAD_EXCP_FOREIGN_INTR	\
+					| THREAD_EXCP_NATIVE_INTR	\
+					| (ARM32_CPSR_A >> ARM32_CPSR_F_SHIFT))
 
 /*
  * thread_get_exceptions() - return current exception mask
@@ -319,13 +373,19 @@ uint32_t thread_mask_exceptions(uint32_t exceptions);
  */
 void thread_unmask_exceptions(uint32_t state);
 
+
+static inline bool thread_foreign_intr_disabled(void)
+{
+	return !!(thread_get_exceptions() & THREAD_EXCP_FOREIGN_INTR);
+}
+
 #ifdef CFG_WITH_VFP
 /*
  * thread_kernel_enable_vfp() - Temporarily enables usage of VFP
  *
- * IRQ is masked while VFP is enabled. User space must not be entered before
- * thread_kernel_disable_vfp() has been called to disable VFP and restore the
- * IRQ status.
+ * Foreign interrupts are masked while VFP is enabled. User space must not be
+ * entered before thread_kernel_disable_vfp() has been called to disable VFP
+ * and restore the foreign interrupt status.
  *
  * This function may only be called from an active thread context and may
  * not be called again before thread_kernel_disable_vfp() has been called.
@@ -341,7 +401,7 @@ uint32_t thread_kernel_enable_vfp(void);
  * thread_kernel_disable_vfp() - Disables usage of VFP
  * @state:	state variable returned by thread_kernel_enable_vfp()
  *
- * Disables usage of VFP and restores IRQ status after a call to
+ * Disables usage of VFP and restores foreign interrupt status after a call to
  * thread_kernel_enable_vfp().
  *
  * This function may only be called after a call to
@@ -457,17 +517,35 @@ void thread_unwind_user_mode(uint32_t ret, uint32_t exit_status0,
 vaddr_t thread_get_saved_thread_sp(void);
 #endif /*ARM64*/
 
-bool thread_addr_is_in_stack(vaddr_t va);
+/*
+ * Returns the start address (bottom) of the stack for the current thread,
+ * zero if there is no current thread.
+ */
+vaddr_t thread_stack_start(void);
+
+
+/* Returns the stack size for the current thread */
+size_t thread_stack_size(void);
+
+bool thread_is_in_normal_mode(void);
+
+/*
+ * Returns true if previous exeception also was in abort mode.
+ *
+ * Note: it's only valid to call this function from an abort exception
+ * handler before interrupts has been re-enabled.
+ */
+bool thread_is_from_abort_mode(void);
 
 /*
  * Adds a mutex to the list of held mutexes for current thread
- * Requires IRQs to be disabled.
+ * Requires foreign interrupts to be disabled.
  */
 void thread_add_mutex(struct mutex *m);
 
 /*
  * Removes a mutex from the list of held mutexes for current thread
- * Requires IRQs to be disabled.
+ * Requires foreign interrupts to be disabled.
  */
 void thread_rem_mutex(struct mutex *m);
 
@@ -491,11 +569,11 @@ bool thread_enable_prealloc_rpc_cache(void);
  * Allocates data for struct optee_msg_arg.
  *
  * @size:	size in bytes of struct optee_msg_arg
- * @arg:	returned physcial pointer to a struct optee_msg_arg buffer,
- *		0 if allocation failed.
  * @cookie:	returned cookie used when freeing the buffer
+ *
+ * @returns	mobj that describes allocated buffer or NULL on error
  */
-void thread_rpc_alloc_arg(size_t size, paddr_t *arg, uint64_t *cookie);
+struct mobj *thread_rpc_alloc_arg(size_t size, uint64_t *cookie);
 
 /**
  * Free physical memory previously allocated with thread_rpc_alloc_arg()
@@ -508,18 +586,19 @@ void thread_rpc_free_arg(uint64_t cookie);
  * Allocates data for payload buffers.
  *
  * @size:	size in bytes of payload buffer
- * @payload:	returned physcial pointer to payload buffer, 0 if allocation
- *		failed.
  * @cookie:	returned cookie used when freeing the buffer
+ *
+ * @returns	mobj that describes allocated buffer or NULL on error
  */
-void thread_rpc_alloc_payload(size_t size, paddr_t *payload, uint64_t *cookie);
+struct mobj *thread_rpc_alloc_payload(size_t size, uint64_t *cookie);
 
 /**
  * Free physical memory previously allocated with thread_rpc_alloc_payload()
  *
  * @cookie:	cookie received when allocating the buffer
+ * @mobj:	mobj that describes the buffer
  */
-void thread_rpc_free_payload(uint64_t cookie);
+void thread_rpc_free_payload(uint64_t cookie, struct mobj *mobj);
 
 /**
  * Does an RPC using a preallocated argument buffer

@@ -1,7 +1,6 @@
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
- * Copyright (c) 2015, Linaro Limited
- * Copyright (c) 2015-2016, Renesas Electronics Corporation
+ * Copyright (c) 2015-2017 Linaro Limited
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,119 +29,44 @@
 #include <assert.h>
 #include <compiler.h>
 #include <keep.h>
-#include <types_ext.h>
-#include <stdlib.h>
 #include <kernel/panic.h>
 #include <kernel/tee_ta_manager.h>
 #include <kernel/thread.h>
 #include <kernel/user_ta.h>
 #include <mm/core_memprot.h>
 #include <mm/core_mmu.h>
+#include <mm/mobj.h>
+#include <mm/pgt_cache.h>
 #include <mm/tee_mm.h>
 #include <mm/tee_mmu.h>
 #include <mm/tee_pager.h>
-#include <mm/pgt_cache.h>
+#include <optee_msg_supplicant.h>
+#include <signed_hdr.h>
+#include <stdlib.h>
+#include <sys/queue.h>
+#include <ta_pub_key.h>
 #include <tee/tee_cryp_provider.h>
 #include <tee/tee_cryp_utl.h>
 #include <tee/tee_obj.h>
 #include <tee/tee_svc_cryp.h>
 #include <tee/tee_svc.h>
 #include <tee/tee_svc_storage.h>
-#include <signed_hdr.h>
-#include <ta_pub_key.h>
+#include <tee/uuid.h>
 #include <trace.h>
+#include <types_ext.h>
 #include <utee_defines.h>
 #include <util.h>
 
 #include "elf_load.h"
 #include "elf_common.h"
 
-#ifdef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
-#include "rcar_ta_auth.h"
-#endif
-
-#define STACK_ALIGNMENT   (sizeof(long) * 2)
-
-#ifndef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
-static TEE_Result load_header(const struct shdr *signed_ta,
-		struct shdr **sec_shdr)
-{
-	size_t s;
-
-	if (!tee_vbuf_is_non_sec(signed_ta, sizeof(*signed_ta)))
-		return TEE_ERROR_SECURITY;
-
-	s = SHDR_GET_SIZE(signed_ta);
-	if (!tee_vbuf_is_non_sec(signed_ta, s))
-		return TEE_ERROR_SECURITY;
-
-	/* Copy signed header into secure memory */
-	*sec_shdr = malloc(s);
-	if (!*sec_shdr)
-		return TEE_ERROR_OUT_OF_MEMORY;
-	memcpy(*sec_shdr, signed_ta, s);
-
-	return TEE_SUCCESS;
-}
-#endif
-
-static TEE_Result check_shdr(struct shdr *shdr)
-{
-#ifndef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
-	struct rsa_public_key key;
-	TEE_Result res;
-	uint32_t e = TEE_U32_TO_BIG_ENDIAN(ta_pub_key_exponent);
-	size_t hash_size;
-#endif
-
-	if (shdr->magic != SHDR_MAGIC || shdr->img_type != SHDR_TA)
-		return TEE_ERROR_SECURITY;
-
-	if (TEE_ALG_GET_MAIN_ALG(shdr->algo) != TEE_MAIN_ALGO_RSA)
-		return TEE_ERROR_SECURITY;
-
-#ifndef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
-	res = tee_hash_get_digest_size(TEE_DIGEST_HASH_TO_ALGO(shdr->algo),
-				       &hash_size);
-	if (res != TEE_SUCCESS)
-		return res;
-	if (hash_size != shdr->hash_size)
-		return TEE_ERROR_SECURITY;
-
-	if (!crypto_ops.acipher.alloc_rsa_public_key ||
-	    !crypto_ops.acipher.free_rsa_public_key ||
-	    !crypto_ops.acipher.rsassa_verify ||
-	    !crypto_ops.bignum.bin2bn)
-		return TEE_ERROR_NOT_SUPPORTED;
-
-	res = crypto_ops.acipher.alloc_rsa_public_key(&key, shdr->sig_size);
-	if (res != TEE_SUCCESS)
-		return res;
-
-	res = crypto_ops.bignum.bin2bn((uint8_t *)&e, sizeof(e), key.e);
-	if (res != TEE_SUCCESS)
-		goto out;
-	res = crypto_ops.bignum.bin2bn(ta_pub_key_modulus,
-				       ta_pub_key_modulus_size, key.n);
-	if (res != TEE_SUCCESS)
-		goto out;
-
-	res = crypto_ops.acipher.rsassa_verify(shdr->algo, &key, -1,
-				SHDR_GET_HASH(shdr), shdr->hash_size,
-				SHDR_GET_SIG(shdr), shdr->sig_size);
-out:
-	crypto_ops.acipher.free_rsa_public_key(&key);
-	if (res != TEE_SUCCESS)
-		return TEE_ERROR_SECURITY;
-#endif
-	return TEE_SUCCESS;
-}
-
 static uint32_t elf_flags_to_mattr(uint32_t flags, bool init_attrs)
 {
-	uint32_t mattr = TEE_MATTR_PRW;
+	uint32_t mattr = 0;
 
-	if (!init_attrs) {
+	if (init_attrs)
+		mattr = TEE_MATTR_PRW;
+	else {
 		if (flags & PF_X)
 			mattr |= TEE_MATTR_UX;
 		if (flags & PF_W)
@@ -159,12 +83,11 @@ static TEE_Result config_initial_paging(struct user_ta_ctx *utc)
 {
 	size_t n;
 
-	for (n = 0; n < utc->mmu->size; n++) {
-		if (!utc->mmu->table[n].size)
+	for (n = 0; n < ARRAY_SIZE(utc->mmu->regions); n++) {
+		if (!utc->mmu->regions[n].size)
 			continue;
-		utc->mmu->table[n].attr |= TEE_MATTR_PAGED;
-		if (!tee_pager_add_uta_area(utc, utc->mmu->table[n].va,
-					    utc->mmu->table[n].size))
+		if (!tee_pager_add_uta_area(utc, utc->mmu->regions[n].va,
+					    utc->mmu->regions[n].size))
 			return TEE_ERROR_GENERIC;
 	}
 	return TEE_SUCCESS;
@@ -175,27 +98,19 @@ static TEE_Result config_final_paging(struct user_ta_ctx *utc)
 	size_t n;
 	uint32_t flags;
 
-	for (n = 0; n < utc->mmu->size; n++) {
-		if (!utc->mmu->table[n].size)
+	tee_pager_assign_uta_tables(utc);
+
+	for (n = 0; n < ARRAY_SIZE(utc->mmu->regions); n++) {
+		if (!utc->mmu->regions[n].size)
 			continue;
-		utc->mmu->table[n].attr |= TEE_MATTR_PAGED;
-		flags = utc->mmu->table[n].attr &
+		flags = utc->mmu->regions[n].attr &
 			(TEE_MATTR_PRW | TEE_MATTR_URWX);
-		if (!tee_pager_set_uta_area(utc, utc->mmu->table[n].va,
-					    utc->mmu->table[n].size, flags))
+		if (!tee_pager_set_uta_area_attr(utc, utc->mmu->regions[n].va,
+						 utc->mmu->regions[n].size,
+						 flags))
 			return TEE_ERROR_GENERIC;
 	}
 	return TEE_SUCCESS;
-}
-
-static paddr_t get_stack_pa(struct user_ta_ctx *utc __unused)
-{
-	return 0;
-}
-
-static paddr_t get_code_pa(struct user_ta_ctx *utc __unused)
-{
-	return 0;
 }
 #else /*!CFG_PAGED_USER_TA*/
 static TEE_Result config_initial_paging(struct user_ta_ctx *utc __unused)
@@ -203,19 +118,15 @@ static TEE_Result config_initial_paging(struct user_ta_ctx *utc __unused)
 	return TEE_SUCCESS;
 }
 
-static TEE_Result config_final_paging(struct user_ta_ctx *utc __unused)
+static TEE_Result config_final_paging(struct user_ta_ctx *utc)
 {
+	void *va = (void *)utc->mmu->ta_private_vmem_start;
+	size_t vasize = utc->mmu->ta_private_vmem_end -
+			utc->mmu->ta_private_vmem_start;
+
+	cache_op_inner(DCACHE_AREA_CLEAN, va, vasize);
+	cache_op_inner(ICACHE_AREA_INVALIDATE, va, vasize);
 	return TEE_SUCCESS;
-}
-
-static paddr_t get_stack_pa(struct user_ta_ctx *utc)
-{
-	return tee_mm_get_smem(utc->mm_stack);
-}
-
-static paddr_t get_code_pa(struct user_ta_ctx *utc)
-{
-	return tee_mm_get_smem(utc->mm);
 }
 #endif /*!CFG_PAGED_USER_TA*/
 
@@ -223,38 +134,42 @@ static TEE_Result load_elf_segments(struct user_ta_ctx *utc,
 			struct elf_load_state *elf_state, bool init_attrs)
 {
 	TEE_Result res;
-	paddr_t pa;
 	uint32_t mattr;
 	size_t idx = 0;
 
 	tee_mmu_map_clear(utc);
+
 	/*
 	 * Add stack segment
 	 */
-	pa = get_stack_pa(utc);
-	mattr = elf_flags_to_mattr(PF_W | PF_R, init_attrs);
-	tee_mmu_map_stack(utc, pa, utc->stack_size, mattr);
+	tee_mmu_map_stack(utc, utc->mobj_stack);
 
 	/*
 	 * Add code segment
 	 */
-	pa = get_code_pa(utc);
 	while (true) {
 		vaddr_t offs;
 		size_t size;
 		uint32_t flags;
+		uint32_t type;
 
 		res = elf_load_get_next_segment(elf_state, &idx, &offs, &size,
-						&flags);
+						&flags, &type);
 		if (res == TEE_ERROR_ITEM_NOT_FOUND)
 			break;
 		if (res != TEE_SUCCESS)
 			return res;
 
-		mattr = elf_flags_to_mattr(flags, init_attrs);
-		res = tee_mmu_map_add_segment(utc, pa, offs, size, mattr);
-		if (res != TEE_SUCCESS)
-			return res;
+		if (type == PT_LOAD) {
+			mattr = elf_flags_to_mattr(flags, init_attrs);
+			res = tee_mmu_map_add_segment(utc, utc->mobj_code,
+						      offs, size, mattr);
+			if (res != TEE_SUCCESS)
+				return res;
+		} else if (type == PT_ARM_EXIDX) {
+			utc->exidx_start = offs;
+			utc->exidx_size = size;
+		}
 	}
 
 	if (init_attrs)
@@ -263,88 +178,26 @@ static TEE_Result load_elf_segments(struct user_ta_ctx *utc,
 		return config_final_paging(utc);
 }
 
+static struct mobj *alloc_ta_mem(size_t size)
+{
 #ifdef CFG_PAGED_USER_TA
-static TEE_Result alloc_stack(struct user_ta_ctx *utc __unused)
-{
-	return TEE_SUCCESS;
+	return mobj_paged_alloc(size);
+#else
+	return mobj_mm_alloc(mobj_sec_ddr, size, &tee_mm_sec_ddr);
+#endif
 }
 
-static TEE_Result alloc_code(struct user_ta_ctx *utc __unused,
-			     size_t vasize __unused)
-{
-	return TEE_SUCCESS;
-}
-#else /*!CFG_PAGED_USER_TA*/
-static TEE_Result alloc_stack(struct user_ta_ctx *utc)
-{
-	utc->mm_stack = tee_mm_alloc(&tee_mm_sec_ddr, utc->stack_size);
-	if (!utc->mm_stack) {
-		EMSG("Failed to allocate %zu bytes for user stack",
-		     utc->stack_size);
-		return TEE_ERROR_OUT_OF_MEMORY;
-	}
-
-	return TEE_SUCCESS;
-}
-
-static TEE_Result alloc_code(struct user_ta_ctx *utc, size_t vasize)
-{
-	utc->mm = tee_mm_alloc(&tee_mm_sec_ddr, vasize);
-	if (!utc->mm)
-		return TEE_ERROR_OUT_OF_MEMORY;
-
-	return TEE_SUCCESS;
-}
-#endif /*!CFG_PAGED_USER_TA*/
-
-static TEE_Result load_elf(struct user_ta_ctx *utc, struct shdr *shdr,
-			const struct shdr *nmem_shdr)
+static TEE_Result load_elf(struct user_ta_ctx *utc,
+			   const struct user_ta_store_ops *ta_store,
+			   struct user_ta_store_handle *ta_handle)
 {
 	TEE_Result res;
-#ifndef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
-	size_t hash_ctx_size;
-#endif
-	void *hash_ctx = NULL;
-	uint32_t hash_algo;
-	uint8_t *nwdata = (uint8_t *)nmem_shdr + SHDR_GET_SIZE(shdr);
-	size_t nwdata_len = shdr->img_size;
-	void *digest = NULL;
 	struct elf_load_state *elf_state = NULL;
 	struct ta_head *ta_head;
 	void *p;
 	size_t vasize;
 
-#ifndef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
-	if (!tee_vbuf_is_non_sec(nwdata, nwdata_len))
-		return TEE_ERROR_SECURITY;
-
-	if (!crypto_ops.hash.get_ctx_size || !crypto_ops.hash.init ||
-	    !crypto_ops.hash.update || !crypto_ops.hash.final) {
-		res = TEE_ERROR_NOT_IMPLEMENTED;
-		goto out;
-	}
-	hash_algo = TEE_DIGEST_HASH_TO_ALGO(shdr->algo);
-	res = crypto_ops.hash.get_ctx_size(hash_algo, &hash_ctx_size);
-	if (res != TEE_SUCCESS)
-		goto out;
-	hash_ctx = malloc(hash_ctx_size);
-	if (!hash_ctx) {
-		res = TEE_ERROR_OUT_OF_MEMORY;
-		goto out;
-	}
-	res = crypto_ops.hash.init(hash_ctx, hash_algo);
-	if (res != TEE_SUCCESS)
-		goto out;
-	res = crypto_ops.hash.update(hash_ctx, hash_algo,
-				     (uint8_t *)shdr, sizeof(struct shdr));
-	if (res != TEE_SUCCESS)
-		goto out;
-#else
-	hash_algo = TEE_ALG_SHA256;	/* dummy data are set */
-#endif
-
-	res = elf_load_init(hash_ctx, hash_algo, nwdata, nwdata_len,
-			    &elf_state);
+	res = elf_load_init(ta_store, ta_handle, &elf_state);
 	if (res != TEE_SUCCESS)
 		goto out;
 
@@ -354,9 +207,11 @@ static TEE_Result load_elf(struct user_ta_ctx *utc, struct shdr *shdr,
 		goto out;
 	ta_head = p;
 
-	res = alloc_code(utc, vasize);
-	if (res != TEE_SUCCESS)
+	utc->mobj_code = alloc_ta_mem(vasize);
+	if (!utc->mobj_code) {
+		res = TEE_ERROR_OUT_OF_MEMORY;
 		goto out;
+	}
 
 	/* Currently all TA must execute from DDR */
 	if (!(ta_head->flags & TA_FLAG_EXEC_DDR)) {
@@ -367,11 +222,12 @@ static TEE_Result load_elf(struct user_ta_ctx *utc, struct shdr *shdr,
 	utc->ctx.flags = TA_FLAG_USER_MODE | TA_FLAG_EXEC_DDR;
 
 	/* Ensure proper aligment of stack */
-	utc->stack_size = ROUNDUP(ta_head->stack_size, STACK_ALIGNMENT);
-
-	res = alloc_stack(utc);
-	if (res != TEE_SUCCESS)
+	utc->mobj_stack = alloc_ta_mem(ROUNDUP(ta_head->stack_size,
+					       STACK_ALIGNMENT));
+	if (!utc->mobj_stack) {
+		res = TEE_ERROR_OUT_OF_MEMORY;
 		goto out;
+	}
 
 	/*
 	 * Map physical memory into TA virtual memory
@@ -391,23 +247,6 @@ static TEE_Result load_elf(struct user_ta_ctx *utc, struct shdr *shdr,
 	if (res != TEE_SUCCESS)
 		goto out;
 
-#ifndef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
-	digest = malloc(shdr->hash_size);
-	if (!digest) {
-		res = TEE_ERROR_OUT_OF_MEMORY;
-		goto out;
-	}
-
-	res = crypto_ops.hash.final(hash_ctx, hash_algo, digest,
-				    shdr->hash_size);
-	if (res != TEE_SUCCESS)
-		goto out;
-
-	if (memcmp(digest, SHDR_GET_HASH(shdr), shdr->hash_size) != 0) {
-		res = TEE_ERROR_SECURITY;
-		goto out;
-	}
-#endif
 	/*
 	 * Replace the init attributes with attributes used when the TA is
 	 * running.
@@ -416,14 +255,8 @@ static TEE_Result load_elf(struct user_ta_ctx *utc, struct shdr *shdr,
 	if (res != TEE_SUCCESS)
 		goto out;
 
-	cache_maintenance_l1(DCACHE_AREA_CLEAN,
-			     (void *)tee_mmu_get_load_addr(&utc->ctx), vasize);
-	cache_maintenance_l1(ICACHE_AREA_INVALIDATE,
-			     (void *)tee_mmu_get_load_addr(&utc->ctx), vasize);
 out:
 	elf_load_final(elf_state);
-	free(digest);
-	free(hash_ctx);
 	return res;
 }
 
@@ -432,48 +265,24 @@ out:
  * Verifies the TA signature.
  * Returns context ptr and TEE_Result.
  *---------------------------------------------------------------------------*/
-static TEE_Result ta_load(const TEE_UUID *uuid, const struct shdr *signed_ta,
-			struct tee_ta_ctx **ta_ctx)
+static TEE_Result ta_load(const TEE_UUID *uuid,
+			  const struct user_ta_store_ops *ta_store,
+			  struct tee_ta_ctx **ta_ctx)
 {
 	TEE_Result res;
-	/* man_flags: mandatory flags */
-	uint32_t man_flags = TA_FLAG_USER_MODE | TA_FLAG_EXEC_DDR;
-	/* opt_flags: optional flags */
-	uint32_t opt_flags = man_flags | TA_FLAG_SINGLE_INSTANCE |
-	    TA_FLAG_MULTI_SESSION | TA_FLAG_UNSAFE_NW_PARAMS |
-	    TA_FLAG_INSTANCE_KEEP_ALIVE;
+	uint32_t mandatory_flags = TA_FLAG_USER_MODE | TA_FLAG_EXEC_DDR;
+	uint32_t optional_flags = mandatory_flags | TA_FLAG_SINGLE_INSTANCE |
+	    TA_FLAG_MULTI_SESSION | TA_FLAG_SECURE_DATA_PATH |
+	    TA_FLAG_INSTANCE_KEEP_ALIVE | TA_FLAG_CACHE_MAINTENANCE;
 	struct user_ta_ctx *utc = NULL;
-	struct shdr *sec_shdr = NULL;
 	struct ta_head *ta_head;
+	struct user_ta_store_handle *ta_handle = NULL;
 
-#ifndef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
-	res = load_header(signed_ta, &sec_shdr);
+	res = ta_store->open(uuid, &ta_handle);
 	if (res != TEE_SUCCESS)
-		goto error_return;
-#else
-	res = rcar_auth_ta_certificate(signed_ta, &sec_shdr);
-	if (res != TEE_SUCCESS) {
-		goto error_return;
-	}
-	signed_ta = (const struct shdr *)sec_shdr;
-#endif
-	res = check_shdr(sec_shdr);
-	if (res != TEE_SUCCESS)
-		goto error_return;
+		return res;
 
-	/*
-	 * ------------------------------------------------------------------
-	 * 2nd step: Register context
-	 * Alloc and init the ta context structure, alloc physical/virtual
-	 * memories to store/map the TA.
-	 * ------------------------------------------------------------------
-	 */
-
-	/*
-	 * Register context
-	 */
-
-	/* code below must be protected by mutex (multi-threaded) */
+	/* Register context */
 	utc = calloc(1, sizeof(struct user_ta_ctx));
 	if (!utc) {
 		res = TEE_ERROR_OUT_OF_MEMORY;
@@ -483,11 +292,8 @@ static TEE_Result ta_load(const TEE_UUID *uuid, const struct shdr *signed_ta,
 	TAILQ_INIT(&utc->cryp_states);
 	TAILQ_INIT(&utc->objects);
 	TAILQ_INIT(&utc->storage_enums);
-#if defined(CFG_SE_API)
-	utc->se_service = NULL;
-#endif
 
-	res = load_elf(utc, sec_shdr, signed_ta);
+	res = load_elf(utc, ta_store, ta_handle);
 	if (res != TEE_SUCCESS)
 		goto error_return;
 
@@ -500,53 +306,43 @@ static TEE_Result ta_load(const TEE_UUID *uuid, const struct shdr *signed_ta,
 	}
 
 	/* check input flags bitmask consistency and save flags */
-	if ((ta_head->flags & opt_flags) != ta_head->flags ||
-	    (ta_head->flags & man_flags) != man_flags) {
-		EMSG("TA flag issue: flags=%x opt=%X man=%X",
-		     ta_head->flags, opt_flags, man_flags);
+	if ((ta_head->flags & optional_flags) != ta_head->flags ||
+	    (ta_head->flags & mandatory_flags) != mandatory_flags) {
+		EMSG("TA flag issue: flags=%x optional=%x mandatory=%x",
+		     ta_head->flags, optional_flags, mandatory_flags);
 		res = TEE_ERROR_BAD_FORMAT;
 		goto error_return;
 	}
 
+	DMSG("ELF load address 0x%x", utc->load_addr);
 	utc->ctx.flags = ta_head->flags;
 	utc->ctx.uuid = ta_head->uuid;
 	utc->entry_func = ta_head->entry.ptr64;
-
 	utc->ctx.ref_count = 1;
-
 	condvar_init(&utc->ctx.busy_cv);
 	TAILQ_INSERT_TAIL(&tee_ctxes, &utc->ctx, link);
 	*ta_ctx = &utc->ctx;
 
-	if (utc->mm)
-		DMSG("Loaded TA at 0x%" PRIxPTR, tee_mm_get_smem(utc->mm));
-	DMSG("ELF load address 0x%x", utc->load_addr);
-
 	tee_mmu_set_ctx(NULL);
-	/* end thread protection (multi-threaded) */
-#ifndef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
-	free(sec_shdr);
-#endif
+	ta_store->close(ta_handle);
 	return TEE_SUCCESS;
 
 error_return:
-#ifndef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
-	free(sec_shdr);
-#endif
+	ta_store->close(ta_handle);
 	tee_mmu_set_ctx(NULL);
 	if (utc) {
 		pgt_flush_ctx(&utc->ctx);
 		tee_pager_rem_uta_areas(utc);
 		tee_mmu_final(utc);
-		tee_mm_free(utc->mm_stack);
-		tee_mm_free(utc->mm);
+		mobj_free(utc->mobj_code);
+		mobj_free(utc->mobj_stack);
 		free(utc);
 	}
 	return res;
 }
 
 static void init_utee_param(struct utee_params *up,
-			const struct tee_ta_param *p)
+			const struct tee_ta_param *p, void *va[TEE_NUM_PARAMS])
 {
 	size_t n;
 
@@ -559,13 +355,13 @@ static void init_utee_param(struct utee_params *up,
 		case TEE_PARAM_TYPE_MEMREF_INPUT:
 		case TEE_PARAM_TYPE_MEMREF_OUTPUT:
 		case TEE_PARAM_TYPE_MEMREF_INOUT:
-			a = (uintptr_t)p->params[n].memref.buffer;
-			b = p->params[n].memref.size;
+			a = (uintptr_t)va[n];
+			b = p->u[n].mem.size;
 			break;
 		case TEE_PARAM_TYPE_VALUE_INPUT:
 		case TEE_PARAM_TYPE_VALUE_INOUT:
-			a = p->params[n].value.a;
-			b = p->params[n].value.b;
+			a = p->u[n].val.a;
+			b = p->u[n].val.b;
 			break;
 		default:
 			a = 0;
@@ -588,13 +384,13 @@ static void update_from_utee_param(struct tee_ta_param *p,
 		case TEE_PARAM_TYPE_MEMREF_OUTPUT:
 		case TEE_PARAM_TYPE_MEMREF_INOUT:
 			/* See comment for struct utee_params in utee_types.h */
-			p->params[n].memref.size = up->vals[n * 2 + 1];
+			p->u[n].mem.size = up->vals[n * 2 + 1];
 			break;
 		case TEE_PARAM_TYPE_VALUE_OUTPUT:
 		case TEE_PARAM_TYPE_VALUE_INOUT:
 			/* See comment for struct utee_params in utee_types.h */
-			p->params[n].value.a = up->vals[n * 2];
-			p->params[n].value.b = up->vals[n * 2 + 1];
+			p->u[n].val.a = up->vals[n * 2];
+			p->u[n].val.b = up->vals[n * 2 + 1];
 			break;
 		default:
 			break;
@@ -616,16 +412,17 @@ static TEE_Result user_ta_enter(TEE_ErrorOrigin *err,
 {
 	TEE_Result res;
 	struct utee_params *usr_params;
-	tee_uaddr_t usr_stack;
+	uaddr_t usr_stack;
 	struct user_ta_ctx *utc = to_user_ta_ctx(session->ctx);
 	TEE_ErrorOrigin serr = TEE_ORIGIN_TEE;
 	struct tee_ta_session *s __maybe_unused;
+	void *param_va[TEE_NUM_PARAMS] = { NULL };
 
 	if (!(utc->ctx.flags & TA_FLAG_EXEC_DDR))
 		panic("TA does not exec in DDR");
 
 	/* Map user space memory */
-	res = tee_mmu_map_param(utc, param);
+	res = tee_mmu_map_param(utc, param, param_va);
 	if (res != TEE_SUCCESS)
 		goto cleanup_return;
 
@@ -633,10 +430,11 @@ static TEE_Result user_ta_enter(TEE_ErrorOrigin *err,
 	tee_ta_push_current_session(session);
 
 	/* Make room for usr_params at top of stack */
-	usr_stack = (tee_uaddr_t)utc->mmu->table[0].va + utc->stack_size;
+	usr_stack = (uaddr_t)utc->mmu->regions[TEE_MMU_UMAP_STACK_IDX].va +
+		utc->mobj_stack->size;
 	usr_stack -= ROUNDUP(sizeof(struct utee_params), STACK_ALIGNMENT);
 	usr_params = (struct utee_params *)usr_stack;
-	init_utee_param(usr_params, param);
+	init_utee_param(usr_params, param, param_va);
 
 	res = thread_enter_user_mode(func, tee_svc_kaddr_to_uref(session),
 				     (vaddr_t)usr_params, cmd, usr_stack,
@@ -680,78 +478,6 @@ cleanup_return:
 	return res;
 }
 
-/*
- * Load a TA via RPC with UUID defined by input param uuid. The virtual
- * address of the TA is recieved in out parameter ta
- *
- * Function is not thread safe
- */
-static TEE_Result rpc_load(const TEE_UUID *uuid, struct shdr **ta,
-			uint64_t *cookie_ta)
-{
-	TEE_Result res;
-	struct optee_msg_param params[2];
-	paddr_t phta = 0;
-	uint64_t cta = 0;
-
-
-	if (!uuid || !ta || !cookie_ta)
-		return TEE_ERROR_BAD_PARAMETERS;
-
-	memset(params, 0, sizeof(params));
-	params[0].attr = OPTEE_MSG_ATTR_TYPE_VALUE_INPUT;
-	memcpy(&params[0].u.value, uuid, sizeof(TEE_UUID));
-	params[1].attr = OPTEE_MSG_ATTR_TYPE_TMEM_OUTPUT;
-	params[1].u.tmem.buf_ptr = 0;
-	params[1].u.tmem.size = 0;
-	params[1].u.tmem.shm_ref = 0;
-
-	res = thread_rpc_cmd(OPTEE_MSG_RPC_CMD_LOAD_TA, 2, params);
-	if (res != TEE_SUCCESS)
-		return res;
-
-	thread_rpc_alloc_payload(params[1].u.tmem.size, &phta, &cta);
-	if (!phta)
-		return TEE_ERROR_OUT_OF_MEMORY;
-
-	*ta = phys_to_virt(phta, MEM_AREA_NSEC_SHM);
-	if (!*ta) {
-		res = TEE_ERROR_GENERIC;
-		goto out;
-	}
-	*cookie_ta = cta;
-
-	params[0].attr = OPTEE_MSG_ATTR_TYPE_VALUE_INPUT;
-	memcpy(&params[0].u.value, uuid, sizeof(TEE_UUID));
-	params[1].attr = OPTEE_MSG_ATTR_TYPE_TMEM_OUTPUT;
-	params[1].u.tmem.buf_ptr = phta;
-	params[1].u.tmem.shm_ref = cta;
-	/* Note that params[1].u.tmem.size is already assigned */
-
-	res = thread_rpc_cmd(OPTEE_MSG_RPC_CMD_LOAD_TA, 2, params);
-out:
-	if (res != TEE_SUCCESS)
-		thread_rpc_free_payload(cta);
-	return res;
-}
-
-static TEE_Result init_session_with_signed_ta(const TEE_UUID *uuid,
-				const struct shdr *signed_ta,
-				struct tee_ta_session *s)
-{
-	TEE_Result res;
-
-	DMSG("   Load dynamic TA");
-	/* load and verify */
-	res = ta_load(uuid, signed_ta, &s->ctx);
-	if (res != TEE_SUCCESS)
-		return res;
-
-	DMSG("      dyn TA : %pUl", (void *)&s->ctx->uuid);
-
-	return res;
-}
-
 static TEE_Result user_ta_enter_open_session(struct tee_ta_session *s,
 			struct tee_ta_param *param, TEE_ErrorOrigin *eo)
 {
@@ -776,15 +502,29 @@ static void user_ta_enter_close_session(struct tee_ta_session *s)
 static void user_ta_dump_state(struct tee_ta_ctx *ctx)
 {
 	struct user_ta_ctx *utc __maybe_unused = to_user_ta_ctx(ctx);
+	char flags[4] = { '\0', };
 	size_t n;
 
-	EMSG_RAW("- load addr : 0x%x    ctx-idr: %d",
-		 utc->load_addr, utc->context);
-	EMSG_RAW("- stack: 0x%" PRIxVA " %zu",
-		 utc->mmu->table[0].va, utc->stack_size);
-	for (n = 0; n < utc->mmu->size; n++)
-		EMSG_RAW("sect %zu : %#" PRIxVA " %zu",
-			 n, utc->mmu->table[n].va, utc->mmu->table[n].size);
+	EMSG_RAW(" arch: %s  load address: 0x%x  ctx-idr: %d",
+		 utc->is_32bit ? "arm" : "aarch64", utc->load_addr,
+		 utc->context);
+	EMSG_RAW(" stack: 0x%" PRIxVA " %zu",
+		 utc->mmu->regions[TEE_MMU_UMAP_STACK_IDX].va,
+		 utc->mobj_stack->size);
+	for (n = 0; n < ARRAY_SIZE(utc->mmu->regions); n++) {
+		paddr_t pa = 0;
+
+		if (utc->mmu->regions[n].mobj)
+			mobj_get_pa(utc->mmu->regions[n].mobj,
+				    utc->mmu->regions[n].offset, 0, &pa);
+
+		mattr_uflags_to_str(flags, sizeof(flags),
+				    utc->mmu->regions[n].attr);
+		EMSG_RAW(" region %zu: va %#" PRIxVA " pa %#" PRIxPA
+			 " size %#zx flags %s",
+			 n, utc->mmu->regions[n].va, pa,
+			 utc->mmu->regions[n].size, flags);
+	}
 }
 KEEP_PAGER(user_ta_dump_state);
 
@@ -799,27 +539,23 @@ static void user_ta_ctx_destroy(struct tee_ta_ctx *ctx)
 	 * No L2 cache maintenance to avoid sync problems
 	 */
 	if (ctx->flags & TA_FLAG_EXEC_DDR) {
-		paddr_t pa;
 		void *va;
-		uint32_t s;
 
-		if (utc->mm) {
-			pa = tee_mm_get_smem(utc->mm);
-			va = phys_to_virt(pa, MEM_AREA_TA_RAM);
+		if (utc->mobj_code) {
+			va = mobj_get_va(utc->mobj_code, 0);
 			if (va) {
-				s = tee_mm_get_bytes(utc->mm);
-				memset(va, 0, s);
-				cache_maintenance_l1(DCACHE_AREA_CLEAN, va, s);
+				memset(va, 0, utc->mobj_code->size);
+				cache_op_inner(DCACHE_AREA_CLEAN, va,
+						utc->mobj_code->size);
 			}
 		}
 
-		if (utc->mm_stack) {
-			pa = tee_mm_get_smem(utc->mm_stack);
-			va = phys_to_virt(pa, MEM_AREA_TA_RAM);
+		if (utc->mobj_stack) {
+			va = mobj_get_va(utc->mobj_stack, 0);
 			if (va) {
-				s = tee_mm_get_bytes(utc->mm_stack);
-				memset(va, 0, s);
-				cache_maintenance_l1(DCACHE_AREA_CLEAN, va, s);
+				memset(va, 0, utc->mobj_stack->size);
+				cache_op_inner(DCACHE_AREA_CLEAN, va,
+						utc->mobj_stack->size);
 			}
 		}
 	}
@@ -835,8 +571,8 @@ static void user_ta_ctx_destroy(struct tee_ta_ctx *ctx)
 	}
 
 	tee_mmu_final(utc);
-	tee_mm_free(utc->mm_stack);
-	tee_mm_free(utc->mm);
+	mobj_free(utc->mobj_code);
+	mobj_free(utc->mobj_stack);
 
 	/* Free cryp states created by this TA */
 	tee_svc_cryp_free_states(utc);
@@ -844,8 +580,12 @@ static void user_ta_ctx_destroy(struct tee_ta_ctx *ctx)
 	tee_obj_close_all(utc);
 	/* Free emums created by this TA */
 	tee_svc_storage_close_all_enum(utc);
-
 	free(utc);
+}
+
+static uint32_t user_ta_get_instance_id(struct tee_ta_ctx *ctx)
+{
+	return to_user_ta_ctx(ctx)->context;
 }
 
 static const struct tee_ta_ops user_ta_ops __rodata_unpaged = {
@@ -854,29 +594,55 @@ static const struct tee_ta_ops user_ta_ops __rodata_unpaged = {
 	.enter_close_session = user_ta_enter_close_session,
 	.dump_state = user_ta_dump_state,
 	.destroy = user_ta_ctx_destroy,
+	.get_instance_id = user_ta_get_instance_id,
 };
+
+static SLIST_HEAD(uta_stores_head, user_ta_store_ops) uta_store_list =
+		SLIST_HEAD_INITIALIZER(uta_stores_head);
+
+TEE_Result tee_ta_register_ta_store(struct user_ta_store_ops *ops)
+{
+	struct user_ta_store_ops *p = NULL;
+	struct user_ta_store_ops *e;
+
+	DMSG("Registering TA store: '%s' (priority %d)", ops->description,
+	     ops->priority);
+
+	SLIST_FOREACH(e, &uta_store_list, link) {
+		/*
+		 * Do not allow equal priorities to avoid any dependency on
+		 * registration order.
+		 */
+		assert(e->priority != ops->priority);
+		if (e->priority > ops->priority)
+			break;
+		p = e;
+	}
+	if (p)
+		SLIST_INSERT_AFTER(p, ops, link);
+	else
+		SLIST_INSERT_HEAD(&uta_store_list, ops, link);
+
+	return TEE_SUCCESS;
+}
 
 TEE_Result tee_ta_init_user_ta_session(const TEE_UUID *uuid,
 			struct tee_ta_session *s)
 {
+	const struct user_ta_store_ops *store;
 	TEE_Result res;
-	struct shdr *ta = NULL;
-	uint64_t cookie_ta = 0;
 
-
-	/* Request TA from tee-supplicant */
-	res = rpc_load(uuid, &ta, &cookie_ta);
-	if (res != TEE_SUCCESS)
+	SLIST_FOREACH(store, &uta_store_list, link) {
+		DMSG("Lookup user TA %pUl (%s)", (void *)uuid,
+		     store->description);
+		res = ta_load(uuid, store, &s->ctx);
+		if (res == TEE_ERROR_ITEM_NOT_FOUND)
+			continue;
+		if (res == TEE_SUCCESS)
+			s->ctx->ops = &user_ta_ops;
+		else
+			DMSG("res=0x%x", res);
 		return res;
-
-	res = init_session_with_signed_ta(uuid, ta, s);
-	/*
-	 * Free normal world shared memory now that the TA either has been
-	 * copied into secure memory or the TA failed to be initialized.
-	 */
-	thread_rpc_free_payload(cookie_ta);
-
-	if (res == TEE_SUCCESS)
-		s->ctx->ops = &user_ta_ops;
-	return res;
+	}
+	return TEE_ERROR_ITEM_NOT_FOUND;
 }

@@ -103,8 +103,7 @@ HMAC authentication is implemented here also.
 
 The FS encryption routines are in [core/tee/tee_fs_key_manager.c](../core/tee/tee_fs_key_manager.c).
 
-Block encryption is enabled by default to protect file data. It may be turned
-off with `CFG_ENC_FS=n`. The algorithm is 128-bit AES in Cipher Block Chaining
+Block encryption protects file data. The algorithm is 128-bit AES in Cipher Block Chaining
 (CBC) mode with Encrypted Salt-Sector Initialization Vector (ESSIV)
 [[4]](#CBC-ESSIV).
 
@@ -128,10 +127,16 @@ file, as follows:
 ```
 
 
-SSK and FEK handling is common with the REE-based secure storage, while the AES
+SSK, TSK and FEK handling is common with the REE-based secure storage, while the AES
 CBC block encryption is used only for RPMB (the REE implementation uses GCM).
 
 The FAT is not encrypted.
+
+## REE FS
+
+If configured with both CFG_REE_FS=y and CFG_RPMB_FS=y the REE FS will
+create a special file, "dirfile.db.hash" in RPMB which hold a hash
+representing the state of REE FS.
 
 ## References
 

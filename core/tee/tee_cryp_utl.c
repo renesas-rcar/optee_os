@@ -31,6 +31,7 @@
 #include <utee_defines.h>
 #include <tee/tee_cryp_utl.h>
 #include <tee/tee_cryp_provider.h>
+#include <kernel/tee_time.h>
 #include <rng_support.h>
 #include <initcall.h>
 
@@ -214,7 +215,11 @@ TEE_Result tee_do_cipher_update(void *ctx, uint32_t algo,
 	if (res != TEE_SUCCESS)
 		return res;
 	if ((len % block_size) != 0) {
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
 		if (!last_block)
+#else
+		if (!last_block && algo != TEE_ALG_AES_CTR)
+#endif
 			return TEE_ERROR_BAD_PARAMETERS;
 
 		switch (algo) {
@@ -376,6 +381,26 @@ TEE_Result tee_prng_add_entropy(const uint8_t *in, size_t len)
 		return crypto_ops.prng.add_entropy(in, len);
 
 	return TEE_SUCCESS;
+}
+
+/*
+ * Override this in your platform code to feed the PRNG platform-specific
+ * jitter entropy. This implementation does not efficiently deliver entropy
+ * and is here for backwards-compatibility.
+ */
+__weak void plat_prng_add_jitter_entropy(void)
+{
+	TEE_Time current;
+
+	if (tee_time_get_sys_time(&current) == TEE_SUCCESS)
+		tee_prng_add_entropy((uint8_t *)&current, sizeof(current));
+}
+
+__weak void plat_prng_add_jitter_entropy_norpc(void)
+{
+#ifndef CFG_SECURE_TIME_SOURCE_REE
+	plat_prng_add_jitter_entropy();
+#endif
 }
 
 static TEE_Result tee_cryp_init(void)

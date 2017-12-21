@@ -28,9 +28,13 @@
 #ifndef CORE_MMU_H
 #define CORE_MMU_H
 
+#include <assert.h>
+#include <compiler.h>
 #include <kernel/user_ta.h>
 #include <mm/tee_mmu_types.h>
+#include <platform_config.h>
 #include <types_ext.h>
+#include <util.h>
 
 /* A small page is the smallest unit of memory that can be mapped */
 #define SMALL_PAGE_SHIFT	12
@@ -43,8 +47,10 @@
  */
 #ifdef CFG_WITH_LPAE
 #define CORE_MMU_PGDIR_SHIFT	21
+#define CORE_MMU_PGDIR_LEVEL	3
 #else
 #define CORE_MMU_PGDIR_SHIFT	20
+#define CORE_MMU_PGDIR_LEVEL	2
 #endif
 #define CORE_MMU_PGDIR_SIZE		(1 << CORE_MMU_PGDIR_SHIFT)
 #define CORE_MMU_PGDIR_MASK		(CORE_MMU_PGDIR_SIZE - 1)
@@ -55,45 +61,60 @@
 #define CORE_MMU_DEVICE_MASK		(CORE_MMU_DEVICE_SIZE - 1)
 
 /* TA user space code, data, stack and heap are mapped using this granularity */
-#ifdef CFG_SMALL_PAGE_USER_TA
 #define CORE_MMU_USER_CODE_SHIFT	SMALL_PAGE_SHIFT
-#else
-#define CORE_MMU_USER_CODE_SHIFT	CORE_MMU_PGDIR_SHIFT
-#endif
 #define CORE_MMU_USER_CODE_SIZE		(1 << CORE_MMU_USER_CODE_SHIFT)
 #define CORE_MMU_USER_CODE_MASK		(CORE_MMU_USER_CODE_SIZE - 1)
 
 /* TA user space parameters are mapped using this granularity */
-#ifdef CFG_SMALL_PAGE_USER_TA
 #define CORE_MMU_USER_PARAM_SHIFT	SMALL_PAGE_SHIFT
-#else
-#define CORE_MMU_USER_PARAM_SHIFT	CORE_MMU_PGDIR_SHIFT
-#endif
 #define CORE_MMU_USER_PARAM_SIZE	(1 << CORE_MMU_USER_PARAM_SHIFT)
 #define CORE_MMU_USER_PARAM_MASK	(CORE_MMU_USER_PARAM_SIZE - 1)
 
-#ifdef CFG_WITH_PAGER
-extern vaddr_t core_mmu_linear_map_end;
+#ifndef CFG_TEE_RAM_VA_SIZE
+#define CFG_TEE_RAM_VA_SIZE		CORE_MMU_PGDIR_SIZE
+#endif
+
+/*
+ * TEE_RAM_VA_START:            The start virtual address of the TEE RAM
+ * TEE_TEXT_VA_START:           The start virtual address of the OP-TEE text
+ */
+
+/*
+ * Identify mapping constraint: virtual base address is the physical start addr.
+ */
+#define TEE_RAM_VA_START		CFG_TEE_RAM_START
+#define TEE_TEXT_VA_START		(TEE_RAM_VA_START + \
+				(CFG_TEE_LOAD_ADDR - CFG_TEE_RAM_START))
+
+#ifndef STACK_ALIGNMENT
+#define STACK_ALIGNMENT			(sizeof(long) * 2)
 #endif
 
 /*
  * Memory area type:
- * MEM_AREA_NOTYPE:   Undefined type. Used as end of table.
- * MEM_AREA_TEE_RAM:  teecore execution RAM (secure, reserved to TEEtz, unused)
- * MEM_AREA_TEE_COHERENT: teecore coherent RAM (secure, reserved to TEEtz)
+ * MEM_AREA_END:      Reserved, marks the end of a table of mapping areas.
+ * MEM_AREA_TEE_RAM:  core RAM (read/write/executable, secure, reserved to TEE)
+ * MEM_AREA_TEE_RAM_RX:  core private read-only/executable memory (secure)
+ * MEM_AREA_TEE_RAM_RO:  core private read-only/non-executable memory (secure)
+ * MEM_AREA_TEE_RAM_RW:  core private read/write/non-executable memory (secure)
+ * MEM_AREA_TEE_COHERENT: teecore coherent RAM (secure, reserved to TEE)
  * MEM_AREA_TA_RAM:   Secure RAM where teecore loads/exec TA instances.
- * MEM_AREA_NS_SHM:   NonSecure shared RAM between NSec and TEEtz.
+ * MEM_AREA_NSEC_SHM: NonSecure shared RAM between NSec and TEE.
  * MEM_AREA_RAM_NSEC: NonSecure RAM storing data
  * MEM_AREA_RAM_SEC:  Secure RAM storing some secrets
- * MEM_AREA_IO_SEC:   Secure HW mapped registers
  * MEM_AREA_IO_NSEC:  NonSecure HW mapped registers
+ * MEM_AREA_IO_SEC:   Secure HW mapped registers
  * MEM_AREA_RES_VASPACE: Reserved virtual memory space
+ * MEM_AREA_SHM_VASPACE: Virtual memory space for dynamic shared memory buffers
  * MEM_AREA_TA_VASPACE: TA va space, only used with phys_to_virt()
  * MEM_AREA_MAXTYPE:  lower invalid 'type' value
  */
 enum teecore_memtypes {
-	MEM_AREA_NOTYPE = 0,
+	MEM_AREA_END = 0,
 	MEM_AREA_TEE_RAM,
+	MEM_AREA_TEE_RAM_RX,
+	MEM_AREA_TEE_RAM_RO,
+	MEM_AREA_TEE_RAM_RW,
 	MEM_AREA_TEE_COHERENT,
 	MEM_AREA_TA_RAM,
 	MEM_AREA_NSEC_SHM,
@@ -102,21 +123,105 @@ enum teecore_memtypes {
 	MEM_AREA_IO_NSEC,
 	MEM_AREA_IO_SEC,
 	MEM_AREA_RES_VASPACE,
+	MEM_AREA_SHM_VASPACE,
 	MEM_AREA_TA_VASPACE,
+	MEM_AREA_PAGER_VASPACE,
+	MEM_AREA_SDP_MEM,
 	MEM_AREA_MAXTYPE
 };
+
+static inline const char *teecore_memtype_name(enum teecore_memtypes type)
+{
+	static const char * const names[] = {
+		[MEM_AREA_END] = "END",
+		[MEM_AREA_TEE_RAM] = "TEE_RAM_RWX",
+		[MEM_AREA_TEE_RAM_RX] = "TEE_RAM_RX",
+		[MEM_AREA_TEE_RAM_RO] = "TEE_RAM_RO",
+		[MEM_AREA_TEE_RAM_RW] = "TEE_RAM_RW",
+		[MEM_AREA_TEE_COHERENT] = "TEE_COHERENT",
+		[MEM_AREA_TA_RAM] = "TA_RAM",
+		[MEM_AREA_NSEC_SHM] = "NSEC_SHM",
+		[MEM_AREA_RAM_NSEC] = "RAM_NSEC",
+		[MEM_AREA_RAM_SEC] = "RAM_SEC",
+		[MEM_AREA_IO_NSEC] = "IO_NSEC",
+		[MEM_AREA_IO_SEC] = "IO_SEC",
+		[MEM_AREA_RES_VASPACE] = "RES_VASPACE",
+		[MEM_AREA_SHM_VASPACE] = "SHM_VASPACE",
+		[MEM_AREA_TA_VASPACE] = "TA_VASPACE",
+		[MEM_AREA_PAGER_VASPACE] = "PAGER_VASPACE",
+		[MEM_AREA_SDP_MEM] = "SDP_MEM",
+	};
+
+	COMPILE_TIME_ASSERT(ARRAY_SIZE(names) == MEM_AREA_MAXTYPE);
+	return names[type];
+}
+
+#ifdef CFG_CORE_RWDATA_NOEXEC
+#define MEM_AREA_TEE_RAM_RW_DATA	MEM_AREA_TEE_RAM_RW
+#else
+#define MEM_AREA_TEE_RAM_RW_DATA	MEM_AREA_TEE_RAM
+#endif
 
 struct core_mmu_phys_mem {
 	const char *name;
 	enum teecore_memtypes type;
-	paddr_t addr;
-	size_t size;
+	__extension__ union {
+#if __SIZEOF_LONG__ != __SIZEOF_PADDR__
+		struct {
+			uint32_t lo_addr;
+			uint32_t hi_addr;
+		};
+#endif
+		paddr_t addr;
+	};
+	__extension__ union {
+#if __SIZEOF_LONG__ != __SIZEOF_PADDR__
+		struct {
+			uint32_t lo_size;
+			uint32_t hi_size;
+		};
+#endif
+		paddr_size_t size;
+	};
 };
 
+#define __register_memory2(_name, _type, _addr, _size, _section, _id) \
+	static const struct core_mmu_phys_mem __phys_mem_ ## _id \
+		__used __section(_section) = \
+		{ .name = _name, .type = _type, .addr = _addr, .size = _size }
+
+#if __SIZEOF_LONG__ != __SIZEOF_PADDR__
+#define __register_memory2_ul(_name, _type, _addr, _size, _section, _id) \
+	static const struct core_mmu_phys_mem __phys_mem_ ## _id \
+		__used __section(_section) = \
+		{ .name = _name, .type = _type, .lo_addr = _addr, \
+		  .lo_size = _size }
+#else
+#define __register_memory2_ul(_name, _type, _addr, _size, _section, _id) \
+		__register_memory2(_name, _type, _addr, _size, _section, _id)
+#endif
+
+#define __register_memory1(name, type, addr, size, section, id) \
+		__register_memory2(name, type, addr, size, #section, id)
+
+#define __register_memory1_ul(name, type, addr, size, section, id) \
+		__register_memory2_ul(name, type, addr, size, #section, id)
+
 #define register_phys_mem(type, addr, size) \
-	static const struct core_mmu_phys_mem __phys_mem_ ## addr \
-		__used __section("phys_mem_map_section") = \
-		{ #addr, (type), (addr), (size) }
+		__register_memory1(#addr, (type), (addr), (size), \
+				   phys_mem_map_section, __COUNTER__)
+
+#define register_phys_mem_ul(type, addr, size) \
+		__register_memory1_ul(#addr, (type), (addr), (size), \
+				   phys_mem_map_section, __COUNTER__)
+
+#define register_sdp_mem(addr, size) \
+		__register_memory1(#addr, MEM_AREA_SDP_MEM, (addr), (size), \
+				   phys_sdp_mem_section, __COUNTER__)
+
+#define register_nsec_ddr(addr, size) \
+		__register_memory1(#addr, MEM_AREA_RAM_NSEC, (addr), (size), \
+				   phys_nsec_ddr_section, __COUNTER__)
 
 #ifdef MMU_EXEC_ATTR_MAPPING
 #define setopt_exec_attr(addr) \
@@ -126,7 +231,6 @@ struct core_mmu_phys_mem {
 #define setopt_exec_attr(addr) \
 	static const paddr_t __exec_attr_ ## addr __unused
 #endif
-
 
 /* Default NSec shared memory allocated from NSec world */
 extern unsigned long default_nsec_shm_paddr;
@@ -165,6 +269,15 @@ struct core_mmu_user_map {
 };
 #endif
 
+#ifdef CFG_WITH_LPAE
+bool core_mmu_user_va_range_is_defined(void);
+#else
+static inline bool core_mmu_user_va_range_is_defined(void)
+{
+	return true;
+}
+#endif
+
 /*
  * core_mmu_get_user_va_range() - Return range of user va space
  * @base:	Lowest user virtual address
@@ -200,6 +313,13 @@ enum core_mmu_fault {
  * @returns an enum describing the content of fault status register.
  */
 enum core_mmu_fault core_mmu_get_fault_type(uint32_t fault_descr);
+
+/*
+ * core_mm_type_to_attr() - convert memory type to attribute
+ * @t: memory type
+ * @returns an attribute that can be passed to core_mm_set_entry() and friends
+ */
+uint32_t core_mmu_type_to_attr(enum teecore_memtypes t);
 
 /*
  * core_mmu_create_user_map() - Create user space mapping
@@ -247,8 +367,21 @@ struct core_mmu_table_info {
 bool core_mmu_find_table(vaddr_t va, unsigned max_level,
 		struct core_mmu_table_info *tbl_info);
 
+/*
+ * core_mmu_prepare_small_page_mapping() - prepare target small page parent
+ *	pgdir so that each of its entry can be used to map a page.
+ * @tbl_info:	table where target record located
+ * @idx:	index of record for which a pdgir must be setup.
+ * @secure:	true/false if pgdir maps secure/non-secure memory (32bit mmu)
+ * @return true on successful, false on error
+ */
+bool core_mmu_prepare_small_page_mapping(struct core_mmu_table_info *tbl_info,
+					 unsigned int idx, bool secure);
+
 void core_mmu_set_entry_primitive(void *table, size_t level, size_t idx,
 				  paddr_t pa, uint32_t attr);
+
+void core_mmu_get_user_pgdir(struct core_mmu_table_info *pgd_info);
 
 /*
  * core_mmu_set_entry() - Set entry in translation table
@@ -310,6 +443,36 @@ static inline size_t core_mmu_get_block_offset(
 }
 
 /*
+ * core_mmu_is_dynamic_vaspace() - Check if memory region belongs to
+ *  empty virtual address space that is used for dymanic mappings
+ * @mm:		memory region to be checked
+ * @returns result of the check
+ */
+static inline bool core_mmu_is_dynamic_vaspace(struct tee_mmap_region *mm)
+{
+	return mm->type == MEM_AREA_RES_VASPACE ||
+		mm->type == MEM_AREA_SHM_VASPACE;
+}
+
+/*
+ * core_mmu_map_pages() - map list of pages at given virtual address
+ * @vstart:	Virtual address where mapping begins
+ * @pages:	Array of page addresses
+ * @num_pages:	Number of pages
+ * @memtype:	Type of memmory to be mapped
+ * @returns:	TEE_SUCCESS on success, TEE_ERROR_XXX on error
+ */
+TEE_Result core_mmu_map_pages(vaddr_t vstart, paddr_t *pages, size_t num_pages,
+			      enum teecore_memtypes memtype);
+
+/*
+ * core_mmu_unmap_pages() - remove mapping at given virtual address
+ * @vstart:	Virtual address where mapping begins
+ * @num_pages:	Number of pages to unmap
+ */
+void core_mmu_unmap_pages(vaddr_t vstart, size_t num_pages);
+
+/*
  * core_mmu_user_mapping_is_active() - Report if user mapping is active
  * @returns true if a user VA space is active, false if user VA space is
  *          inactive.
@@ -327,27 +490,14 @@ void core_mmu_get_mem_by_type(enum teecore_memtypes type, vaddr_t *s,
 
 enum teecore_memtypes core_mmu_get_type_by_pa(paddr_t pa);
 
-/* Function is deprecated, use virt_to_phys() instead */
-int core_va2pa_helper(void *va, paddr_t *pa);
-
 /* routines to retreive shared mem configuration */
-bool core_mmu_is_shm_cached(void);
+static inline bool core_mmu_is_shm_cached(void)
+{
+	return core_mmu_type_to_attr(MEM_AREA_NSEC_SHM) &
+		(TEE_MATTR_CACHE_CACHED << TEE_MATTR_CACHE_SHIFT);
+}
 
 bool core_mmu_add_mapping(enum teecore_memtypes type, paddr_t addr, size_t len);
-
-/* L1/L2 cache maintenance (op: refer to ???) */
-unsigned int cache_maintenance_l1(int op, void *va, size_t len);
-#ifdef CFG_PL310
-unsigned int cache_maintenance_l2(int op, paddr_t pa, size_t len);
-#else
-static inline unsigned int cache_maintenance_l2(int op __unused,
-						paddr_t pa __unused,
-						size_t len __unused)
-{
-	/* Nothing to do about L2 Cache Maintenance when no PL310 */
-	return TEE_SUCCESS;
-}
-#endif
 
 /* various invalidate secure TLB */
 enum teecore_tlb_op {
@@ -357,28 +507,59 @@ enum teecore_tlb_op {
 	TLBINV_BY_MVA,		/* invalidate unified tlb by MVA */
 };
 
-int core_tlb_maintenance(int op, unsigned int a);
+/* TLB invalidation for a range of virtual address */
+void tlbi_mva_range(vaddr_t va, size_t size, size_t granule);
 
-/* Cache maintenance operation type */
-typedef enum {
-	DCACHE_CLEAN = 0x1,
-	DCACHE_AREA_CLEAN = 0x2,
-	DCACHE_INVALIDATE = 0x3,
-	DCACHE_AREA_INVALIDATE = 0x4,
-	ICACHE_INVALIDATE = 0x5,
-	ICACHE_AREA_INVALIDATE = 0x6,
-	WRITE_BUFFER_DRAIN = 0x7,
-	DCACHE_CLEAN_INV = 0x8,
-	DCACHE_AREA_CLEAN_INV = 0x9,
-	L2CACHE_INVALIDATE = 0xA,
-	L2CACHE_AREA_INVALIDATE = 0xB,
-	L2CACHE_CLEAN = 0xC,
-	L2CACHE_AREA_CLEAN = 0xD,
-	L2CACHE_CLEAN_INV = 0xE,
-	L2CACHE_AREA_CLEAN_INV = 0xF
-} t_cache_operation_id;
+/* deprecated: please call straight tlbi_all() and friends */
+int core_tlb_maintenance(int op, unsigned long a) __deprecated;
+
+/* Cache maintenance operation type (deprecated with core_tlb_maintenance()) */
+enum cache_op {
+	DCACHE_CLEAN,
+	DCACHE_AREA_CLEAN,
+	DCACHE_INVALIDATE,
+	DCACHE_AREA_INVALIDATE,
+	ICACHE_INVALIDATE,
+	ICACHE_AREA_INVALIDATE,
+	DCACHE_CLEAN_INV,
+	DCACHE_AREA_CLEAN_INV,
+};
+
+/* L1/L2 cache maintenance */
+TEE_Result cache_op_inner(enum cache_op op, void *va, size_t len);
+#ifdef CFG_PL310
+TEE_Result cache_op_outer(enum cache_op op, paddr_t pa, size_t len);
+#else
+static inline TEE_Result cache_op_outer(enum cache_op op __unused,
+						paddr_t pa __unused,
+						size_t len __unused)
+{
+	/* Nothing to do about L2 Cache Maintenance when no PL310 */
+	return TEE_SUCCESS;
+}
+#endif
 
 /* Check cpu mmu enabled or not */
 bool cpu_mmu_enabled(void);
+
+/* Do section mapping, not support on LPAE */
+void map_memarea_sections(const struct tee_mmap_region *mm, uint32_t *ttb);
+
+/*
+ * Check if platform defines nsec DDR range(s).
+ * Static SHM (MEM_AREA_NSEC_SHM) is not covered by this API as it is
+ * always present.
+ */
+bool core_mmu_nsec_ddr_is_defined(void);
+
+#ifdef CFG_DT
+void core_mmu_set_discovered_nsec_ddr(struct core_mmu_phys_mem *start,
+				      size_t nelems);
+#endif
+
+#ifdef CFG_SECURE_DATA_PATH
+/* Alloc and fill SDP memory objects table - table is NULL terminated */
+struct mobj **core_sdp_mem_create_mobjs(void);
+#endif
 
 #endif /* CORE_MMU_H */

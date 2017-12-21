@@ -1,3 +1,485 @@
+# OP-TEE - version 2.6.0
+
+[Link][github_commits_2_6_0] to a list of all commits between this release and
+the previous one (2.5.0).
+
+## New features
+
+* New supported platforms: Atmel SAMA5 ([#1714]), HiSilicon HiKey960 ([#1684]),
+  Rockchip RK322X ([#1666]), NXP LS1043A-RDB/LS1046A-RDB ([#1787]), Marvell
+  Armada 70x0/80x0 ([#1807]).
+* Dynamic shared memory (non-contiguous, non-secure memory can be mapped into
+  Trusted Applications VA space) ([#1631])
+* Dump TA call stack on panic ([#1858])
+* i.MX: PSCI reset ([#1849])
+* plat-ti: AM43xx: suspend/resume support ([#1822])
+* QEMU SMP support ([#1820])
+* plat-ti: AM43xx: disable TRNG ([#1816])
+* plat-ti: enable Secure Data Path by default ([#1815])
+* Improve symbolize.py ([#1778], [#1767], [#1766])
+* Early TAs (TAs linked in tee.bin) ([#1733])
+* Suspend/resume framework for arm32 and imx7d support ([#1729])
+* RK322X PSCI version, features and suspend support ([#1720])
+* arm32: handle aborts in system mode ([#1703])
+* i.MX: add SNVS SRTC support ([#1700])
+* GCC7 support ([#1693])
+* Improve detection of programming errors in locking code ([#1671], [#1670])
+* Support TEE RAM size larger than page directory size ([#1669])
+
+## Removed features
+
+* Remove TUI code ([#1842])
+
+## Bug fixes
+
+* Add missing synchronization barrier in core_mmu_map_pages() ([#1827])
+* Secure storage: REE FS: fix bug in error path ([#1801])
+* ASAN bug fixes ([#1799])
+* Fix race in core_mmu_user_mapping_is_active() ([#1785])
+* libutee: printf() and puts() fixes, add putchar() ([#1759], [#1754])
+* arm32: GICv3: fix FIQ masking in IRQ/ABT/SVC/UND handlers ([#1748])
+* arm32: preserve r12 in native_intr_handler() ([#1682])
+* arm64: fix print_kernel_stack() ([#1664])
+* benchmark: fix core data-abort ([#1658])
+
+## Security fixes or enhancements
+
+* crypto: fix software PRNG weaknesses
+  ([OP-TEE-2017-0001][OP-TEE-2017-0001]) ([#1843])
+
+## Tested on
+
+The release was tested successfuly on the platforms listed below.
+If a platform is not listed, it means the release was not tested on this
+platform.
+
+<!-- ${PLATFORM}-${PLATFORM_FLAVOR}, ordered alphabetically -->
+* d02
+* hikey
+* hikey-hikey960
+* imx-mx6ulevk
+* imx-mx7dsabresd
+* ls-ls1021a??? (single core)
+* ls-ls1043ardb
+* ls-ls1046ardb
+* mediatek-mt8173
+* rcar
+* rockchip-rk322x
+* rpi3
+* sam
+* stm-b2260
+* stm-cannes
+* ti-???
+* vexpress-fvp
+* vexpress-juno
+* vexpress-qemu_armv8a
+* vexpress-qemu_virt
+
+[github_commits_2_6_0]: https://github.com/OP-TEE/optee_os/compare/2.5.0...HEAD
+[#1858]: https://github.com/OP-TEE/optee_os/issues/1858
+[#1849]: https://github.com/OP-TEE/optee_os/issues/1849
+[#1843]: https://github.com/OP-TEE/optee_os/issues/1843
+[#1842]: https://github.com/OP-TEE/optee_os/issues/1842
+[#1827]: https://github.com/OP-TEE/optee_os/issues/1827
+[#1822]: https://github.com/OP-TEE/optee_os/issues/1822
+[#1820]: https://github.com/OP-TEE/optee_os/issues/1820
+[#1816]: https://github.com/OP-TEE/optee_os/issues/1816
+[#1815]: https://github.com/OP-TEE/optee_os/issues/1815
+[#1807]: https://github.com/OP-TEE/optee_os/issues/1807
+[#1801]: https://github.com/OP-TEE/optee_os/issues/1801
+[#1799]: https://github.com/OP-TEE/optee_os/issues/1799
+[#1787]: https://github.com/OP-TEE/optee_os/issues/1787
+[#1785]: https://github.com/OP-TEE/optee_os/issues/1785
+[#1778]: https://github.com/OP-TEE/optee_os/issues/1778
+[#1767]: https://github.com/OP-TEE/optee_os/issues/1767
+[#1766]: https://github.com/OP-TEE/optee_os/issues/1766
+[#1759]: https://github.com/OP-TEE/optee_os/issues/1759
+[#1754]: https://github.com/OP-TEE/optee_os/issues/1754
+[#1748]: https://github.com/OP-TEE/optee_os/issues/1748
+[#1733]: https://github.com/OP-TEE/optee_os/issues/1733
+[#1729]: https://github.com/OP-TEE/optee_os/issues/1729
+[#1720]: https://github.com/OP-TEE/optee_os/issues/1720
+[#1714]: https://github.com/OP-TEE/optee_os/issues/1714
+[#1703]: https://github.com/OP-TEE/optee_os/issues/1703
+[#1700]: https://github.com/OP-TEE/optee_os/issues/1700
+[#1693]: https://github.com/OP-TEE/optee_os/issues/1693
+[#1684]: https://github.com/OP-TEE/optee_os/issues/1684
+[#1682]: https://github.com/OP-TEE/optee_os/issues/1682
+[#1671]: https://github.com/OP-TEE/optee_os/issues/1671
+[#1670]: https://github.com/OP-TEE/optee_os/issues/1670
+[#1669]: https://github.com/OP-TEE/optee_os/issues/1669
+[#1666]: https://github.com/OP-TEE/optee_os/issues/1666
+[#1664]: https://github.com/OP-TEE/optee_os/issues/1664
+[#1658]: https://github.com/OP-TEE/optee_os/issues/1658
+[#1631]: https://github.com/OP-TEE/optee_os/issues/1631
+[OP-TEE-2017-0001]: https://www.op-tee.org/security-advisories/
+
+# OP-TEE - version 2.5.0
+
+[Link][github_commits_2_5_0] to a list of all commits between this release and
+the previous one (2.4.0).
+
+## New features
+
+* New supported platform: i.MX7D ([#1639])
+* Secure storage: anti-rollback protection for REE FS using RPMB FS ([#1630])
+* Assign non-secure DDR configuration from DT if CFG_DT=y ([#1623])
+* Add new image format: split image into three separate binaries suitable for
+  upcoming ARM Trusted Firmware ([#1589]).
+* Make alignment check configurable ([#1586])
+* drivers: add TZC380 driver ([#1578])
+* plat-imx: PSCI CPU off ([#1577])
+* 64-bit paging on QEMU v8 and HiKey ([#1575], [#1592])
+* Benchmark framework ([#1365])
+* Dump call stack of user TAs on abort ([#1552])
+* plat-hikey: enable Secure Data Path ([#1440])
+* Add interface to load and decrypt/authenticate user TAs ([#1513])
+* plat-ti: add secure paging support ([#1493])
+* plat-ti: add OTP hardware key support ([#1492])
+* Support ARM GICv3 ([#1465])
+
+## Removed features
+
+* stm-orly2 is not supported anymore ([#1650])
+* Remove secure storage based on SQL FS (`CFG_SQL_FS=y`) ([#1490])
+* Remove support for mapping user TAs with 1 MiB or 2 MiB granularity
+  (`CFG_SMALL_PAGE_USER_TA=n`) ([#1559]). TAs are always mapped using small
+  pages.
+
+## Bug fixes
+
+* Reduce size of non-pageable code ([#1621])
+* Ignore `TA_FLAG_MULTI_SESSION` and `TA_FLAG_INSTANCE_KEEP_ALIVE` when
+  `TA_FLAG_SINGLE_INSTANCE` is not set ([#1574])
+* libutee: remove buffering for AES GCM (PR#1573) and AES CTR ([#1580])
+* Fix ROUNDUP()/ROUNDDOWN() macros ([#1519])
+* Do not touch other bits in GICD_CTLR ([#1508])
+* Fix build issue with `DEBUG=y` and `CFG_TEE_CORE_LOG_LEVEL=0` ([#1502])
+* crypto: do not restrict hash size when algorithm is ECDSA ([#1497])
+
+## Security fixes or enhancements
+
+- crypto: fix RSA key leakage after fault injection attack
+  ([OP-TEE-2016-0003][OP-TEE-2016-0003])  ([#1610])
+* crypto: fix RSA key leakage after side channel attack
+  ([OP-TEE-2016-0002][OP-TEE-2016-0002]) ([#1610])
+* Make pager aliased pages not always writable ([#1551])
+* Support for no-exec RO and RW data ([#1459], [#1550])
+
+## New issues
+
+* armv7: some platform-specific code (`plat_cpu_reset_early()`) overwrites
+SCTLR bits configured by generic code. This affects alignment checks (`SCTLR.A`)
+and write-implies-no-exec (`SCTLR.WXN`, `SCTLR.UWXN`), which can therefore not
+be configured via the compile-time `CFG_` variables.
+* armv7: plat-imx: Cortex-A9 cores should enable branch prediction (`SCLTR.Z`)
+for improved performance.
+* [#1656] qemu_armv8a: init hangs when secure data path and pager are both
+  enabled.
+
+## Tested on
+
+In the list below, _standard_ means that the `xtest` program passed with
+its default configuration, while _extended_ means it was run successfully
+with the additional GlobalPlatform™ TEE Initial Configuration Test Suite
+v1.1.0.4.
+
+If a platform is not listed, it means the release was not tested on this
+platform.
+
+<!-- ${PLATFORM}-${PLATFORM_FLAVOR}, ordered alphabetically -->
+* d02: extended
+* hikey: extended
+* imx-mx6ulevk: standard
+* imx-mx6ullevk: standard
+* imx-mx7dsabresd: standard
+* ls-ls1021atwr: standard
+* mediatek-mt8173: standard
+* rcar-h3: standard
+* rpi3: standard
+* stm-b2260: extended
+* stm-cannes: extended
+* ti-am43xx: standard
+* ti-am57xx: standard
+* ti-dra7xx: standard
+* vexpress-fvp: standard
+* vexpress-juno: standard
+* vexpress-qemu_armv8a: standard
+* vexpress-qemu_virt: standard
+
+[github_commits_2_5_0]: https://github.com/OP-TEE/optee_os/compare/2.4.0...2.5.0-rc1
+[#1656]: https://github.com/OP-TEE/optee_os/issues/1656
+[#1650]: https://github.com/OP-TEE/optee_os/pull/1650
+[#1639]: https://github.com/OP-TEE/optee_os/pull/1639
+[#1630]: https://github.com/OP-TEE/optee_os/pull/1630
+[#1623]: https://github.com/OP-TEE/optee_os/pull/1623
+[#1621]: https://github.com/OP-TEE/optee_os/pull/1621
+[#1610]: https://github.com/OP-TEE/optee_os/pull/1610
+[#1592]: https://github.com/OP-TEE/optee_os/pull/1592
+[#1589]: https://github.com/OP-TEE/optee_os/pull/1589
+[#1586]: https://github.com/OP-TEE/optee_os/pull/1586
+[#1580]: https://github.com/OP-TEE/optee_os/pull/1580
+[#1578]: https://github.com/OP-TEE/optee_os/pull/1578
+[#1577]: https://github.com/OP-TEE/optee_os/pull/1577
+[#1574]: https://github.com/OP-TEE/optee_os/pull/1574
+[#1559]: https://github.com/OP-TEE/optee_os/pull/1559
+[#1551]: https://github.com/OP-TEE/optee_os/pull/1551
+[#1550]: https://github.com/OP-TEE/optee_os/pull/1550
+[#1519]: https://github.com/OP-TEE/optee_os/pull/1519
+[#1502]: https://github.com/OP-TEE/optee_os/pull/1502
+[#1365]: https://github.com/OP-TEE/optee_os/pull/1365
+[#1552]: https://github.com/OP-TEE/optee_os/pull/1552
+[#1513]: https://github.com/OP-TEE/optee_os/pull/1513
+[#1508]: https://github.com/OP-TEE/optee_os/pull/1508
+[#1493]: https://github.com/OP-TEE/optee_os/pull/1493
+[#1497]: https://github.com/OP-TEE/optee_os/pull/1497
+[#1492]: https://github.com/OP-TEE/optee_os/pull/1492
+[#1490]: https://github.com/OP-TEE/optee_os/pull/1490
+[#1465]: https://github.com/OP-TEE/optee_os/pull/1465
+[#1459]: https://github.com/OP-TEE/optee_os/pull/1459
+[#1440]: https://github.com/OP-TEE/optee_os/pull/1440
+[OP-TEE-2016-0003]: https://www.op-tee.org/security-advisories/
+[OP-TEE-2016-0002]: https://www.op-tee.org/security-advisories/
+
+# OP-TEE - version 2.4.0
+
+[Link][github_commits_2_4_0] to a list of all commits between this release and
+the previous one (2.3.0).
+
+Please note: this release is API-compatible with the previous one, but the
+Secure Storage internal format for the REE and SQL FS is not compatible due to
+commits [a238b74][commit_a238b74] ("core: REE FS: use the new hash tree
+interface") and [44e900e][commit_44e900e] ("core: SQL FS: use the new hash tree
+interface").
+
+## New features
+
+* Add porting guidelines
+
+* Add support for Secure Data Path which allows Client and Trusted Applications
+  to share references to secure memory
+
+* New supported platform: Texas Instruments AM57xx (`PLATFORM=ti-am57xx`)
+
+* ARMv7-A: add support for platform services in secure monitor and add these
+  services for the DRA7xx platform
+
+* SPI framework and PL022 driver cleanup and improvements
+
+* Use CNTPCT (when available) to add entropy to the software PRNG
+
+* Add GlobalPlatform Socket API for UDP and TCP (IPv4 and IPv6)
+
+* DRA7: add TRNG driver, enable GICv2 driver
+
+* Support load address larger than 4G
+
+* libutee: preserve error code when calling TEE_Panic() for easier
+  troubleshooting
+
+* Support TA profiling with gprof (-pg compiler switch)
+
+* Optimize the ELF loader for TAs when pager is enabled
+
+* Update documentation
+
+* Add paged secure shared memory that can be transferred between TAs as
+  needed
+
+* Introduce MOBJ abstraction
+
+* i.MX6: add PSCI "on" function
+
+* arm32: introduce PSCI framework
+
+## Bug fixes
+
+* Secure storage: improve integrity checking of the REE and SQL filesystems by
+  adding a hash tree on the internal data structures. Any external modification
+  is detected, except full rollback. Fixes [#1188][issue1188].
+
+* The linux driver will set the 'privileged' flag (TEE_GEN_CAP_PRIVILEGED) on
+  the device intended for use by tee-supplicant. Fixes [#1199][issue1199].
+
+* RPMB: don't try to program the RPMB key by default
+
+* Fix "make clean" error cases
+
+* Fix issue when resetting persistent storage enumerator [#1332][issue1332]
+
+* Fix TA panic when doing AES CTS with specific buffer sizes
+  [#1203][issue1203].
+
+## Known issues
+
+* On RPi3 xtest sometimes stall (rcu_sched self-detected stall on CPU) [#1353][issue1353]
+* For multi-core PSCI support is to be added for ls1021atwr in OP-TEE.
+* USB keyboard cannot be used to stop the u-boot timeout ([build issue131]).
+* Travis service (build.git) seems unstable from time to time.
+
+## Tested on
+
+In the list below, _standard_ means that the `xtest` program passed with
+its default configuration, while _extended_ means it was run successfully
+with the additional GlobalPlatform™ TEE Initial Configuration Test Suite
+v1.1.0.4.
+
+If a platform is not listed, it means the release was not tested on this
+platform.
+
+<!-- ${PLATFORM}-${PLATFORM_FLAVOR}, ordered alphabetically -->
+* d02: extended
+* hikey: extended
+* imx-mx6ulevk: standard
+* ls-ls1021atwr: standard (single core)
+* mediatek-mt8173: standard
+* rcar-h3: standard
+* rpi3: standard
+* stm-b2260: extended
+* ti-dra7xx: standard
+* vexpress-fvp: standard
+* vexpress-juno: standard
+* vexpress-qemu_armv8a: standard
+* vexpress-qemu_virt: standard
+* zynqmp-zc1751_dc1: standard
+* zynqmp-zc1751_dc2: standard
+* zynqmp-zcu102: standard
+
+[github_commits_2_4_0]: https://github.com/OP-TEE/optee_os/compare/2.3.0...2.4.0
+[issue1332]: https://github.com/OP-TEE/optee_os/issues/1332
+[issue1353]: https://github.com/OP-TEE/optee_os/issues/1353
+[build issue131]: https://github.com/OP-TEE/build/issues/131
+[commit_a238b74]: https://github.com/OP-TEE/optee_os/commit/a238b744b1b3
+[commit_44e900e]: https://github.com/OP-TEE/optee_os/commit/44e900eabfc1
+
+# OP-TEE - version 2.3.0
+
+[Link][github_commits_2_3_0] to a list of all commits between this release and
+the previous one (2.2.0).
+
+Please note: this release is API-compatible with the previous one, but the
+Secure Storage internal format for the REE FS is not compatible due to commit
+[361fb3e][commit_361fb3e] ("core: REE FS: use a single file per object").
+
+[commit_361fb3e]: https://github.com/OP-TEE/optee_os/commit/361fb3e
+
+## New features
+
+* New supported platform: Xilinx Zynq 7000 ZC702 (`PLATFORM=zynq7k-zc702`)
+
+* Add debug assertions to spinlocks and mutexes
+
+* Add more CP15 register access macros for Cortex-A9
+
+* ARMv7-A: redesign secure monitor to make it easier to register services
+
+* ARMv7-A: cleanup boot arguments
+
+* libutee: extend `TEE_CheckMemoryAccessRights()` with
+  `TEE_MEMORY_ACCESS_SECURE` and `TEE_MEMORY_ACCESS_NONSECURE`
+
+* plat-hikey: enable SPI by default and add sample test code
+
+* Consider `CFLAGS_ta_arm64` and `CFLAGS_ta_arm32` when building TAs
+
+* Secure storage refactoring
+  - Simplify interface with tee-supplicant. Minimize round trips with normal
+    world, especially by adding a cache for FS RPC payload data.
+  - REE FS: use a single file per object, remove block cache.
+
+* Print call stack in panic()
+
+## Bug fixes
+
+* Fix UUID encoding when communicating with normal world (use big endian
+  mode instead of native endianness). Related to this, the string format
+  for UUIDs has changed in tee-supplicant, so that TA file names now follow
+  the format defined in RFC4122 (a missing hyphen was added). The old format
+  is still supported, but deprecated, and will likely be removed with the
+  next major release.
+
+* Drop write permission to non-writable ELF segments after TA loading is
+  complete.
+
+* mm: fix confusing memory mapping debug traces
+
+* plat-ti: fix issues with MMU mapping
+
+* crypto: fix clearing of big numbers
+
+* build: allow spaces and double quotes in CFG_ variables
+
+* mm: use paddr_t to support both 32- and 64-bit architectures properly.
+  Resolves 32-bit truncation error when pool is at top of 32 bit address
+  space on 64-bit architecture.
+
+* plat-stm: support pager. Fix pager on ARMv7-A SMP boards.
+
+* Fix debug output of Trusted Applications (remove "ERROR: TEE-CORE:" prefix)
+
+* Do not consider TA memref parameters as TA private memory
+
+* crypto: fix `cipher_final()` which would not call `cbc_done()` for CBC_MAC
+  algorithms
+
+* fix for 16-way PL310
+
+* arm32: fix call stack unwinding (`print_stack()`)
+
+* arm32: fix spinlock assembly code
+
+* plat-stm, plat-imx: fix SCR initalization
+
+* Fix user L1 MMU entries calculation (non-LPAE), allowing TTBCR.N values
+  other than 7.
+
+* mtk-mt8173: fix panic caused by incorrect size of SHMEM
+
+* plat-stm: fix RNG driver (non-flat mapping)
+
+## Known issues
+
+* New issues open on GitHub
+  * [#1203][issue1203] AES-CTS mode will fail when inlen=0x100, in_incr=0x80
+  * [#1199][issue1199] Both tee and teepriv reported GlobalPlatform compliant
+  * [#1188][issue1188] Secure storage (SQL FS and REE FS): blocks not tied to
+    current meta header
+  * [#1172][issue1172] paddr_t should be larger than 32 bits when
+    CFG_WITH_LPAE is enabled
+
+## Tested on
+
+In the list below, _standard_ means that the `xtest` program passed with
+its default configuration, while _extended_ means it was run successfully
+with the additional GlobalPlatform™ TEE Initial Configuration Test Suite
+v1.1.0.4.
+
+If a platform is not listed, it means the release was not tested on this
+platform.
+
+<!-- ${PLATFORM}-${PLATFORM_FLAVOR}, ordered alphabetically -->
+* d02: extended
+* hikey: extended
+* imx-mx6ulevk: standard
+* ls-ls1021atwr: standard
+* mediatek-mt8173: standard
+* rcar-h3: standard
+* rpi3: standard
+* stm-b2260: extended
+* stm-cannes: extended
+* ti-dra7xx: standard
+* vexpress-fvp: standard
+* vexpress-juno: standard
+* vexpress-qemu_armv8a: standard
+* vexpress-qemu_virt: extended
+* zynqmp-zcu102: standard
+
+[github_commits_2_3_0]: https://github.com/OP-TEE/optee_os/compare/2.2.0...2.3.0
+[issue1172]: https://github.com/OP-TEE/optee_os/issues/1172
+[issue1188]: https://github.com/OP-TEE/optee_os/issues/1188
+[issue1199]: https://github.com/OP-TEE/optee_os/issues/1199
+[issue1203]: https://github.com/OP-TEE/optee_os/issues/1203
+
 # OP-TEE - version 2.2.0
 
 [Link][github_commits_2_2_0] to a list of all commits between this release and
@@ -448,12 +930,12 @@ Definitions:
 *   STM Cannes (stm-cannes), standard + extended tests.
 
 
-## Issues resolved since last release
+## Issues resolved since last release
 *	Fix user TA trace issue, in order each TA is able to select its own trace level
 
 
 -------------------------------------------
-#OP-TEE - version 0.1.0
+# OP-TEE - version 0.1.0
 
 ## New features
 Below is a summary of the most important features added, but at the end you will
@@ -529,7 +1011,7 @@ Definitions:
 *   STM Cannes (plat-stm-cannes), standard + extended tests.
 
 
-## Issues resolved since last release
+## Issues resolved since last release
 N/A since this is the first release tag on OP-TEE.
 
 

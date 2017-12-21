@@ -25,11 +25,17 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <asm.S>
 #include <kernel/tz_proc_def.h>
 #include <kernel/tz_ssvce_def.h>
-#include <asm.S>
 #include <kernel/unwind.h>
 #include <platform_config.h>
+
+#define PL310_LOCKDOWN_NBREGS	8
+#define PL310_LOCKDOWN_SZREG	4
+
+#define PL310_8WAYS_MASK	0x00FF
+#define PL310_16WAYS_UPPERMASK	0xFF00
 
 /*
  * void arm_cl2_lockallways(vaddr_t base)
@@ -38,18 +44,32 @@
  */
 FUNC arm_cl2_lockallways , :
 UNWIND(	.fnstart)
-	add  r1, r0, #PL310_DCACHE_LOCKDOWN_BASE
-	mov r0, #PL310_NB_WAYS
-	movw r2, #0xFFFF	/* LD ways constant */
-loop_data_lockdown:
-	str r2, [r1], #0x04	/* lock way for Dcache */
-	str r2, [r1], #0x04	/* lock way for Icache  */
-	subs r0, r0, #1
-	bne loop_data_lockdown
+	add	r1, r0, #PL310_DCACHE_LOCKDOWN_BASE
+	ldr	r2, [r0, #PL310_AUX_CTRL]
+	tst	r2, #PL310_AUX_16WAY_BIT
+	mov	r2, #PL310_8WAYS_MASK
+	orrne	r2, #PL310_16WAYS_UPPERMASK
+	mov	r0, #PL310_LOCKDOWN_NBREGS
+1:	/* lock Dcache and Icache */
+	str	r2, [r1], #PL310_LOCKDOWN_SZREG
+	str	r2, [r1], #PL310_LOCKDOWN_SZREG
+	subs	r0, r0, #1
+	bne	1b
 
-	mov pc, lr
+	mov	pc, lr
 UNWIND(	.fnend)
 END_FUNC arm_cl2_lockallways
+
+/*
+ * Set sync operation mask according to ways associativity.
+ * Preserve r0 = pl310 iomem base address
+ */
+.macro syncbyway_set_mask reg
+	ldr	\reg, [r0, #PL310_AUX_CTRL]
+	tst	\reg, #PL310_AUX_16WAY_BIT
+	mov	\reg, #PL310_8WAYS_MASK
+	orrne	\reg, \reg, #PL310_16WAYS_UPPERMASK
+.endm
 
 /*
  * void arm_cl2_cleaninvbyway(vaddr_t base)
@@ -58,36 +78,33 @@ END_FUNC arm_cl2_lockallways
 FUNC arm_cl2_cleaninvbyway , :
 UNWIND(	.fnstart)
 
-	/* Clean and invalidate all cache ways */
-	movw r1, #0x00FF
-	movt r1, #0x0000
-	str r1, [r0, #PL310_FLUSH_BY_WAY]
+	syncbyway_set_mask r1
+	str	r1, [r0, #PL310_FLUSH_BY_WAY]
 
 	/* Wait for all cache ways to be cleaned and invalidated */
 loop_cli_way_done:
-	ldr r2, [r0, #PL310_FLUSH_BY_WAY]
-	and r2,r2,r1
-	cmp r2, #0
-	bne loop_cli_way_done
+	ldr	r2, [r0, #PL310_FLUSH_BY_WAY]
+	and	r2, r2, r1
+	cmp	r2, #0
+	bne	loop_cli_way_done
 
 	/* Cache Sync */
 
 	/* Wait for writing cache sync */
 loop_cli_sync:
-	ldr r1, [r0, #PL310_SYNC]
-	cmp r1, #0
-	bne loop_cli_sync
+	ldr	r1, [r0, #PL310_SYNC]
+	cmp	r1, #0
+	bne	loop_cli_sync
 
-	movw r1, #0x0001
-	movt r1, #0x0000
-	str r1, [r0, #PL310_SYNC]
+	mov	r1, #1
+	str	r1, [r0, #PL310_SYNC]
 
 loop_cli_sync_done:
-	ldr r1, [r0, #PL310_SYNC]
-	cmp r1, #0
-	bne loop_cli_sync_done
+	ldr	r1, [r0, #PL310_SYNC]
+	cmp	r1, #0
+	bne	loop_cli_sync_done
 
-	mov pc, lr
+	mov	pc, lr
 UNWIND(	.fnend)
 END_FUNC arm_cl2_cleaninvbyway
 
@@ -95,37 +112,29 @@ END_FUNC arm_cl2_cleaninvbyway
 FUNC arm_cl2_invbyway , :
 UNWIND(	.fnstart)
 
-	/* Clean by Way */
-	movw r1, #0x00FF	/* assumes here 8-way L2 cache (orly) */
-	movt r1, #0x0000
-	str r1, [r0, #PL310_INV_BY_WAY]
+	syncbyway_set_mask r1
+	str	r1, [r0, #PL310_INV_BY_WAY]
 
-	/* Wait end of Invalidate by Way */
 loop_inv_way_done:
-	ldr r2, [r0, #PL310_INV_BY_WAY]
-	and r2,r2,r1
-	cmp r2, #0
-	bne loop_inv_way_done
+	ldr	r2, [r0, #PL310_INV_BY_WAY]
+	and	r2, r2, r1
+	cmp	r2, #0
+	bne	loop_inv_way_done
 
-	/* Cache Sync */
-
-	/* Wait for writing cache sync */
 loop_inv_way_sync:
-	ldr r1, [r0, #PL310_SYNC]
-	cmp r1, #0
-	bne loop_inv_way_sync
+	ldr	r1, [r0, #PL310_SYNC]
+	cmp	r1, #0
+	bne	loop_inv_way_sync
 
-	movw r1, #0x0001
-	movt r1, #0x0000
-	str r1, [r0, #PL310_SYNC]
+	mov	r1, #1
+	str	r1, [r0, #PL310_SYNC]
 
-	/* Wait end of Cache Sync */
 loop_inv_way_sync_done:
-	ldr r1, [r0, #PL310_SYNC]
-	cmp r1, #0
-	bne loop_inv_way_sync_done
+	ldr	r1, [r0, #PL310_SYNC]
+	cmp	r1, #0
+	bne	loop_inv_way_sync_done
 
-	mov pc, lr
+	mov	pc, lr
 UNWIND(	.fnend)
 END_FUNC arm_cl2_invbyway
 
@@ -133,37 +142,29 @@ END_FUNC arm_cl2_invbyway
 FUNC arm_cl2_cleanbyway , :
 UNWIND(	.fnstart)
 
-	/* Clean by Way */
-	movw r1, #0x00FF
-	movt r1, #0x0000
-	str r1, [r0, #PL310_CLEAN_BY_WAY]
+	syncbyway_set_mask r1
+	str	r1, [r0, #PL310_CLEAN_BY_WAY]
 
-	/* Wait end of Clean by Way */
 loop_cl_way_done:
-	ldr r2, [r0, #PL310_CLEAN_BY_WAY]
-	and r2,r2,r1
-	cmp r2, #0
-	bne loop_cl_way_done
+	ldr	r2, [r0, #PL310_CLEAN_BY_WAY]
+	and	r2, r2, r1
+	cmp	r2, #0
+	bne	loop_cl_way_done
 
-	/* Cache Sync */
-
-	/* Wait for writing cache sync */
 loop_cl_way_sync:
-	ldr r1, [r0, #PL310_SYNC]
-	cmp r1, #0
-	bne loop_cl_way_sync
+	ldr	r1, [r0, #PL310_SYNC]
+	cmp	r1, #0
+	bne	loop_cl_way_sync
 
-	movw r1, #0x0001
-	movt r1, #0x0000
-	str r1, [r0, #PL310_SYNC]
+	mov	r1, #1
+	str	r1, [r0, #PL310_SYNC]
 
-	/* Wait end of Cache Sync */
 loop_cl_way_sync_done:
-	ldr r1, [r0, #PL310_SYNC]
-	cmp r1, #0
-	bne loop_cl_way_sync_done
+	ldr	r1, [r0, #PL310_SYNC]
+	cmp	r1, #0
+	bne	loop_cl_way_sync_done
 
-	mov pc, lr
+	mov	pc, lr
 UNWIND(	.fnend)
 END_FUNC arm_cl2_cleanbyway
 
@@ -176,8 +177,7 @@ LOCAL_FUNC _arm_cl2_xxxbypa , :
 UNWIND(	.fnstart)
 	/* Align start address on PL310 line size */
 	and	r1, #(~(PL310_LINE_SIZE - 1))
-
-
+#ifdef SCU_BASE
 	/*
 	 * ARM ERRATA #764369
 	 * Undocummented SCU Diagnostic Control Register
@@ -188,16 +188,14 @@ UNWIND(	.fnstart)
 	 * still have the same relative offsets from each other.
 	 */
 	sub	r0, r0, #(PL310_BASE - SCU_BASE)
-	movw	r12, #0x0001
-	movt	r12, #0x0000
+	mov	r12, #1
 	str	r12, [r0, #SCU_ERRATA744369]
 	dsb
 	add	r0, r0, #(PL310_BASE - SCU_BASE)
-
+#endif
 loop_cl2_xxxbypa:
 	str	r1, [r0, r3]
 
-	/* Wait for PA to be cleaned */
 loop_xxx_pa_done:
 	ldr	r12, [r0, r3]
 	and	r12, r12, r1
@@ -208,24 +206,20 @@ loop_xxx_pa_done:
 	cmp	r2, r1
 	bpl	loop_cl2_xxxbypa
 
-	/* Cache Sync */
-
-	/* Wait for writing cache sync */
 loop_xxx_pa_sync:
-	ldr r12, [r0, #PL310_SYNC]
-	cmp r12, #0
-	bne loop_xxx_pa_sync
+	ldr	r12, [r0, #PL310_SYNC]
+	cmp	r12, #0
+	bne	loop_xxx_pa_sync
 
-	movw r12, #0x0001
-	movt r12, #0x0000
-	str r12, [r0, #PL310_SYNC]
+	mov	r12, #1
+	str	r12, [r0, #PL310_SYNC]
 
 loop_xxx_pa_sync_done:
-	ldr r12, [r0, #PL310_SYNC]
-	cmp r12, #0
-	bne loop_xxx_pa_sync_done
+	ldr	r12, [r0, #PL310_SYNC]
+	cmp	r12, #0
+	bne	loop_xxx_pa_sync_done
 
-	mov pc, lr
+	mov	pc, lr
 UNWIND(	.fnend)
 END_FUNC _arm_cl2_xxxbypa
 

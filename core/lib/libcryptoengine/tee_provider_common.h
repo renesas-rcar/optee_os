@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2016, Renesas Electronics Corporation
+ * Copyright (c) 2015-2017, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -29,7 +29,6 @@
 
 #include <tee/tee_cryp_provider.h>
 #include <tee/tee_cryp_utl.h>
-#include <kernel/tee_common_unpg.h>
 #include <mpalib.h>
 #include <stdlib.h>
 #include <string.h>

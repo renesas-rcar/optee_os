@@ -25,32 +25,30 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <platform_config.h>
-
-#include <stdint.h>
-#include <string.h>
-#include <assert.h>
-
-#include <sm/sm.h>
-#include <sm/tee_mon.h>
-#include <sm/optee_smc.h>
-#include <optee_msg.h>
-
 #include <arm.h>
-#include <kernel/thread.h>
-#include <kernel/time_source.h>
+#include <assert.h>
+#include <console.h>
+#include <drivers/sunxi_uart.h>
+#include <kernel/misc.h>
 #include <kernel/panic.h>
 #include <kernel/pm_stubs.h>
-#include <kernel/misc.h>
-#include <mm/tee_mmu.h>
-#include <mm/core_mmu.h>
-#include <mm/tee_mmu_defs.h>
-#include <tee/entry_std.h>
-#include <tee/entry_fast.h>
-#include <platform.h>
-#include <util.h>
-#include <trace.h>
+#include <kernel/thread.h>
+#include <kernel/time_source.h>
 #include <malloc.h>
+#include <mm/core_mmu.h>
+#include <mm/tee_mmu.h>
+#include <optee_msg.h>
+#include <platform_config.h>
+#include <platform.h>
+#include <sm/optee_smc.h>
+#include <sm/sm.h>
+#include <sm/tee_mon.h>
+#include <stdint.h>
+#include <string.h>
+#include <tee/entry_fast.h>
+#include <tee/entry_std.h>
+#include <trace.h>
+#include <util.h>
 
 /* teecore heap address/size is defined in scatter file */
 extern unsigned char teecore_heap_start;
@@ -63,7 +61,7 @@ static void main_tee_entry_fast(struct thread_smc_args *args);
 static const struct thread_handlers handlers = {
 	.std_smc = main_tee_entry_std,
 	.fast_smc = main_tee_entry_fast,
-	.fiq = main_fiq,
+	.nintr = main_fiq,
 	.cpu_on = pm_panic,
 	.cpu_off = pm_panic,
 	.cpu_suspend = pm_panic,
@@ -79,12 +77,13 @@ void main_init(uint32_t nsec_entry)
 	size_t pos = get_core_pos();
 
 	/*
-	 * Mask IRQ and FIQ before switch to the thread vector as the
-	 * thread handler requires IRQ and FIQ to be masked while executing
+	 * Mask the interrupts before switch to the thread vector as the
+	 * thread handler requires the interrupts to be masked while executing
 	 * with the temporary stack. The thread subsystem also asserts that
-	 * IRQ is blocked when using most if its functions.
+	 * foreign interrupts are blocked when using most if its functions.
 	 */
-	thread_mask_exceptions(THREAD_EXCP_FIQ | THREAD_EXCP_IRQ);
+	thread_mask_exceptions(
+			THREAD_EXCP_NATIVE_INTR | THREAD_EXCP_FOREIGN_INTR);
 
 	if (pos == 0) {
 		thread_init_primary(&handlers);
@@ -175,4 +174,12 @@ static void main_tee_entry_std(struct thread_smc_args *args)
 void tee_entry_get_api_call_count(struct thread_smc_args *args)
 {
 	args->a0 = tee_entry_generic_get_api_call_count() + 3;
+}
+
+static struct sunxi_uart_data console_data;
+
+void console_init(void)
+{
+	sunxi_uart_init(&console_data, CONSOLE_UART_BASE);
+	register_serial_console(&console_data.chip);
 }

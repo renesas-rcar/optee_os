@@ -46,33 +46,30 @@ cmd-echo-silent := true
 endif
 endif
 
-cppflags$(sm)  := $($(sm)-platform-cppflags)
+cppflags$(sm)  := $($(sm)-platform-cppflags) $(CPPFLAGS_$(sm))
 aflags$(sm)    := $($(sm)-platform-aflags)
-cflags$(sm)    := $($(sm)-platform-cflags)
+cflags$(sm)    := $($(sm)-platform-cflags) $(CFLAGS_$(sm))
 
 CFG_TEE_TA_LOG_LEVEL ?= 2
 cppflags$(sm) += -DTRACE_LEVEL=$(CFG_TEE_TA_LOG_LEVEL)
 
-# CFG_TEE_PANIC_DEBUG is used in tee_api.h
-ifeq ($(CFG_TEE_PANIC_DEBUG),y)
-cppflags$(sm) += -DCFG_TEE_PANIC_DEBUG=1
-endif
-
 cppflags$(sm) += -I. -I$(ta-dev-kit-dir)/include
 
 libdirs += $(ta-dev-kit-dir)/lib
-libnames += utils utee mpa utils zlib png utee
+libnames += utils utee mpa
 libdeps += $(ta-dev-kit-dir)/lib/libutils.a
 libdeps += $(ta-dev-kit-dir)/lib/libmpa.a
 libdeps += $(ta-dev-kit-dir)/lib/libutee.a
-libdeps += $(ta-dev-kit-dir)/lib/libzlib.a
-libdeps += $(ta-dev-kit-dir)/lib/libpng.a
+
+include $(ta-dev-kit-dir)/mk/cleandirs.mk
 
 .PHONY: clean
 clean:
-	@$(cmd-echo-silent) '  CLEAN   .'
+	@$(cmd-echo-silent) '  CLEAN   $(out-dir)'
 	${q}rm -f $(cleanfiles)
-
+	${q}dirs="$(call cleandirs-for-rmdir)"; if [ "$$dirs" ]; then $(RMDIR) $$dirs; fi
+	@$(cmd-echo-silent) '  CLEAN   $(O)'
+	${q}if [ -d "$(O)" ]; then $(RMDIR) $(O); fi
 
 subdirs = .
 include  $(ta-dev-kit-dir)/mk/subdir.mk

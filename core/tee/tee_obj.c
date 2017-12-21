@@ -31,7 +31,6 @@
 #include <tee_api_defines.h>
 #include <mm/tee_mmu.h>
 #include <tee/tee_fs.h>
-#include <tee/tee_fs_defs.h>
 #include <tee/tee_pobj.h>
 #include <trace.h>
 #include <tee/tee_svc_storage.h>
@@ -60,8 +59,8 @@ void tee_obj_close(struct user_ta_ctx *utc, struct tee_obj *o)
 {
 	TAILQ_REMOVE(&utc->objects, o, link);
 
-	if ((o->info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT) && o->fd >= 0) {
-		o->pobj->fops->close(o->fd);
+	if ((o->info.handleFlags & TEE_HANDLE_FLAG_PERSISTENT)) {
+		o->pobj->fops->close(&o->fh);
 		tee_pobj_release(o->pobj);
 	}
 
@@ -79,53 +78,20 @@ void tee_obj_close_all(struct user_ta_ctx *utc)
 TEE_Result tee_obj_verify(struct tee_ta_session *sess, struct tee_obj *o)
 {
 	TEE_Result res;
-	char *file = NULL;
-	char *dir = NULL;
-	int fd = -1;
-	int err = -1;
 	const struct tee_file_operations *fops = o->pobj->fops;
+	struct tee_file_handle *fh = NULL;
 
 	if (!fops)
 		return TEE_ERROR_STORAGE_NOT_AVAILABLE;
 
-	file = tee_svc_storage_create_filename(sess,
-					       o->pobj->obj_id,
-					       o->pobj->obj_id_len,
-					       false);
-	if (file == NULL) {
-		res = TEE_ERROR_OUT_OF_MEMORY;
-		goto exit;
+	res = fops->open(o->pobj, NULL, &fh);
+	if (res == TEE_ERROR_CORRUPT_OBJECT) {
+		EMSG("Object corrupt\n");
+		fops->remove(o->pobj);
+		tee_obj_close(to_user_ta_ctx(sess->ctx), o);
 	}
 
-	err = fops->access(file, TEE_FS_F_OK);
-	if (err) {
-		/* file not found */
-		res = TEE_ERROR_STORAGE_NOT_AVAILABLE;
-		goto err;
-	}
-
-	fd = fops->open(&res, file, TEE_FS_O_RDONLY);
-	if (fd < 0) {
-		if (res == TEE_ERROR_CORRUPT_OBJECT) {
-			EMSG("Object corrupt\n");
-			tee_obj_close(to_user_ta_ctx(sess->ctx), o);
-			fops->unlink(file);
-			dir = tee_svc_storage_create_dirname(sess);
-			if (dir != NULL) {
-				fops->rmdir(dir);
-				free(dir);
-			}
-		}
-		goto err;
-	}
-
-	res = TEE_SUCCESS;
-
-err:
-	free(file);
-	if (fd >= 0)
-		fops->close(fd);
-exit:
+	fops->close(&fh);
 	return res;
 }
 

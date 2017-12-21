@@ -26,6 +26,7 @@
  */
 
 #include <kernel/tee_time.h>
+#include <kernel/delay.h>
 #include <tee/tee_svc.h>
 #include <drivers/qspi_hyper_flash.h>
 #include <trace.h>
@@ -102,29 +103,6 @@ uint32_t common_wait(uint32_t (*read_status)(uint32_t *), uint32_t *data,
 	return ret;
 }
 
-void soft_delay(uint32_t delay_ms)
-{
-	TEE_Result ret;
-	volatile int32_t loop;
-	TEE_Time start_time;
-	TEE_Time end_time;
-	uint32_t s;
-	uint32_t e;
-
-	ret = arm_cntpct_get_sys_time(&start_time);
-
-	if (ret == TEE_SUCCESS) {
-		s = start_time.seconds * 1000 + start_time.millis;
-		do {
-			for(loop = 0; loop < 10000; loop++); /* dummy loop */
-			ret = arm_cntpct_get_sys_time(&end_time);
-			if (ret == TEE_SUCCESS) {
-				e = end_time.seconds * 1000 + end_time.millis;
-			}
-		} while ((ret == TEE_SUCCESS) && ((e - s) < delay_ms));
-	}
-}
-
 uint32_t set_rpc_clock_mode(uint32_t mode)
 {
 	uint32_t ret = FL_DRV_OK;
@@ -132,8 +110,7 @@ uint32_t set_rpc_clock_mode(uint32_t mode)
 	uint32_t reg;
 	int32_t i;
 	const int32_t polling_max = 100;
-	const int32_t dummy_max = 1700; /* 10us or so wait */
-	volatile int32_t loop;
+	const uint32_t wait_time_us = 10;
 
 	if (mode == RPC_CLK_40M) {
 		dataL = 0x00000017U;	/* RPC clock 40MHz */
@@ -163,8 +140,7 @@ uint32_t set_rpc_clock_mode(uint32_t mode)
 				ret = FL_DRV_OK;
 				break;
 			}
-			/* dummy loop */
-			for(loop = 0; loop < dummy_max; loop++);
+			udelay(wait_time_us);
 		}
 	}
 

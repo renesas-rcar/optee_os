@@ -40,8 +40,9 @@ TAILQ_HEAD(tee_obj_head, tee_obj);
 TAILQ_HEAD(tee_storage_enum_head, tee_storage_enum);
 
 struct user_ta_ctx {
-	tee_uaddr_t entry_func;
-	size_t stack_size;	/* size of stack */
+	uaddr_t entry_func;
+	uaddr_t exidx_start;	/* 32-bit TA: exception handling index table */
+	size_t exidx_size;
 	bool is_32bit;		/* true if 32-bit ta, false if 64-bit ta */
 	/* list of sessions opened by this TA */
 	struct tee_ta_session_head open_sessions;
@@ -51,8 +52,8 @@ struct user_ta_ctx {
 	struct tee_obj_head objects;
 	/* List of storage enumerators opened by this TA */
 	struct tee_storage_enum_head storage_enums;
-	tee_mm_entry_t *mm;	/* secure world memory */
-	tee_mm_entry_t *mm_stack;/* stack */
+	struct mobj *mobj_code; /* secure world memory */
+	struct mobj *mobj_stack; /* stack */
 	uint32_t load_addr;	/* elf load addr (from TAs address space) */
 	uint32_t context;	/* Context ID of the process */
 	struct tee_mmu_info *mmu;	/* Saved MMU information (ddr only) */
@@ -79,15 +80,24 @@ static inline struct user_ta_ctx *to_user_ta_ctx(struct tee_ta_ctx *ctx)
 	return container_of(ctx, struct user_ta_ctx, ctx);
 }
 
+struct user_ta_store_ops;
+
 #ifdef CFG_WITH_USER_TA
 TEE_Result tee_ta_init_user_ta_session(const TEE_UUID *uuid,
 			struct tee_ta_session *s);
+TEE_Result tee_ta_register_ta_store(struct user_ta_store_ops *ops);
 #else
 static inline TEE_Result tee_ta_init_user_ta_session(
 			const TEE_UUID *uuid __unused,
 			struct tee_ta_session *s __unused)
 {
 	return TEE_ERROR_ITEM_NOT_FOUND;
+}
+
+static inline TEE_Result tee_ta_register_ta_store(
+			struct user_ta_store_ops *ops __unused)
+{
+	return TEE_ERROR_NOT_SUPPORTED;
 }
 #endif
 

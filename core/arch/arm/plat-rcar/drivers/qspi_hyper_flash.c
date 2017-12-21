@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2016, Renesas Electronics Corporation
+ * Copyright (c) 2015-2017, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -28,6 +28,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <trace.h>
+#include <kernel/delay.h>
 #include <drivers/qspi_hyper_flash.h>
 
 #include "qspi_hyper_flash_common.h"
@@ -251,29 +252,26 @@ static uint32_t write_flash_unsupported(uint32_t buf_addr,
 
 static uint32_t init_rpc(void)
 {
-	uint32_t ret = FL_DRV_OK;
+	uint32_t ret;
 	uint32_t dataL;
+	/* wait: tRPH(30us) >= tRP(200ns) + tRH(150ns) */
+	const uint32_t wait_time_us_tRP_margin = 1U;
+	const uint32_t wait_time_us_tRH_margin = 29U;
 
-	/* Set RPC clock mode */
-
-	dataL = 0x00000013;	/* RPC clock 80MHz */
-
-	*((volatile uint32_t *)CPG_CPGWPR)	= ~dataL;
-	*((volatile uint32_t *)CPG_RPCCKCR)	=  dataL;
-
-	soft_delay(1);		/* wait 1ms */
+	ret = set_rpc_clock_mode(RPC_CLK_80M);
 
 	/* Reset RPC */
+	if (ret == FL_DRV_OK) {
+		dataL = 0x00020000U;	/* Bit17 RPC reset */
 
-	dataL = 0x00020000;	/* Bit17 RPC reset */
+		*((volatile uint32_t *)CPG_CPGWPR)	= ~dataL;
+		*((volatile uint32_t *)CPG_SRCR9)	=  dataL;
+		udelay(wait_time_us_tRP_margin);
 
-	*((volatile uint32_t *)CPG_CPGWPR)	= ~dataL;
-	*((volatile uint32_t *)CPG_SRCR9)	=  dataL;
-	soft_delay(1);		/* wait 1ms (20us) */
-
-	*((volatile uint32_t *)CPG_CPGWPR)	= ~dataL;
-	*((volatile uint32_t *)CPG_SRSTCLR9)	=  dataL;
-	soft_delay(1);		/* wait 1ms (40us) */
+		*((volatile uint32_t *)CPG_CPGWPR)	= ~dataL;
+		*((volatile uint32_t *)CPG_SRSTCLR9)	=  dataL;
+		udelay(wait_time_us_tRH_margin);
+	}
 
 	return ret;
 }

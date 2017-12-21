@@ -26,36 +26,34 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <platform_config.h>
-
-#include <stdint.h>
-#include <string.h>
-
+#include <arm.h>
+#include <console.h>
 #include <drivers/gic.h>
 #include <drivers/pl011.h>
 #include <drivers/tzc400.h>
-
-#include <arm.h>
+#include <initcall.h>
+#include <keep.h>
 #include <kernel/generic_boot.h>
-#include <kernel/pm_stubs.h>
-#include <trace.h>
 #include <kernel/misc.h>
 #include <kernel/panic.h>
+#include <kernel/pm_stubs.h>
 #include <kernel/tee_time.h>
-#include <tee/entry_fast.h>
-#include <tee/entry_std.h>
 #include <mm/core_memprot.h>
 #include <mm/core_mmu.h>
-#include <console.h>
-#include <keep.h>
-#include <initcall.h>
+#include <platform_config.h>
+#include <sm/psci.h>
+#include <stdint.h>
+#include <string.h>
+#include <tee/entry_fast.h>
+#include <tee/entry_std.h>
+#include <trace.h>
 
 static void main_fiq(void);
 
 static const struct thread_handlers handlers = {
 	.std_smc = tee_entry_std,
 	.fast_smc = tee_entry_fast,
-	.fiq = main_fiq,
+	.nintr = main_fiq,
 #if defined(CFG_WITH_ARM_TRUSTED_FW)
 	.cpu_on = cpu_on_handler,
 	.cpu_off = pm_do_nothing,
@@ -74,8 +72,19 @@ static const struct thread_handlers handlers = {
 };
 
 static struct gic_data gic_data;
+static struct pl011_data console_data;
 
+#if defined(PLATFORM_FLAVOR_fvp)
+register_phys_mem(MEM_AREA_RAM_SEC, TZCDRAM_BASE, TZCDRAM_SIZE);
+#endif
+#if defined(PLATFORM_FLAVOR_qemu_virt)
+register_phys_mem(MEM_AREA_IO_SEC, SECRAM_BASE, SECRAM_COHERENT_SIZE);
+#endif
 register_phys_mem(MEM_AREA_IO_SEC, CONSOLE_UART_BASE, PL011_REG_SIZE);
+register_nsec_ddr(DRAM0_BASE, DRAM0_SIZE);
+#ifdef DRAM1_BASE
+register_nsec_ddr(DRAM1_BASE, DRAM1_SIZE);
+#endif
 
 const struct thread_handlers *generic_boot_get_handlers(void)
 {
@@ -99,8 +108,7 @@ void main_init_gic(void)
 	if (!gicc_base || !gicd_base)
 		panic();
 
-#if defined(PLATFORM_FLAVOR_fvp) || defined(PLATFORM_FLAVOR_juno) || \
-	defined(PLATFORM_FLAVOR_qemu_armv8a)
+#if defined(CFG_WITH_ARM_TRUSTED_FW)
 	/* On ARMv8, GIC configuration is initialized in ARM-TF */
 	gic_init_base_addr(&gic_data, gicc_base, gicd_base);
 #else
@@ -109,6 +117,14 @@ void main_init_gic(void)
 #endif
 	itr_init(&gic_data.chip);
 }
+
+#if !defined(CFG_WITH_ARM_TRUSTED_FW)
+void main_secondary_init_gic(void)
+{
+	gic_cpu_init(&gic_data);
+}
+#endif
+
 #endif
 
 static void main_fiq(void)
@@ -116,44 +132,20 @@ static void main_fiq(void)
 	gic_it_handle(&gic_data);
 }
 
-static vaddr_t console_base(void)
-{
-	static void *va;
-
-	if (cpu_mmu_enabled()) {
-		if (!va)
-			va = phys_to_virt(CONSOLE_UART_BASE, MEM_AREA_IO_SEC);
-		return (vaddr_t)va;
-	}
-	return CONSOLE_UART_BASE;
-}
-
 void console_init(void)
 {
-	pl011_init(console_base(), CONSOLE_UART_CLK_IN_HZ, CONSOLE_BAUDRATE);
-}
-
-void console_putc(int ch)
-{
-	vaddr_t base = console_base();
-
-	if (ch == '\n')
-		pl011_putc('\r', base);
-	pl011_putc(ch, base);
-}
-
-void console_flush(void)
-{
-	pl011_flush(console_base());
+	pl011_init(&console_data, CONSOLE_UART_BASE, CONSOLE_UART_CLK_IN_HZ,
+		   CONSOLE_BAUDRATE);
+	register_serial_console(&console_data.chip);
 }
 
 #ifdef IT_CONSOLE_UART
 static enum itr_return console_itr_cb(struct itr_handler *h __unused)
 {
-	paddr_t uart_base = console_base();
+	struct serial_chip *cons = &console_data.chip;
 
-	while (pl011_have_rx_data(uart_base)) {
-		int ch __maybe_unused = pl011_getchar(uart_base);
+	while (cons->ops->have_rx_data(cons)) {
+		int ch __maybe_unused = cons->ops->getchar(cons);
 
 		DMSG("cpu %zu: got 0x%x", get_core_pos(), ch);
 	}
@@ -170,7 +162,7 @@ KEEP_PAGER(console_itr);
 static TEE_Result init_console_itr(void)
 {
 	itr_add(&console_itr);
-	itr_enable(&console_itr);
+	itr_enable(IT_CONSOLE_UART);
 	return TEE_SUCCESS;
 }
 driver_init(init_console_itr);
@@ -199,3 +191,36 @@ static TEE_Result init_tzc400(void)
 
 service_init(init_tzc400);
 #endif /*CFG_TZC400*/
+
+#if defined(PLATFORM_FLAVOR_qemu_virt)
+int psci_cpu_on(uint32_t core_id, uint32_t entry, uint32_t context_id __unused)
+{
+	size_t pos = get_core_pos_mpidr(core_id);
+	uint32_t *sec_entry_addrs = phys_to_virt(SECRAM_BASE, MEM_AREA_IO_SEC);
+	static bool core_is_released[CFG_TEE_CORE_NB_CORE];
+
+	if (!sec_entry_addrs)
+		panic();
+
+	if (!pos || pos >= CFG_TEE_CORE_NB_CORE)
+		return PSCI_RET_INVALID_PARAMETERS;
+
+	DMSG("core pos: %zu: ns_entry %#" PRIx32, pos, entry);
+
+	if (core_is_released[pos]) {
+		EMSG("core %zu already released", pos);
+		return PSCI_RET_DENIED;
+	}
+	core_is_released[pos] = true;
+
+	/* set NS entry addresses of core */
+	ns_entry_addrs[pos] = entry;
+	dsb_ishst();
+
+	sec_entry_addrs[pos] = CFG_TEE_RAM_START;
+	dsb_ishst();
+	sev();
+
+	return PSCI_RET_SUCCESS;
+}
+#endif /*PLATFORM_FLAVOR_qemu_virt*/

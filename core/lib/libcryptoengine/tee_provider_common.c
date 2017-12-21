@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2016, Renesas Electronics Corporation
+ * Copyright (c) 2015-2017, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -352,7 +352,8 @@ void bn_clear(struct bignum *s)
 	struct mpa_numbase_struct *bn;
 	PROV_INMSG("s=%p\n",(void *)s);
 	bn = (struct mpa_numbase_struct *)s;
-	(void)memset(bn, 0, bn->alloc);
+	/* despite mpa_numbase_struct description, 'alloc' field a byte size */
+	(void)memset(bn->d, 0, bn->alloc);
 	PROV_OUTMSG("return (void)");
 }
 

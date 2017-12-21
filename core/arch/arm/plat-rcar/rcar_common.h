@@ -31,7 +31,6 @@
 #include <string.h>
 #include <platform_config.h>
 #include <kernel/misc.h>
-#include <kernel/tz_proc.h>
 #include <kernel/panic.h>
 #include <drivers/gic.h>
 #include <arm.h>
@@ -110,15 +109,6 @@ extern const int8_t *product_name;
 /*
  * Prototype declaration
  */
-
-void cpu_spin_lock_irqsave(uint32_t *lock, uint32_t *flags);
-void cpu_spin_unlock_irqrestore(uint32_t *lock, uint32_t flags);
-
-uint32_t disable_interrupts(void);
-void enable_interrupts(uint32_t flags);
-void enable_abort(void);
-void enable_fiq(void);
-void enable_irq(void);
 
 #ifdef CFG_CRYPT_HW_CRYPTOENGINE
 extern void hw_engine_lock(uint32_t *lock, uint32_t flag);

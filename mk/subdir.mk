@@ -4,18 +4,19 @@
 #
 # Output
 #
-# set srcs
+# set     srcs gen-srcs
 # set     cflags-$(oname) cflags-remove-$(oname)
 #         aflags-$(oname) aflags-remove-$(oname)
 #         cppflags-$(oname) cppflags-remove-$(oname)
 #         incdirs-$(oname)
-#         incdirs-lib$(libname)  [if libname is defined]
-#         cppflags-lib$(libname) [if libname is defined]
-#         cflags-lib$(libname)   [if libname is defined]
+#         incdirs-lib$(libname)-$(sm)  [if libname is defined]
+#         cppflags-lib$(libname)-$(sm) [if libname is defined]
+#         cflags-lib$(libname)-$(sm)   [if libname is defined]
 # for each file found, oname is the name of the object file for corresponding
 # source file
 
 srcs :=
+gen-srcs :=
 
 define process-subdir-srcs-y
 ifeq ($$(sub-dir),.)
@@ -119,9 +120,9 @@ sub-subdirs := $$(addprefix $1/,$$(subdirs-y))
 incdirs$(sm) := $(incdirs$(sm)) $$(addprefix $1/,$$(global-incdirs-y))
 thissubdir-incdirs := $(out-dir)/$(base-prefix)$1 $$(addprefix $1/,$$(incdirs-y))
 ifneq ($$(libname),)
-incdirs-lib$$(libname) := $$(incdirs-lib$$(libname)) $$(addprefix $1/,$$(incdirs-lib-y))
-cflags-lib$$(libname) := $$(cflags-lib$$(libname)) $$(cflags-lib-y)
-cppflags-lib$$(libname) := $$(cppflags-lib$$(libname)) $$(cppflags-lib-y)
+incdirs-lib$$(libname)-$$(sm) := $$(incdirs-lib$$(libname)-$$(sm)) $$(addprefix $1/,$$(incdirs-lib-y))
+cflags-lib$$(libname)-$$(sm) := $$(cflags-lib$$(libname)-$$(sm)) $$(cflags-lib-y)
+cppflags-lib$$(libname)-$$(sm) := $$(cppflags-lib$$(libname)-$$(sm)) $$(cppflags-lib-y)
 endif
 
 # Process files in current directory

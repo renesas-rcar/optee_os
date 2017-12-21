@@ -38,9 +38,11 @@ WARNS ?= 3
 # Define DEBUG=1 to compile without optimization (forces -O0)
 # DEBUG=1
 
-# If y, enable debug mode of the tee firmware (CPU restart, Core Status
-# verbose, panic & assert verbose). When disable, NDEBUG directive is defined.
-CFG_TEE_CORE_DEBUG ?= n
+# If y, enable debug features of the TEE core (assertions and lock checks
+# are enabled, panic and assert messages are more verbose, data and prefetch
+# aborts show a stack dump). When disabled, the NDEBUG directive is defined
+# so assertions are disabled.
+CFG_TEE_CORE_DEBUG ?= y
 
 # Max level of the tee core traces. 0 means disable, 4 is max.
 # Supported values: 0 (no traces) to 4 (all traces)
@@ -59,11 +61,6 @@ CFG_TEE_TA_LOG_LEVEL ?= 1
 # CFG_TEE_TA_LOG_LEVEL. Otherwise, they are not output at all
 CFG_TEE_CORE_TA_TRACE ?= y
 
-# Define TEE_Panic as a macro to help debugging panics caused by calls to
-# TEE_Panic. This flag can have a different value when later compiling the
-# TA
-CFG_TEE_PANIC_DEBUG ?= y
-
 # If 1, enable debug features in TA memory allocation.
 # Debug features include check of buffer overflow, statistics, mark/check heap
 # feature.
@@ -73,12 +70,12 @@ CFG_TEE_CORE_USER_MEM_DEBUG ?= 1
 CFG_TEE_CORE_MALLOC_DEBUG ?= n
 CFG_TEE_TA_MALLOC_DEBUG ?= n
 
-# All message with level equal or higher to the following value will be
-# prefixed with long debugging information (severity, thread ID, component
-# name, function name, line number). Otherwise a short prefix is used
-# (severity and component name only).
+# Mask to select which messages are prefixed with long debugging information
+# (severity, thread ID, component name, function name, line number) based on
+# the message level. If BIT(level) is set, the long prefix is shown.
+# Otherwise a short prefix is used (severity and component name only).
 # Levels: 0=none 1=error 2=info 3=debug 4=flow
-CFG_MSG_LONG_PREFIX_THRESHOLD ?= 3
+CFG_MSG_LONG_PREFIX_MASK ?= 0x1a
 
 # PRNG configuration
 # If CFG_WITH_SOFTWARE_PRNG is enabled, crypto provider provided
@@ -102,7 +99,7 @@ TEE_IMPL_VERSION ?= $(shell git describe --always --dirty=-dev 2>/dev/null || ec
 # with limited depth not including any tag, so there is really no guarantee
 # that TEE_IMPL_VERSION contains the major and minor revision numbers.
 CFG_OPTEE_REVISION_MAJOR ?= 2
-CFG_OPTEE_REVISION_MINOR ?= 1
+CFG_OPTEE_REVISION_MINOR ?= 6
 
 # Trusted OS implementation manufacturer name
 CFG_TEE_MANUFACTURER ?= LINARO
@@ -119,9 +116,6 @@ CFG_TEE_FW_MANUFACTURER ?= FW_MAN_UNDEF
 # TEE_STORAGE_PRIVATE is passed to the trusted storage API)
 CFG_REE_FS ?= y
 
-# REE filesystem block cache support
-CFG_REE_FS_BLOCK_CACHE ?= n
-
 # RPMB file system support
 CFG_RPMB_FS ?= n
 
@@ -130,12 +124,15 @@ CFG_RPMB_FS ?= n
 # tee-supplicant process will open /dev/mmcblk<id>rpmb
 CFG_RPMB_FS_DEV_ID ?= 0
 
-# SQL FS stores its data in a SQLite database, accessed by normal world
-CFG_SQL_FS ?= n
-
-# File encryption support
-# Applies to all filesystems
-CFG_ENC_FS ?= y
+# Enables RPMB key programming by the TEE, in case the RPMB partition has not
+# been configured yet.
+# !!! Security warning !!!
+# Do *NOT* enable this in product builds, as doing so would allow the TEE to
+# leak the RPMB key.
+# This option is useful in the following situations:
+# - Testing
+# - RPMB key provisioning in a controlled environment (factory setup)
+CFG_RPMB_WRITE_KEY ?= n
 
 # Embed public part of this key in OP-TEE OS
 TA_SIGN_KEY ?= keys/default_ta.pem
@@ -155,17 +152,53 @@ CFG_LIBUTILS_WITH_ISOC ?= y
 # With CFG_TA_FLOAT_SUPPORT enabled TA code is free use floating point types
 CFG_TA_FLOAT_SUPPORT ?= y
 
-# Enable stack unwinding for aborts from kernel mode if CFG_TEE_CORE_DEBUG
-# is enabled
+# Stack unwinding: print a stack dump to the console on core or TA abort, or
+# when a TA panics.
+# If CFG_UNWIND is enabled, both the kernel and user mode call stacks can be
+# unwound (not paged TAs, however).
+# Note that 32-bit ARM code needs unwind tables for this to work, so enabling
+# this option will increase the size of the 32-bit TEE binary by a few KB.
+# Similarly, TAs have to be compiled with -funwind-tables (default when the
+# option is set) otherwise they can't be unwound.
+# Warning: since the unwind sequence for user-mode (TA) code is implemented in
+# the privileged layer of OP-TEE, enabling this feature will weaken the
+# user/kernel isolation. Therefore it should be disabled in release builds.
 ifeq ($(CFG_TEE_CORE_DEBUG),y)
-CFG_CORE_UNWIND ?= y
+CFG_UNWIND ?= y
 endif
 
 # Enable support for dynamically loaded user TAs
 CFG_WITH_USER_TA ?= y
 
-# Use small pages to map user TAs
-CFG_SMALL_PAGE_USER_TA ?= y
+# Load user TAs from the REE filesystem via tee-supplicant
+# There is currently no other alternative, but you may want to disable this in
+# case you implement your own TA store
+CFG_REE_FS_TA ?= y
+
+# Support for loading user TAs from a special section in the TEE binary.
+# Such TAs are available even before tee-supplicant is available (hence their
+# name), but note that many services exported to TAs may need tee-supplicant,
+# so early use is limited to a subset of the TEE Internal Core API (crypto...)
+# To use this feature, set EARLY_TA_PATHS to the paths to one or more TA ELF
+# file(s). For example:
+#   $ make ... \
+#     EARLY_TA_PATHS="path/to/8aaaf200-2450-11e4-abe2-0002a5d5c51b.stripped.elf \
+#                     path/to/cb3e5ba0-adf1-11e0-998b-0002a5d5c51b.stripped.elf"
+# Typical build steps:
+#   $ make ta_dev_kit CFG_EARLY_TA=y # Create the dev kit (user mode libraries,
+#                                    # headers, makefiles), ready to build TAs.
+#                                    # CFG_EARLY_TA=y is optional, it prevents
+#                                    # later library recompilations.
+#   <build some TAs>
+#   $ make EARLY_TA_PATHS=<paths>    # Build OP-TEE and embbed the TA(s)
+ifneq ($(EARLY_TA_PATHS),)
+$(call force,CFG_EARLY_TA,y)
+else
+CFG_EARLY_TA ?= n
+endif
+ifeq ($(CFG_EARLY_TA),y)
+$(call force,CFG_ZLIB,y)
+endif
 
 # Enable paging, requires SRAM, can't be enabled by default
 CFG_WITH_PAGER ?= n
@@ -201,15 +234,47 @@ CFG_TEE_CORE_EMBED_INTERNAL_TESTS ?= y
 # with specific core number and non-secure entry address.
 CFG_BOOT_SECONDARY_REQUEST ?= n
 
-# For firmwares that do not pass arguments to OP-TEE, this option enables the
-# built-in arguments which are specified as CFG items in the build time:
-# CFG_PAGEABLE_ADDR: pageable data address, normally passed in R0;
-# CFG_NS_ENTRY_ADDR: NS World entry address, normally passed in LR;
-# CFG_DT_ADDR: Device Tree data address, normally passed in R2;
-CFG_BUILT_IN_ARGS ?= n
-CFG_PAGEABLE_ADDR ?= 0x0
-CFG_NS_ENTRY_ADDR ?=0x0
-CFG_DT_ADDR ?= 0x0
-
 # Default heap size for Core, 64 kB
 CFG_CORE_HEAP_SIZE ?= 65536
+
+# TA profiling.
+# When this option is enabled, OP-TEE can execute Trusted Applications
+# instrumented with GCC's -pg flag and will output profiling information
+# in gmon.out format to /tmp/gmon-<ta_uuid>.out (path is defined in
+# tee-supplicant)
+CFG_TA_GPROF_SUPPORT ?= n
+
+# Enable to compile user TA libraries with profiling (-pg).
+# Depends on CFG_TA_GPROF_SUPPORT.
+CFG_ULIBS_GPROF ?= n
+
+ifeq ($(CFG_ULIBS_GPROF),y)
+ifneq ($(CFG_TA_GPROF_SUPPORT),y)
+$(error Cannot instrument user libraries if user mode profiling is disabled)
+endif
+endif
+
+# CFG_GP_SOCKETS
+# Enable Global Platform Sockets support
+CFG_GP_SOCKETS ?= y
+
+# Enable Secure Data Path support in OP-TEE core (TA may be invoked with
+# invocation parameters referring to specific secure memories).
+CFG_SECURE_DATA_PATH ?= n
+
+# Define the number of cores per cluster used in calculating core position.
+# The cluster number is shifted by this value and added to the core ID,
+# so its value represents log2(cores/cluster).
+# Default is 2**(2) = 4 cores per cluster.
+CFG_CORE_CLUSTER_SHIFT ?= 2
+
+# Do not report to NW that dynamic shared memory (shared memory outside
+# predefined region) is enabled.
+# Note that you can disable this feature for debug purposes. OP-TEE will not
+# report to Normal World that it support dynamic SHM. But, nevertheles it
+# will accept dynamic SHM buffers.
+CFG_DYN_SHM_CAP ?= y
+
+# Enables support for larger physical addresses, that is, it will define
+# paddr_t as a 64-bit type.
+CFG_CORE_LARGE_PHYS_ADDR ?= n

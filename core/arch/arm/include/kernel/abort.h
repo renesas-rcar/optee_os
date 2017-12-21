@@ -31,6 +31,7 @@
 #define ABORT_TYPE_UNDEF	0
 #define ABORT_TYPE_PREFETCH	1
 #define ABORT_TYPE_DATA		2
+#define ABORT_TYPE_TA_PANIC	3 /* Dump stack on TA panic (not an abort) */
 
 #ifndef ASM
 
@@ -45,7 +46,9 @@ struct abort_info {
 	struct thread_abort_regs *regs;
 };
 
+/* Print abort info to the console */
 void abort_print(struct abort_info *ai);
+/* Print abort info + stack dump to the console */
 void abort_print_error(struct abort_info *ai);
 
 void abort_handler(uint32_t abort_type, struct thread_abort_regs *regs);
