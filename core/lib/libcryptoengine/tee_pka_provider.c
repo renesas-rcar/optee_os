@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2016, Renesas Electronics Corporation
+ * Copyright (c) 2015-2018, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -54,7 +54,7 @@ static SSError_t pka_translate_error_pka2ss_ecc(SA_PkadrvlibRetCode_t err)
 	switch (err) {
 	case SA_PKADRVLIB_RET_OK:
 	case SA_PKADRVLIB_RET_EINPROGRESS:
-		PROV_EMSG("res = SS_ERROR_BAD_STATE\n");
+		PROV_DMSG("res = SS_SUCCESS\n");
 		res = SS_SUCCESS;
 		break;
 	case SA_PKADRVLIB_RET_MUTEX_LOCK_ERROR:
@@ -65,7 +65,7 @@ static SSError_t pka_translate_error_pka2ss_ecc(SA_PkadrvlibRetCode_t err)
 		res = SS_ERROR_BAD_STATE;
 		break;
 	default:
-		PROV_EMSG("res = SS_ERROR_BAD_STATE\n");
+		PROV_EMSG("res = SS_ERROR_BAD_PARAMETERS\n");
 		res = SS_ERROR_BAD_PARAMETERS;
 		break;
 	}
@@ -90,7 +90,7 @@ static SSError_t pka_get_ecc_keysize(uint32_t curve,
 
 	switch ((int32_t)curve) {
 	case TEE_ECC_CURVE_NIST_P192:
-		PROV_DMSG("v\n");
+		PROV_DMSG("curve=TEE_ECC_CURVE_NIST_P192\n");
 		*domain_id = CRYS_ECPKI_DomainID_secp192r1;
 		*key_size_bytes = 24U;
 		break;

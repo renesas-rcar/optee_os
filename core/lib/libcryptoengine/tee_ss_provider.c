@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2017, Renesas Electronics Corporation
+ * Copyright (c) 2015-2018, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -5850,19 +5850,34 @@ static TEE_Result prng_add_entropy(const uint8_t *inbuf, size_t len)
 	TEE_Result tee_res;
 	SSError_t res;
 	CRYSError_t crys_res;
-	uint8_t *addInput_ptr;
-	uint16_t addInputSizeBytes;
+	uint8_t addInput[(uint32_t)CRYS_RND_ADDITINAL_INPUT_MAX_SIZE_WORDS
+			* sizeof(uint32_t)] = {0};
+	size_t addInputSizeBytes;
 
 	PROV_INMSG("START: prng_add_entropy\n");
 
-	addInput_ptr = (uint8_t *)inbuf;
-	addInputSizeBytes = (uint16_t)len;
+	if (NULL == inbuf) {
+		PROV_EMSG("Input Buffer is NULL\n");
+		res = SS_ERROR_BAD_PARAMETERS;
+	} else {
+		if (sizeof(addInput) < len) {
+			addInputSizeBytes = sizeof(addInput);
+		} else {
+			addInputSizeBytes = len;
+		}
+		(void)memcpy(addInput, inbuf, addInputSizeBytes);
 
-	PROV_DMSG("CALL: CRYS_RND_AddAdditionalInput()\n");
-	crys_res = CRYS_RND_AddAdditionalInput(addInput_ptr, addInputSizeBytes);
-	res = ss_translate_error_crys2ss_rnd(crys_res);
-	PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n", crys_res, res);
+		PROV_DMSG("CALL: CRYS_RND_AddAdditionalInput()\n");
+		crys_res = CRYS_RND_AddAdditionalInput((uint8_t *)&addInput[0],
+				(uint16_t)sizeof(addInput));
 
+		res = ss_translate_error_crys2ss_rnd(crys_res);
+		PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n", crys_res,
+				res);
+		if (SS_SUCCESS != res) {
+			PROV_EMSG("res=0x%08x\n", res);
+		}
+	}
 	tee_res = ss_translate_error_ss2tee(res);
 	PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n", res, tee_res);
 	return tee_res;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2017, Renesas Electronics Corporation
+ * Copyright (c) 2015-2018, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -46,7 +46,7 @@
 /* Debug */
 #define PROV_INMSG(...)		do{}while(0)
 #define PROV_OUTMSG(...)	do{}while(0)
-#define PROV_EMSG(...)		do{}while(0)
+#define PROV_EMSG(...)		EMSG(__VA_ARGS__)
 #define PROV_IMSG(...)		do{}while(0)
 #define PROV_DMSG(...)		do{}while(0)
 #define PROV_FMSG(...)		do{}while(0)

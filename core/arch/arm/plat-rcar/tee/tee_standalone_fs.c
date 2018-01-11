@@ -108,10 +108,12 @@ static TEE_Result spi_get_hod_from_path(const char *path, size_t path_len,
 static TEE_Result spi_get_hod(const char *dir, size_t dir_len, uint32_t *hod);
 static TEE_Result spi_find_file(const char *file, size_t file_len);
 static TEE_Result spi_find_file_under_dir(const char *dir, size_t dir_len);
-static struct spim_record_descriptor *spi_find_file_and_generate_rdesc(
-			const char *file, size_t file_len);
-static struct spim_record_descriptor *spi_find_path_and_generate_rdesc(
-			const struct spio_find_info *f);
+static TEE_Result spi_find_file_and_generate_rdesc(
+			const char *file, size_t file_len,
+			struct spim_record_descriptor **rdesc_out);
+static TEE_Result spi_find_path_and_generate_rdesc(
+			const struct spio_find_info *f,
+			struct spim_record_descriptor **rdesc_out);
 static TEE_Result spi_find_path(const struct spio_find_info *f);
 static TEE_Result spi_search_flash_for_record_info(
 			const struct spio_find_info *f,
@@ -1068,10 +1070,10 @@ static TEE_Result spi_find_file_under_dir(const char *dir, size_t dir_len)
 	return res;
 }
 
-static struct spim_record_descriptor *spi_find_file_and_generate_rdesc(
-			const char *file, size_t file_len)
+static TEE_Result spi_find_file_and_generate_rdesc(
+			const char *file, size_t file_len,
+			struct spim_record_descriptor **rdesc_out)
 {
-	struct spim_record_descriptor *rdesc = NULL;
 	TEE_Result res;
 	struct spio_find_info f;
 
@@ -1083,14 +1085,15 @@ static struct spim_record_descriptor *spi_find_file_and_generate_rdesc(
 		f.attr		= SAFS_ATTR_DATA_FILE;
 		f.match_flag	= PERFECT_MATCHING;
 
-		rdesc = spi_find_path_and_generate_rdesc(&f);
+		res = spi_find_path_and_generate_rdesc(&f, rdesc_out);
 	}
 
-	return rdesc;
+	return res;
 }
 
-static struct spim_record_descriptor *spi_find_path_and_generate_rdesc(
-			const struct spio_find_info *f)
+static TEE_Result spi_find_path_and_generate_rdesc(
+			const struct spio_find_info *f,
+			struct spim_record_descriptor **rdesc_out)
 {
 	struct spim_record_descriptor *rdesc = NULL;
 	TEE_Result res;
@@ -1101,6 +1104,7 @@ static struct spim_record_descriptor *spi_find_path_and_generate_rdesc(
 	res = spi_find_rdesc(f, &rdesc);
 	if (res == TEE_SUCCESS) {
 		rdesc->ref_count++;
+		*rdesc_out = rdesc;
 	} else if (res == TEE_ERROR_ITEM_NOT_FOUND) {
 		res = spi_search_flash_for_record_info(f, &lsector_idx,
 				&lrecord_offset, &lrecord_info);
@@ -1111,7 +1115,9 @@ static struct spim_record_descriptor *spi_find_path_and_generate_rdesc(
 			if (rdesc != NULL) {
 				rdesc->sector_idx = lsector_idx;
 				rdesc->record_offset = lrecord_offset;
+				*rdesc_out = rdesc;
 			} else {
+				res = TEE_ERROR_OUT_OF_MEMORY;
 				EMSG("out of memory");
 			}
 		}
@@ -1119,7 +1125,7 @@ static struct spim_record_descriptor *spi_find_path_and_generate_rdesc(
 		/* no operation */
 	}
 
-	return rdesc;
+	return res;
 }
 
 static TEE_Result spi_find_path(const struct spio_find_info *f)
@@ -1615,10 +1621,10 @@ static TEE_Result tee_standalone_open(const char *file, size_t file_len,
 			size_t *file_size, struct tee_file_handle **fh_out)
 {
 	TEE_Result res;
-	struct spim_record_descriptor *rdesc;
+	struct spim_record_descriptor *rdesc = NULL;
 	struct spim_file_descriptor *fdp;
 
-	rdesc = spi_find_file_and_generate_rdesc(file, file_len);
+	res = spi_find_file_and_generate_rdesc(file, file_len, &rdesc);
 	if (rdesc != NULL) {
 		fdp = spi_alloc_fdp(rdesc);
 		if (fdp != NULL) {
@@ -1629,8 +1635,6 @@ static TEE_Result tee_standalone_open(const char *file, size_t file_len,
 			spi_free_rdesc(rdesc);
 			res = TEE_ERROR_OUT_OF_MEMORY;
 		}
-	} else {
-		res = TEE_ERROR_ITEM_NOT_FOUND;
 	}
 
 	return res;
@@ -1641,12 +1645,12 @@ static TEE_Result tee_standalone_create(const char *file, size_t file_len,
 			bool overwrite, struct tee_file_handle **fh_out)
 {
 	TEE_Result res;
-	struct spim_record_descriptor *rdesc;
+	struct spim_record_descriptor *rdesc = NULL;
 	struct spim_file_descriptor *fdp;
 	uint16_t lattr = SAFS_ATTR_DATA_FILE;
 	uint32_t old_size;
 
-	rdesc = spi_find_file_and_generate_rdesc(file, file_len);
+	res = spi_find_file_and_generate_rdesc(file, file_len, &rdesc);
 	if (rdesc != NULL) {
 		if (overwrite) {
 			old_size = spi_get_record_info_size(rdesc);
@@ -1782,11 +1786,11 @@ static TEE_Result tee_standalone_rename(const char *old_file, size_t old_len,
 			const char *new_file, size_t new_len, bool overwrite)
 {
 	TEE_Result res;
-	struct spim_record_descriptor *rdesc;
+	struct spim_record_descriptor *rdesc = NULL;
 	struct spif_record_info *lrecord_info;
 	uint32_t old_size;
 
-	rdesc = spi_find_file_and_generate_rdesc(old_file, old_len);
+	res = spi_find_file_and_generate_rdesc(old_file, old_len, &rdesc);
 	if (rdesc != NULL) {
 		res = spi_find_file(new_file, new_len);
 		if (res == TEE_SUCCESS) {
@@ -1829,9 +1833,6 @@ static TEE_Result tee_standalone_rename(const char *old_file, size_t old_len,
 			}
 		}
 		spi_free_rdesc(rdesc);
-	} else {
-		res = TEE_ERROR_ITEM_NOT_FOUND;
-		EMSG("tee file not exists");
 	}
 
 	return res;
@@ -1840,16 +1841,13 @@ static TEE_Result tee_standalone_rename(const char *old_file, size_t old_len,
 static TEE_Result tee_standalone_remove(const char *file, size_t file_len)
 {
 	TEE_Result res;
-	struct spim_record_descriptor *rdesc;
+	struct spim_record_descriptor *rdesc = NULL;
 
-	rdesc = spi_find_file_and_generate_rdesc(file, file_len);
+	res = spi_find_file_and_generate_rdesc(file, file_len, &rdesc);
 	if (rdesc != NULL) {
 		rdesc->ctrl_flag |= RDESC_CTRL_UNLINK;
 		spi_free_rdesc(rdesc);
 		res = TEE_SUCCESS;
-	} else {
-		res = TEE_ERROR_ITEM_NOT_FOUND;
-		EMSG("tee file not exists");
 	}
 
 	return res;

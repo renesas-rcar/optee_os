@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2017, Linaro Limited
+ * Copyright (c) 2018, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -46,7 +47,11 @@
 #define TEE_FS_HTREE_ENC_SIZE		TEE_AES_BLOCK_SIZE
 #define TEE_FS_HTREE_SSK_SIZE		TEE_FS_HTREE_HASH_SIZE
 
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
+#define TEE_FS_HTREE_AUTH_ENC_ALG	TEE_ALG_AES_CCM
+#else
 #define TEE_FS_HTREE_AUTH_ENC_ALG	TEE_ALG_AES_GCM
+#endif
 #define TEE_FS_HTREE_HMAC_ALG		TEE_ALG_HMAC_SHA256
 
 #define BLOCK_NUM_TO_NODE_ID(num)	((num) + 1)
@@ -465,6 +470,10 @@ static TEE_Result authenc_init(void **ctx_ret, TEE_OperationMode mode,
 	size_t ctx_size;
 	size_t aad_len = TEE_FS_HTREE_FEK_SIZE + TEE_FS_HTREE_IV_SIZE;
 	uint8_t *iv;
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
+	uint8_t *aad_data = NULL;
+	uint8_t *copy_dst;
+#endif
 
 	if (ni) {
 		iv = ni->iv;
@@ -497,6 +506,30 @@ static TEE_Result authenc_init(void **ctx_ret, TEE_OperationMode mode,
 	if (res != TEE_SUCCESS)
 		goto exit;
 
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
+	aad_data = malloc(aad_len);
+	if (NULL == aad_data) {
+		EMSG("request memory size %zu failed", aad_len);
+		res = TEE_ERROR_OUT_OF_MEMORY;
+	} else {
+		copy_dst = aad_data;
+		if (!ni) {
+			(void)memcpy(copy_dst, ht->root.node.hash,
+					(uint32_t)TEE_FS_HTREE_HASH_SIZE);
+			copy_dst += (uint32_t)TEE_FS_HTREE_HASH_SIZE;
+			(void)memcpy(copy_dst, (void *)&ht->head.counter,
+					sizeof(ht->head.counter));
+			copy_dst += sizeof(ht->head.counter);
+		}
+		(void)memcpy(copy_dst, ht->head.enc_fek, TEE_FS_HTREE_FEK_SIZE);
+		copy_dst += TEE_FS_HTREE_FEK_SIZE;
+		(void)memcpy(copy_dst, iv, TEE_FS_HTREE_IV_SIZE);
+
+		res = crypto_ops.authenc.update_aad(ctx, alg, mode, aad_data,
+				aad_len);
+		free(aad_data);
+	}
+#else
 	if (!ni) {
 		res = crypto_ops.authenc.update_aad(ctx, alg, mode,
 						    ht->root.node.hash,
@@ -518,6 +551,7 @@ static TEE_Result authenc_init(void **ctx_ret, TEE_OperationMode mode,
 
 	res = crypto_ops.authenc.update_aad(ctx, alg, mode, iv,
 					    TEE_FS_HTREE_IV_SIZE);
+#endif
 
 exit:
 	if (res == TEE_SUCCESS)
