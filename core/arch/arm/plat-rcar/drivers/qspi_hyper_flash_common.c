@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2017, Renesas Electronics Corporation
+ * Copyright (c) 2015-2018, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -33,6 +33,7 @@
 #include "qspi_hyper_flash_common.h"
 #include "qspi_flash_common.h"
 #include "hyper_flash_control.h"
+#include "rcar_common.h"
 
 uint32_t common_wait_spi_transfer(uint32_t *dataL)
 {
@@ -111,23 +112,52 @@ uint32_t set_rpc_clock_mode(uint32_t mode)
 	int32_t i;
 	const int32_t polling_max = 100;
 	const uint32_t wait_time_us = 10;
+	uint32_t prr_product = product_type & PRR_PRODUCT_MASK;
 
-	if (mode == RPC_CLK_40M) {
-		dataL = 0x00000017U;	/* RPC clock 40MHz */
-	} else if (mode == RPC_CLK_80M) {
-		dataL = 0x00000013U;	/* RPC clock 80MHz */
-	} else if (mode == RPC_CLK_160M) {
-		dataL = 0x00000011U;	/* RPC clock 160MHz */
-	} else {
-		ret = FL_DRV_ERR_STATUS_INCORRECT;
-		EMSG("%s: Invalid argument. mode=%d", __func__, mode);
+	switch (prr_product) {
+	case PRR_PRODUCT_H3:
+	case PRR_PRODUCT_M3:
+	case PRR_PRODUCT_M3N:
+		if (mode == RPC_CLK_40M) {
+			dataL = 0x00000017U;	/* RPC clock 40MHz */
+		} else if (mode == RPC_CLK_80M) {
+			dataL = 0x00000013U;	/* RPC clock 80MHz */
+		} else if (mode == RPC_CLK_160M) {
+			dataL = 0x00000011U;	/* RPC clock 160MHz */
+		} else {
+			ret = FL_DRV_ERR_STATUS_INCORRECT;
+			EMSG("Invalid argument. mode=%d", mode);
+		}
+		break;
+	case PRR_PRODUCT_E3:
+		if (mode == RPC_CLK_40M) {
+			dataL = 0x00000003U;	/* RPC clock 40MHz */
+		} else if (mode == RPC_CLK_80M) {
+			dataL = 0x00000001U;	/* RPC clock 80MHz */
+		} else if (mode == RPC_CLK_150M) {
+			dataL = 0x00000011U;	/* RPC clock 150MHz */
+		} else {
+			ret = FL_DRV_ERR_STATUS_INCORRECT;
+			EMSG("Invalid argument. mode=%d", mode);
+		}
+		break;
+	default:
+		ret = FL_DRV_ERR_UNSUPPORT_DEV;
+		EMSG("Unsupported product. PRR_PRODUCT=0x%x", prr_product);
+		break;
 	}
+
 	/*
 	 bit[9]=1'b0: RPCD2 clock supply
 	 bit[8]=1'b0: RPC clock supply
+	 In the case other than E3,
 	 bit[4:0]=1'b10001: RPC clock=320MHz, RPCD2 clock=160MHz (160MHz)
 	 bit[4:0]=1'b10011: RPC clock=160MHz, RPCD2 clock= 80MHz ( 80MHz)
 	 bit[4:0]=1'b10111: RPC clock= 80MHz, RPCD2 clock= 40MHz ( 40MHz)
+	 In the case than E3,
+	 bit[4:0]=1'b10001: RPC clock=300MHz, RPCD2 clock=150MHz (150MHz)
+	 bit[4:0]=1'b00001: RPC clock=160MHz, RPCD2 clock= 80MHz ( 80MHz)
+	 bit[4:0]=1'b00011: RPC clock= 80MHz, RPCD2 clock= 40MHz ( 40MHz)
 	 */
 	if (ret == FL_DRV_OK) {
 		*((volatile uint32_t*)CPG_CPGWPR)	= ~dataL;

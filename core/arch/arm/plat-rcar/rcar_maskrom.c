@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2017, Renesas Electronics Corporation
+ * Copyright (c) 2015-2018, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -69,6 +69,7 @@ uint32_t product_type = PRR_PRODUCT_H3;
 const int8_t *product_name = (const int8_t *)"H3 1.x";
 ROM_SECURE_API ROM_SecureBootAPI = (ROM_SECURE_API)ADDR_ROM_SECURE_API_H3_1_X;
 ROM_GETLCS_API ROM_GetLcs = (ROM_GETLCS_API)ADDR_ROM_GETLCS_API_H3_1_X;
+uint32_t prr_cut = 0U;
 
 static TEE_Result product_setup(void);
 
@@ -126,6 +127,8 @@ static TEE_Result product_setup(void)
 		ROM_SecureBootAPI = (ROM_SECURE_API)ADDR_ROM_SECURE_API_TABLE;
 		ROM_GetLcs = (ROM_GETLCS_API)ADDR_ROM_GETLCS_API_TABLE;
 	}
+
+	prr_cut = cut_ver;
 
 	return TEE_SUCCESS;
 }

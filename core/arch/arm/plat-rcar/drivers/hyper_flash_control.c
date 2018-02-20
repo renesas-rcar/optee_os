@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2017, Renesas Electronics Corporation
+ * Copyright (c) 2015-2018, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,9 +27,11 @@
 
 #include <stdint.h>
 #include <trace.h>
+#include <io.h>
 #include <drivers/qspi_hyper_flash.h>
 #include "qspi_hyper_flash_common.h"
 #include "hyper_flash_control.h"
+#include "rcar_common.h"
 
 static uint32_t hyper_flash_erase_sector(uint32_t sector_addr);
 static uint32_t hyper_flash_set_ext_addr_read_mode(uint32_t read_ext_top_addr,
@@ -50,6 +52,7 @@ static uint32_t hyper_flash_write_buffer_control(uint32_t flash_addr,
 						uint32_t write_data_addr);
 static uint32_t hyper_flash_write_buffer(uint32_t manual_set_addr,
 						uint32_t write_data_addr);
+static uint32_t hyper_flash_get_rpc_clock_mode(uint32_t *mode);
 
 uint32_t hyper_flash_init(struct flash_control_operations *ops)
 {
@@ -63,7 +66,12 @@ uint32_t hyper_flash_init(struct flash_control_operations *ops)
 		/* HyperFlash : S26KS512S */
 		if (read_device_id == HYPER_FLASH) {
 			hyper_flash_set_control_ops(ops);
-			ret = FL_DRV_OK;
+			ret = hyper_flash_get_rpc_clock_mode(&rpc_clock_mode);
+			if (ret == FL_DRV_OK) {
+				ret = set_rpc_clock_mode(rpc_clock_mode);
+				DMSG("set_rpc_clock_mode r=%x, RPCCKCR=0x%08x",
+					ret, read32(CPG_RPCCKCR));
+			}
 		} else {
 			ret = FL_DRV_ERR_UNSUPPORT_DEV;
 		}
@@ -232,7 +240,7 @@ static uint32_t hyper_flash_write_main(uint32_t buf_addr,
 			write_data_addr += WRITE_BUFF_SIZE;
 		}
 
-		ret = set_rpc_clock_mode(RPC_CLK_80M);
+		ret = set_rpc_clock_mode(rpc_clock_mode);
 	}
 
 	return ret;
@@ -648,6 +656,47 @@ uint32_t hyper_flash_read_device_status(uint32_t *read_status)
 		}
 	} else {
 		ret = FL_DEVICE_ERR;
+	}
+
+	return ret;
+}
+
+static uint32_t hyper_flash_get_rpc_clock_mode(uint32_t *mode)
+{
+	uint32_t ret = FL_DRV_OK;
+	uint32_t prr_product = product_type & PRR_PRODUCT_MASK;
+
+	switch (prr_product) {
+	case PRR_PRODUCT_H3:
+		if ((prr_cut == PRR_CUT_10) || (prr_cut == PRR_CUT_11)) {
+			*mode = RPC_CLK_80M;
+			DMSG("H3 Ver1.0/1.1: RPC 80MHz, mode=%d", *mode);
+		} else {
+			*mode = RPC_CLK_160M;
+			DMSG("H3 Ver2.0 or later: RPC 160MHz, mode=%d", *mode);
+		}
+		break;
+	case PRR_PRODUCT_M3:
+		if (prr_cut == PRR_CUT_10) {
+			*mode = RPC_CLK_80M;
+			DMSG("M3 Ver1.0: RPC 80MHz, mode=%d", *mode);
+		} else {
+			*mode = RPC_CLK_160M;
+			DMSG("M3 Ver1.1 or later: RPC 160MHz, mode=%d", *mode);
+		}
+		break;
+	case PRR_PRODUCT_M3N:
+		*mode = RPC_CLK_160M;
+		DMSG("M3N: RPC 160MHz, mode=%d", *mode);
+		break;
+	case PRR_PRODUCT_E3:
+		*mode = RPC_CLK_150M;
+		DMSG("E3: RPC 150MHz, mode=%d", *mode);
+		break;
+	default:
+		ret = FL_DRV_ERR_UNSUPPORT_DEV;
+		EMSG("Unsupported product. PRR_PRODUCT=0x%x", prr_product);
+		break;
 	}
 
 	return ret;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2017, Renesas Electronics Corporation
+ * Copyright (c) 2015-2018, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -171,10 +171,13 @@
 #define RPC_CLK_40M			(0x01U)
 #define RPC_CLK_80M			(0x02U)
 #define RPC_CLK_160M			(0x03U)
+#define RPC_CLK_150M			(0x04U)
 
 /*
  * Global variable declaration
  */
+extern uint32_t rpc_clock_mode;
+
 struct flash_control_operations {
 	uint32_t (*erase)(uint32_t sector_addr);
 	uint32_t (*set_ext_addr_read_mode)(uint32_t read_ext_top_addr,

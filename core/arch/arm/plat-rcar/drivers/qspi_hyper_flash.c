@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2017, Renesas Electronics Corporation
+ * Copyright (c) 2015-2018, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -29,12 +29,15 @@
 #include <string.h>
 #include <trace.h>
 #include <kernel/delay.h>
+#include <io.h>
 #include <drivers/qspi_hyper_flash.h>
 
 #include "qspi_hyper_flash_common.h"
 #include "qspi_flash_common.h"
 #include "hyper_flash_control.h"
 #include "rcar_suspend_to_ram.h"
+
+uint32_t rpc_clock_mode = RPC_CLK_80M;
 
 static void qspi_hyper_flash_backup_cb(enum suspend_to_ram_state state,
 				uint32_t cpu_id);
@@ -258,7 +261,7 @@ static uint32_t init_rpc(void)
 	const uint32_t wait_time_us_tRP_margin = 1U;
 	const uint32_t wait_time_us_tRH_margin = 29U;
 
-	ret = set_rpc_clock_mode(RPC_CLK_80M);
+	ret = set_rpc_clock_mode(rpc_clock_mode);
 
 	/* Reset RPC */
 	if (ret == FL_DRV_OK) {
@@ -271,6 +274,9 @@ static uint32_t init_rpc(void)
 		*((volatile uint32_t *)CPG_CPGWPR)	= ~dataL;
 		*((volatile uint32_t *)CPG_SRSTCLR9)	=  dataL;
 		udelay(wait_time_us_tRH_margin);
+
+		DMSG("rpc_clock_mode=%d, RPCCKCR=0x%08x",
+			rpc_clock_mode, read32(CPG_RPCCKCR));
 	}
 
 	return ret;

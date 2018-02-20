@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2017, Renesas Electronics Corporation
+ * Copyright (c) 2015-2018, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -79,11 +79,13 @@
 
 /* Product Register */
 #define PRR			(0xFFF00044U)
-#define PRR_PRODUCT_MASK	(0x00007F00U)
+#define PRR_PRODUCT_MASK	(0x0000FF00U)
 #define PRR_PRODUCT_UNKNOWN	(0x000000FFU)
 #define PRR_PRODUCT_API_TABLE	(0x00010000U)
 #define PRR_PRODUCT_H3		(0x00004F00U)	/* R-Car H3 */
 #define PRR_PRODUCT_M3		(0x00005200U)	/* R-Car M3 */
+#define PRR_PRODUCT_M3N		(0x00005500U)	/* R-Car M3N */
+#define PRR_PRODUCT_E3		(0x00005700U)	/* R-Car E3 */
 #define PRR_CUT_MASK		(0x000000FFU)
 #define PRR_CUT_10		(0x00000000U)
 #define PRR_CUT_11		(0x00000001U)
@@ -105,6 +107,7 @@
 
 extern uint32_t product_type;
 extern const int8_t *product_name;
+extern uint32_t prr_cut;
 
 /*
  * Prototype declaration
