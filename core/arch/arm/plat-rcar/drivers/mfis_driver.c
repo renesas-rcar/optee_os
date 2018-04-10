@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2017, Renesas Electronics Corporation
+ * Copyright (c) 2015-2018, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -43,7 +43,9 @@
 #define	MFIERRTGTR(a)	((volatile uint32_t *)(0xE6260294U + (uintptr_t)((a) * 4U)))
 #define	MFIERRTGTR6	((volatile uint32_t *)(0xE626025CU))
 
+#define CPGWPR		(0xE6150900U)
 #define SMSTPCR2	(0xE6150138U)
+#define MSTPSR2		(0xE6150040U)
 #define SMSTP_MFISFLG	((uint32_t)1U<<13U)
 
 typedef struct {
@@ -188,7 +190,11 @@ int32_t mfis_error_detection_start(MFIS_ERR_SETTING_T *err,
 			
 			reg = read32(SMSTPCR2);
 			reg &= ~SMSTP_MFISFLG;
+			write32((~reg), CPGWPR);
 			write32(reg, SMSTPCR2);
+			while (0U != (read32(MSTPSR2) & SMSTP_MFISFLG)) {
+				;
+			}
 
 		} else {
 			ret = MFIS_ERR_PARAMETER;
@@ -222,6 +228,7 @@ int32_t mfis_error_detection_stop(void)
 		
 		reg = read32(SMSTPCR2);
 		reg |= SMSTP_MFISFLG;
+		write32((~reg), CPGWPR);
 		write32(reg, SMSTPCR2);
 
 		mfis_state = MFIS_STATE_NOACTIVE;
