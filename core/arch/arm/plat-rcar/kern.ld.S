@@ -1,52 +1,11 @@
+/* SPDX-License-Identifier: (BSD-2-Clause AND MIT) */
 /*
  * Copyright (c) 2014, Linaro Limited
- * Copyright (c) 2015-2017, Renesas Electronics Corporation
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
+ * Copyright (c) 2015-2018, Renesas Electronics Corporation
  */
 
 /*
  * Copyright (c) 2008-2010 Travis Geiselbrecht
- *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files
- * (the "Software"), to deal in the Software without restriction,
- * including without limitation the rights to use, copy, modify, merge,
- * publish, distribute, sublicense, and/or sell copies of the Software,
- * and to permit persons to whom the Software is furnished to do so,
- * subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be
- * included in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
- * CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
- * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
- * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #include <platform_config.h>
@@ -90,9 +49,10 @@ SECTIONS
 	__flatmap_unpg_rx_start = ROUNDDOWN(__text_start, SMALL_PAGE_SIZE);
 
 	.text : {
-		KEEP(*(.text.boot.vectab1))
-		KEEP(*(.text.boot.vectab2))
-		KEEP(*(.text.boot))
+		KEEP(*(.text._start))
+		KEEP(*(.text.init .text.plat_cpu_reset_early \
+		       .text.reset .text.reset_primary .text.unhandled_cpu \
+		       .text.__assert_flat_mapped_range))
 
 		. = ALIGN(16);
 		KEEP(*(.version))
@@ -180,6 +140,10 @@ SECTIONS
 		__start_phys_nsec_ddr_section = . ;
 		KEEP(*(phys_nsec_ddr_section))
 		__end_phys_nsec_ddr_section = . ;
+		. = ALIGN(8);
+		__start_phys_ddr_overall_section = . ;
+		KEEP(*(phys_ddr_overall_section))
+		__end_phys_ddr_overall_section = . ;
 		. = ALIGN(8);
 		__start_exec_attr_section = . ;
 		KEEP(*(exec_attr_section))
@@ -332,6 +296,9 @@ SECTIONS
  * sections will go into the unpaged area.
  */
 #include <text_init.ld.S>
+		KEEP(*(.text.startup.*));
+		/* Make sure constructor functions are available during init */
+		KEEP(*(.text._GLOBAL__sub_*));
 		. = ALIGN(8);
 	}
 
@@ -355,6 +322,10 @@ SECTIONS
 		__start_phys_nsec_ddr_section = . ;
 		KEEP(*(phys_nsec_ddr_section))
 		__end_phys_nsec_ddr_section = . ;
+		. = ALIGN(8);
+		__start_phys_ddr_overall_section = . ;
+		KEEP(*(phys_ddr_overall_section))
+		__end_phys_ddr_overall_section = . ;
 		. = ALIGN(8);
 		__rodata_init_end = .;
 	}
@@ -434,6 +405,7 @@ SECTIONS
 		__asan_shadow_start = .;
 		. += CFG_TEE_RAM_VA_SIZE / 9;
 		__asan_shadow_end = .;
+		__asan_shadow_size = __asan_shadow_end - __asan_shadow_start;
 	}
 #endif /*CFG_CORE_SANITIZE_KADDRESS*/
 
@@ -469,20 +441,19 @@ SECTIONS
 }
 
 /* Unpaged read-only memories */
-PROVIDE(__vcore_unpg_rx_start = __flatmap_unpg_rx_start);
-PROVIDE(__vcore_unpg_ro_start = __flatmap_unpg_ro_start);
+__vcore_unpg_rx_start = __flatmap_unpg_rx_start;
+__vcore_unpg_ro_start = __flatmap_unpg_ro_start;
 #ifdef CFG_CORE_RODATA_NOEXEC
-PROVIDE(__vcore_unpg_rx_size = __flatmap_unpg_rx_size);
-PROVIDE(__vcore_unpg_ro_size = __flatmap_unpg_ro_size);
+__vcore_unpg_rx_size = __flatmap_unpg_rx_size;
+__vcore_unpg_ro_size = __flatmap_unpg_ro_size;
 #else
-PROVIDE(__vcore_unpg_rx_size = __flatmap_unpg_rx_size +
-				__flatmap_unpg_ro_size);
-PROVIDE(__vcore_unpg_ro_size = 0);
+__vcore_unpg_rx_size = __flatmap_unpg_rx_size + __flatmap_unpg_ro_size;
+__vcore_unpg_ro_size = 0;
 #endif
 
 /* Unpaged read-write memory */
-PROVIDE(__vcore_unpg_rw_start = __flatmap_unpg_rw_start);
-PROVIDE(__vcore_unpg_rw_size = __flatmap_unpg_rw_size);
+__vcore_unpg_rw_start = __flatmap_unpg_rw_start;
+__vcore_unpg_rw_size = __flatmap_unpg_rw_size;
 
 #ifdef CFG_WITH_PAGER
 /*
@@ -495,16 +466,22 @@ PROVIDE(__vcore_unpg_rw_size = __flatmap_unpg_rw_size);
 		(__flatmap_init_ro_start + __flatmap_init_ro_size))
 
 /* Paged/init read-only memories */
-PROVIDE(__vcore_init_rx_start = __flatmap_init_rx_start);
-PROVIDE(__vcore_init_ro_start = __flatmap_init_ro_start);
+__vcore_init_rx_start = __flatmap_init_rx_start;
+__vcore_init_ro_start = __flatmap_init_ro_start;
 #ifdef CFG_CORE_RODATA_NOEXEC
-PROVIDE(__vcore_init_rx_size = __flatmap_init_rx_size);
-PROVIDE(__vcore_init_ro_size = __flatmap_init_ro_size +
-				__FLATMAP_PAGER_TRAILING_SPACE);
+__vcore_init_rx_size = __flatmap_init_rx_size;
+__vcore_init_ro_size = __flatmap_init_ro_size + __FLATMAP_PAGER_TRAILING_SPACE;
 #else
-PROVIDE(__vcore_init_rx_size = __flatmap_init_rx_size +
-				__flatmap_init_ro_size +
-				__FLATMAP_PAGER_TRAILING_SPACE);
-PROVIDE(__vcore_init_ro_size = 0);
+__vcore_init_rx_size = __flatmap_init_rx_size + __flatmap_init_ro_size +
+		       __FLATMAP_PAGER_TRAILING_SPACE;
+__vcore_init_ro_size = 0;
 #endif /* CFG_CORE_RODATA_NOEXEC */
 #endif /* CFG_WITH_PAGER */
+
+#ifdef CFG_CORE_SANITIZE_KADDRESS
+__asan_map_start = (__asan_shadow_start / SMALL_PAGE_SIZE) *
+		   SMALL_PAGE_SIZE;
+__asan_map_end = ((__asan_shadow_end - 1) / SMALL_PAGE_SIZE) *
+		 SMALL_PAGE_SIZE + SMALL_PAGE_SIZE;
+__asan_map_size = __asan_map_end - __asan_map_start;
+#endif /*CFG_CORE_SANITIZE_KADDRESS*/

@@ -115,8 +115,9 @@ define update-buildcount
 	fi
 endef
 
+# filter-out to workaround objdump warning
 version-o-cflags = $(filter-out -g3,$(core-platform-cflags) \
-			$(platform-cflags)) # Workaround objdump warning
+			$(platform-cflags) $(cflagscore))
 DATE_STR = `date -u`
 BUILD_COUNT_STR = `cat $(link-out-dir)/.buildcount`
 define gen-version-o
@@ -252,5 +253,5 @@ mem_usage: $(link-out-dir)/tee.mem_usage
 
 $(link-out-dir)/tee.mem_usage: $(link-out-dir)/tee.elf
 	@$(cmd-echo-silent) '  GEN     $@'
-	$(q)$(READELFcore) -a -W $< | ${AWK} -f ./scripts/mem_usage.awk > $@
+	$(q)./scripts/mem_usage.py $< > $@
 endif

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2016, Linaro Limited
  * Copyright (c) 2014, STMicroelectronics International N.V.
@@ -28,9 +29,12 @@
 
 #include <arm.h>
 #include <assert.h>
+#include <crypto/crypto.h>
+#include <crypto/internal_aes-gcm.h>
 #include <io.h>
 #include <keep.h>
 #include <kernel/abort.h>
+#include <kernel/asan.h>
 #include <kernel/panic.h>
 #include <kernel/spinlock.h>
 #include <kernel/tee_misc.h>
@@ -43,15 +47,18 @@
 #include <stdlib.h>
 #include <sys/queue.h>
 #include <tee_api_defines.h>
-#include <tee/tee_cryp_provider.h>
 #include <trace.h>
 #include <types_ext.h>
 #include <utee_defines.h>
 #include <util.h>
 
-#include "pager_private.h"
-
 #define PAGER_AE_KEY_BITS	256
+
+struct pager_aes_gcm_iv {
+	uint32_t iv[3];
+};
+
+#define PAGER_AES_GCM_TAG_LEN	16
 
 struct pager_rw_pstate {
 	uint64_t iv;
@@ -110,7 +117,7 @@ static struct tee_pager_pmem_head tee_pager_pmem_head =
 static struct tee_pager_pmem_head tee_pager_lock_pmem_head =
 	TAILQ_HEAD_INITIALIZER(tee_pager_lock_pmem_head);
 
-static uint8_t pager_ae_key[PAGER_AE_KEY_BITS / 8];
+static struct internal_aes_gcm_key pager_ae_key;
 
 /* number of pages hidden */
 #define TEE_PAGER_NHIDE (tee_pager_npages / 3)
@@ -368,7 +375,7 @@ static void set_alias_area(tee_mm_entry_t *mm)
 	while (pt <= (pager_tables + ARRAY_SIZE(pager_tables) - 1)) {
 		while (idx < TBL_NUM_ENTRIES) {
 			v = core_mmu_idx2va(&pt->tbl_info, idx);
-			if (v > (smem + nbytes))
+			if (v >= (smem + nbytes))
 				goto out;
 
 			core_mmu_set_entry(&pt->tbl_info, idx, 0, 0);
@@ -385,8 +392,13 @@ out:
 
 static void generate_ae_key(void)
 {
-	if (rng_generate(pager_ae_key, sizeof(pager_ae_key)) != TEE_SUCCESS)
+	uint8_t key[PAGER_AE_KEY_BITS / 8];
+
+	if (rng_generate(key, sizeof(key)) != TEE_SUCCESS)
 		panic("failed to generate random");
+	if (internal_aes_gcm_expand_enc_key(key, sizeof(key),
+					    &pager_ae_key))
+		panic("failed to expand key");
 }
 
 static size_t tbl_usage_count(struct core_mmu_table_info *ti)
@@ -465,7 +477,7 @@ static void *pager_add_alias_page(paddr_t pa)
 	unsigned idx;
 	struct core_mmu_table_info *ti;
 	/* Alias pages mapped without write permission: runtime will care */
-	uint32_t attr = TEE_MATTR_VALID_BLOCK | TEE_MATTR_GLOBAL |
+	uint32_t attr = TEE_MATTR_VALID_BLOCK |
 			(TEE_MATTR_CACHE_CACHED << TEE_MATTR_CACHE_SHIFT) |
 			TEE_MATTR_SECURE | TEE_MATTR_PR;
 
@@ -616,9 +628,6 @@ static uint32_t get_area_mattr(uint32_t area_flags)
 			TEE_MATTR_CACHE_CACHED << TEE_MATTR_CACHE_SHIFT |
 			(area_flags & (TEE_MATTR_PRWX | TEE_MATTR_URWX));
 
-	if (!(area_flags & (TEE_MATTR_UR | TEE_MATTR_UX | TEE_MATTR_UW)))
-		attr |= TEE_MATTR_GLOBAL;
-
 	return attr;
 }
 
@@ -640,14 +649,17 @@ static bool decrypt_page(struct pager_rw_pstate *rwp, const void *src,
 	struct pager_aes_gcm_iv iv = {
 		{ (vaddr_t)rwp, rwp->iv >> 32, rwp->iv }
 	};
+	size_t tag_len = sizeof(rwp->tag);
 
-	return pager_aes_gcm_decrypt(pager_ae_key, sizeof(pager_ae_key),
-				     &iv, rwp->tag, src, dst, SMALL_PAGE_SIZE);
+	return !internal_aes_gcm_dec(&pager_ae_key, &iv, sizeof(iv),
+				     NULL, 0, src, SMALL_PAGE_SIZE, dst,
+				     rwp->tag, tag_len);
 }
 
 static void encrypt_page(struct pager_rw_pstate *rwp, void *src, void *dst)
 {
 	struct pager_aes_gcm_iv iv;
+	size_t tag_len = sizeof(rwp->tag);
 
 	assert((rwp->iv + 1) > rwp->iv);
 	rwp->iv++;
@@ -661,9 +673,8 @@ static void encrypt_page(struct pager_rw_pstate *rwp, void *src, void *dst)
 	iv.iv[1] = rwp->iv >> 32;
 	iv.iv[2] = rwp->iv;
 
-	if (!pager_aes_gcm_encrypt(pager_ae_key, sizeof(pager_ae_key),
-				   &iv, rwp->tag,
-				   src, dst, SMALL_PAGE_SIZE))
+	if (internal_aes_gcm_enc(&pager_ae_key, &iv, sizeof(iv), NULL, 0,
+				 src, SMALL_PAGE_SIZE, dst, rwp->tag, &tag_len))
 		panic("gcm failed");
 }
 
@@ -687,6 +698,7 @@ static void tee_pager_load_page(struct tee_pager_area *area, vaddr_t page_va,
 		tlbi_mva_allasid((vaddr_t)va_alias);
 	}
 
+	asan_tag_access(va_alias, (uint8_t *)va_alias + SMALL_PAGE_SIZE);
 	switch (area->type) {
 	case AREA_TYPE_RO:
 		{
@@ -726,6 +738,7 @@ static void tee_pager_load_page(struct tee_pager_area *area, vaddr_t page_va,
 	default:
 		panic();
 	}
+	asan_tag_no_access(va_alias, (uint8_t *)va_alias + SMALL_PAGE_SIZE);
 }
 
 static void tee_pager_save_page(struct tee_pager_pmem *pmem, uint32_t attr)
@@ -739,8 +752,12 @@ static void tee_pager_save_page(struct tee_pager_pmem *pmem, uint32_t attr)
 		void *stored_page = pmem->area->store + idx * SMALL_PAGE_SIZE;
 
 		assert(pmem->area->flags & (TEE_MATTR_PW | TEE_MATTR_UW));
+		asan_tag_access(pmem->va_alias,
+				(uint8_t *)pmem->va_alias + SMALL_PAGE_SIZE);
 		encrypt_page(&pmem->area->u.rwp[idx], pmem->va_alias,
 			     stored_page);
+		asan_tag_no_access(pmem->va_alias,
+				   (uint8_t *)pmem->va_alias + SMALL_PAGE_SIZE);
 		FMSG("Saved %#" PRIxVA " iv %#" PRIx64,
 			pmem->area->base + idx * SMALL_PAGE_SIZE,
 			pmem->area->u.rwp[idx].iv);
@@ -1032,7 +1049,7 @@ bool tee_pager_set_uta_area_attr(struct user_ta_ctx *utc, vaddr_t base,
 		f |= TEE_MATTR_PW;
 	f = get_area_mattr(f);
 
-	exceptions = pager_lock_check_stack(64);
+	exceptions = pager_lock_check_stack(SMALL_PAGE_SIZE);
 
 	while (s) {
 		s2 = MIN(CORE_MMU_PGDIR_SIZE - (b & CORE_MMU_PGDIR_MASK), s);
@@ -1609,7 +1626,7 @@ void tee_pager_pgt_save_and_release_entries(struct pgt *pgt)
 {
 	struct tee_pager_pmem *pmem;
 	struct tee_pager_area *area;
-	uint32_t exceptions = pager_lock_check_stack(2048);
+	uint32_t exceptions = pager_lock_check_stack(SMALL_PAGE_SIZE);
 
 	if (!pgt->num_used_entries)
 		goto out;
@@ -1667,6 +1684,8 @@ void *tee_pager_alloc(size_t size, uint32_t flags)
 {
 	tee_mm_entry_t *mm;
 	uint32_t f = TEE_MATTR_PW | TEE_MATTR_PR | (flags & TEE_MATTR_LOCKED);
+	uint8_t *smem;
+	size_t bytes;
 
 	if (!size)
 		return NULL;
@@ -1675,8 +1694,10 @@ void *tee_pager_alloc(size_t size, uint32_t flags)
 	if (!mm)
 		return NULL;
 
-	tee_pager_add_core_area(tee_mm_get_smem(mm), tee_mm_get_bytes(mm),
-				f, NULL, NULL);
+	bytes = tee_mm_get_bytes(mm);
+	smem = (uint8_t *)tee_mm_get_smem(mm);
+	tee_pager_add_core_area((vaddr_t)smem, bytes, f, NULL, NULL);
+	asan_tag_access(smem, smem + bytes);
 
-	return (void *)tee_mm_get_smem(mm);
+	return smem;
 }

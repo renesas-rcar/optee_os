@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (C) 2015 Freescale Semiconductor, Inc.
  * All rights reserved.
@@ -91,6 +92,15 @@
 #define CFG_TEE_RAM_VA_SIZE		(2 * 1024 * 1024)
 #define CFG_PUB_RAM_SIZE		(2 * 1024 * 1024)
 #define CFG_TEE_CORE_NB_CORE		4
+#endif
+
+#if defined(PLATFORM_FLAVOR_ls1012ardb)
+#define DRAM0_SIZE			0x40000000
+#define CFG_DDR_TEETZ_RESERVED_START	0xBC000000
+#define CFG_DDR_TEETZ_RESERVED_SIZE	0x04000000
+#define CFG_TEE_RAM_VA_SIZE		(2 * 1024 * 1024)
+#define CFG_PUB_RAM_SIZE		(2 * 1024 * 1024)
+#define CFG_TEE_CORE_NB_CORE		1
 #endif
 
 #define DDR_PHYS_START			DRAM0_BASE

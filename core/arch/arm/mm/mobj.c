@@ -1,28 +1,6 @@
+// SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2016-2017, Linaro Limited
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include <assert.h>
@@ -44,6 +22,7 @@
 #include <util.h>
 
 struct mobj *mobj_sec_ddr;
+struct mobj *mobj_tee_ram;
 
 /*
  * mobj_phys implementation
@@ -369,6 +348,7 @@ static TEE_Result mobj_reg_shm_get_pa(struct mobj *mobj, size_t offst,
 
 	return TEE_SUCCESS;
 }
+KEEP_PAGER(mobj_reg_shm_get_pa);
 
 static size_t mobj_reg_shm_get_phys_offs(struct mobj *mobj,
 					 size_t granule __maybe_unused)
@@ -443,7 +423,7 @@ struct mobj *mobj_reg_shm_alloc(paddr_t *pages, size_t num_pages,
 {
 	struct mobj_reg_shm *mobj_reg_shm;
 	size_t i;
-	unsigned int exceptions;
+	uint32_t exceptions;
 
 	if (!num_pages)
 		return NULL;
@@ -484,7 +464,7 @@ err:
 struct mobj *mobj_reg_shm_find_by_cookie(uint64_t cookie)
 {
 	struct mobj_reg_shm *mobj_reg_shm;
-	unsigned int exceptions;
+	uint32_t exceptions;
 
 	exceptions = cpu_spin_lock_xsave(&reg_shm_slist_lock);
 	SLIST_FOREACH(mobj_reg_shm, &reg_shm_list, next) {
@@ -628,6 +608,7 @@ static TEE_Result mobj_shm_get_pa(struct mobj *mobj, size_t offs,
 	*pa = p;
 	return TEE_SUCCESS;
 }
+KEEP_PAGER(mobj_shm_get_pa);
 
 static size_t mobj_shm_get_phys_offs(struct mobj *mobj, size_t granule)
 {
@@ -724,7 +705,6 @@ struct mobj *mobj_paged_alloc(size_t size)
 struct mobj_seccpy_shm {
 	struct user_ta_ctx *utc;
 	vaddr_t va;
-	size_t pgdir_offset;
 	struct mobj mobj;
 };
 
@@ -812,14 +792,13 @@ struct mobj *mobj_seccpy_shm_alloc(size_t size)
 	m->mobj.size = size;
 	m->mobj.ops = &mobj_seccpy_shm_ops;
 
-	if (tee_mmu_add_rwmem(utc, &m->mobj, -1, &va) != TEE_SUCCESS)
+	if (tee_mmu_add_rwmem(utc, &m->mobj, &va) != TEE_SUCCESS)
 		goto bad;
 
 	if (!tee_pager_add_uta_area(utc, va, size))
 		goto bad;
 
 	m->va = va;
-	m->pgdir_offset = va & CORE_MMU_PGDIR_MASK;
 	m->utc = to_user_ta_ctx(tsd->ctx);
 	return &m->mobj;
 bad:

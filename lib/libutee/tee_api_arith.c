@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
  * All rights reserved.
@@ -38,16 +39,9 @@
 
 #define MPA_INTERNAL_MEM_POOL_SIZE 12
 
-/*
- * THIS IS THE MAXIMUM NUMBER OF BITS THAT THE LIBRARY SUPPORTS.
- * It defines the size of the scratch memory pool for the underlying
- * mpa library.
- */
-#define TEE_MAX_NUMBER_OF_SUPPORTED_BITS 2048
-
 static uint32_t mempool_u32[mpa_scratch_mem_size_in_U32(
 					    MPA_INTERNAL_MEM_POOL_SIZE,
-					    TEE_MAX_NUMBER_OF_SUPPORTED_BITS)];
+					    CFG_TA_BIGNUM_MAX_BITS)];
 static mpa_scratch_mem mempool = (void *)mempool_u32;
 
 /*************************************************************
@@ -77,7 +71,7 @@ static void __attribute__ ((noreturn)) TEE_BigInt_Panic(const char *msg)
 void _TEE_MathAPI_Init(void)
 {
 	mpa_init_scratch_mem(mempool, sizeof(mempool_u32),
-			     TEE_MAX_NUMBER_OF_SUPPORTED_BITS);
+			     CFG_TA_BIGNUM_MAX_BITS);
 	mpa_set_random_generator(get_rng_array);
 }
 

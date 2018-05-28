@@ -1,33 +1,14 @@
+// SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2015-2018, Renesas Electronics Corporation
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
  */
+
+#include <initcall.h>
 #include <platform_config.h>
-#include <drivers/gic.h>
-#include <tomcrypt.h>
+#include <kernel/panic.h>
 #include <rcar_suspend_to_ram.h>
+#include <crypto/crypto.h>
+#include <crypto/aes-ccm.h>
 #include "tee_provider_common.h"
 #include "include_secure/crys.h"
 #include "include_secure/crys_rsa_types.h"
@@ -230,134 +211,12 @@ do { \
 #define CHECK_CRYS_ERROR_AES_BASE		(CRYS_AES_MODULE_ERROR_BASE >> 8U)
 
 /*************** declaration statement ***************/
-static TEE_Result hash_get_ctx_size(uint32_t algo, size_t *size);
-static TEE_Result hash_init(void *ctx, uint32_t algo);
-static TEE_Result hash_update(void *ctx, uint32_t algo, const uint8_t *data,
-		size_t len);
-static TEE_Result hash_final(void *ctx, uint32_t algo, uint8_t *digest,
-		size_t len);
-
-static TEE_Result do_alloc_rsa_keypair(struct rsa_keypair *s,
-		size_t key_size_bits __unused);
-static TEE_Result do_alloc_rsa_public_key(struct rsa_public_key *s,
-		size_t key_size_bits __unused);
-static void free_rsa_public_key(struct rsa_public_key *s);
-static TEE_Result do_gen_rsa_key(struct rsa_keypair *key, size_t key_size);
-static TEE_Result do_rsanopad_encrypt(struct rsa_public_key *key,
-		const uint8_t *src, size_t src_len, uint8_t *dst,
-		size_t *dst_len);
-static TEE_Result do_rsanopad_decrypt(struct rsa_keypair *key,
-		const uint8_t *src, size_t src_len, uint8_t *dst,
-		size_t *dst_len);
-static TEE_Result do_rsaes_decrypt(uint32_t algo, struct rsa_keypair *key,
-		const uint8_t *label, size_t label_len, const uint8_t *src,
-		size_t src_len, uint8_t *dst, size_t *dst_len);
-static TEE_Result do_rsaes_encrypt(uint32_t algo, struct rsa_public_key *key,
-		const uint8_t *label, size_t label_len, const uint8_t *src,
-		size_t src_len, uint8_t *dst, size_t *dst_len);
-static TEE_Result do_rsassa_sign(uint32_t algo, struct rsa_keypair *key,
-		int salt_len, const uint8_t *msg, size_t msg_len, uint8_t *sig,
-		size_t *sig_len);
-static TEE_Result do_rsassa_verify(uint32_t algo, struct rsa_public_key *key,
-		int salt_len, const uint8_t *msg, size_t msg_len,
-		const uint8_t *sig, size_t sig_len);
-
-static TEE_Result do_alloc_dsa_keypair(struct dsa_keypair *s,
-		size_t key_size_bits __unused);
-static TEE_Result do_alloc_dsa_public_key(struct dsa_public_key *s,
-		size_t key_size_bits __unused);
-static TEE_Result do_gen_dsa_key(struct dsa_keypair *key, size_t key_size);
-static TEE_Result do_dsa_sign(uint32_t algo, struct dsa_keypair *key,
-		const uint8_t *msg, size_t msg_len, uint8_t *sig,
-		size_t *sig_len);
-static TEE_Result do_dsa_verify(uint32_t algo, struct dsa_public_key *key,
-		const uint8_t *msg, size_t msg_len, const uint8_t *sig,
-		size_t sig_len);
-
-static TEE_Result do_alloc_dh_keypair(struct dh_keypair *s,
-		size_t key_size_bits __unused);
-static TEE_Result do_gen_dh_key(struct dh_keypair *key, struct bignum *q,
-		size_t xbits);
-static TEE_Result do_dh_shared_secret(struct dh_keypair *private_key,
-		struct bignum *public_key, struct bignum *secret);
-		
+/* Provide SS6.3-Secure Driver specific functions */
 #if defined(CFG_CRYPTO_ECC)
-static TEE_Result do_alloc_ecc_keypair(struct ecc_keypair *s,
-		size_t key_size_bits __unused);
-static TEE_Result do_alloc_ecc_public_key(struct ecc_public_key *s,
-		size_t key_size_bits __unused);
-static void free_ecc_public_key(struct ecc_public_key *s);
 static SSError_t ss_get_ecc_keysize(uint32_t curve,
 		CRYS_ECPKI_DomainID_t *domain_id, uint32_t *key_size_bytes);
 
-static TEE_Result do_gen_ecc_key(struct ecc_keypair *key);
-static TEE_Result do_ecc_sign(uint32_t algo, struct ecc_keypair *key,
-		const uint8_t *msg, size_t msg_len, uint8_t *sig,
-		size_t *sig_len);
-static TEE_Result do_ecc_verify(uint32_t algo, struct ecc_public_key *key,
-		const uint8_t *msg, size_t msg_len, const uint8_t *sig,
-		size_t sig_len);
-static TEE_Result do_ecc_shared_secret(struct ecc_keypair *private_key,
-		struct ecc_public_key *public_key, void *secret,
-		unsigned long *secret_len);
 #endif
-static TEE_Result cipher_get_block_size(uint32_t algo, size_t *size);
-static TEE_Result cipher_get_ctx_size(uint32_t algo, size_t *size);
-static TEE_Result cipher_init(void *ctx, uint32_t algo, TEE_OperationMode mode,
-		const uint8_t *key1, size_t key1_len, const uint8_t *key2,
-		size_t key2_len, const uint8_t *iv, size_t iv_len);
-static TEE_Result cipher_update(void *ctx, uint32_t algo,
-		TEE_OperationMode mode,
-		bool last_block, const uint8_t *data, size_t len, uint8_t *dst);
-static void cipher_final(void *ctx, uint32_t algo);
-
-static TEE_Result mac_get_ctx_size(uint32_t algo, size_t *size);
-static TEE_Result mac_init(void *ctx, uint32_t algo, const uint8_t *key,
-		size_t len);
-static TEE_Result mac_update(void *ctx, uint32_t algo, const uint8_t *data,
-		size_t len);
-static TEE_Result mac_final(void *ctx, uint32_t algo, uint8_t *digest,
-		size_t digest_len);
-
-static TEE_Result authenc_get_ctx_size(uint32_t algo, size_t *size);
-static TEE_Result authenc_init(void *ctx, uint32_t algo, TEE_OperationMode mode,
-		const uint8_t *key, size_t key_len, const uint8_t *nonce,
-		size_t nonce_len, size_t tag_len, size_t aad_len,
-		size_t payload_len);
-static TEE_Result authenc_update_aad(void *ctx, uint32_t algo,
-		TEE_OperationMode mode __unused, const uint8_t *data,
-		size_t len);
-static TEE_Result authenc_update_payload(void *ctx, uint32_t algo,
-		TEE_OperationMode mode, const uint8_t *src_data, size_t src_len,
-		uint8_t *dst_data, size_t *dst_len);
-static TEE_Result authenc_enc_final(void *ctx, uint32_t algo,
-		const uint8_t *src_data, size_t src_len, uint8_t *dst_data,
-		size_t *dst_len, uint8_t *dst_tag, size_t *dst_tag_len);
-static TEE_Result authenc_dec_final(void *ctx, uint32_t algo,
-		const uint8_t *src_data, size_t src_len, uint8_t *dst_data,
-		size_t *dst_len, const uint8_t *tag, size_t tag_len);
-static void authenc_final(void *ctx, uint32_t algo);
-static SSError_t ss_generate_random(uint8_t *outPtr, size_t outSize);
-static TEE_Result prng_read_without_init(void *buf, size_t blen);
-static TEE_Result prng_add_entropy(const uint8_t *inbuf, size_t len);
-static TEE_Result prng_init(void);
-static TEE_Result tee_ss_init(void);
-static TEE_Result do_cmac_derivekey(uint32_t keyType, uint8_t *in,
-		uint32_t inSize, uint8_t *out, uint32_t outSize);
-static TEE_Result do_rpmb_signframes(uint64_t *in, uint32_t listSize,
-		uint8_t *out, uint32_t outSize);
-static TEE_Result do_rpmb_derivekey(uint8_t *out, uint32_t outSize);
-static TEE_Result cipher_unwrap(void *srcData, uint32_t srcLen,
-		const void *keyData, uint32_t keySize, uint32_t isSecretKey,
-		void *destData, uint32_t *dstLen);
-static TEE_Result do_gen_skey_package(RCAR_SkeyParams_t *skeyParams,
-		uint8_t *skeyPackageBuf, uint32_t skeyPackageSize);
-static TEE_Result do_asset_unpack(uint32_t assetId,
-		uint8_t *pAssetPackage, uint32_t assetPackagLen,
-		uint8_t *pAssetData, uint32_t *pAssetDataLen,
-		uint32_t *pUserData);
-
-/* ss provider original function */
 static SSError_t ss_get_rsa_hash(uint32_t algo,
 		CRYS_RSA_HASH_OpMode_t *rsa_hashmode, size_t *hashSize,
 		CRYS_PKCS1_MGF_t *mgf, CRYS_PKCS1_version *version);
@@ -366,11 +225,11 @@ static SSError_t ss_build_pub_key(CRYS_RSAUserPubKey_t **userPubKey,
 static SSError_t ss_build_priv_key(CRYS_RSAUserPrivKey_t **userPrivKey,
 		struct rsa_keypair *key);
 static SSError_t ss_aes_init(void *ctx, uint32_t algo, TEE_OperationMode mode,
-		const uint8_t *key1, size_t key1_len, const uint8_t *key2,
-		size_t key2_len, const uint8_t *iv, size_t iv_len);
+		const uint8_t *key1, size_t key1_len, const uint8_t *iv,
+		size_t iv_len);
 static SSError_t ss_des_init(void *ctx, uint32_t algo, TEE_OperationMode mode,
-		const uint8_t *key1, size_t key1_len, const uint8_t *key2,
-		size_t key2_len, const uint8_t *iv, size_t iv_len);
+		const uint8_t *key1, size_t key1_len, const uint8_t *iv,
+		size_t iv_len);
 static SSError_t ss_swap_cts_block(uint32_t algo, uint8_t *dstPtr,
 		uint32_t dstSize, uint32_t blockSize);
 static SSError_t ss_aes_update(void *ctx, uint32_t algo, bool last_block, const uint8_t *data,
@@ -399,7 +258,8 @@ static SSError_t ss_translate_error_crys2ss_hmac(CRYSError_t err);
 static SSError_t ss_translate_error_crys2ss_ccm(CRYSError_t err);
 static SSError_t ss_translate_error_crys2ss_rnd(CRYSError_t err);
 static SSError_t ss_translate_error_crys2ss_util(DxUTILError_t err);
-static void tee_ltc_alloc_mpa(void);
+static SSError_t ss_get_ecc_digest(uint32_t msg_len,
+		CRYS_ECPKI_HASH_OpMode_t *hash);
 #ifndef CFG_CRYPT_ENABLE_CEPKA
 static SSError_t ss_ecc_verify_secure(struct ecc_public_key *key,
 		const uint8_t *msg, size_t msg_len, const uint8_t *sig,
@@ -420,7 +280,7 @@ static SSError_t ss_crys_hmac_update(void *ctx, uint8_t *dataIn_ptr,
 static SSError_t ss_crys_aesccm_update(void *ctx, uint8_t *dataIn_ptr,
 		uint32_t dataInSize, uint8_t *dataOut_ptr, CRYSError_t *crysRes);
 static void ss_backup_cb(enum suspend_to_ram_state state, uint32_t cpu_id);
-
+static TEE_Result crypto_hw_init_crypto_engine(void);
 
 static SSError_t ss_crys_aes_update(void *ctx, uint8_t *dataIn_ptr,
 		uint32_t dataInSize, uint8_t *dataOut_ptr, CRYSError_t *crysRes)
@@ -994,6 +854,9 @@ static SSError_t ss_buffer_update(void *ctx, uint32_t algo,
 #if defined(CFG_CRYPTO_CMAC)
 	case TEE_ALG_AES_CMAC:
 #endif
+#if defined(CFG_CRYPTO_XCBC_MAC)
+	case TEE_ALG_AES_XCBC_MAC:
+#endif
 #if defined(CFG_CRYPTO_ECB)
 	case TEE_ALG_AES_ECB_NOPAD:
 #endif
@@ -1003,11 +866,11 @@ static SSError_t ss_buffer_update(void *ctx, uint32_t algo,
 #if defined(CFG_CRYPTO_CTR)
 	case TEE_ALG_AES_CTR:
 #endif
+#if defined(CFG_CRYPTO_OFB)
+	case TEE_ALG_AES_OFB:
+#endif
 #if defined(CFG_CRYPTO_CTS)
 	case TEE_ALG_AES_CTS:
-#endif
-#if defined(CFG_CRYPTO_XTS)
-	case TEE_ALG_AES_XTS:
 #endif
 		PROV_DMSG("algo=AES (no CCM)\n");
 		crysAlgo = SS_ALG_AES;
@@ -1175,6 +1038,201 @@ static SSError_t ss_buffer_update(void *ctx, uint32_t algo,
 	return res;
 }
 
+/*
+ * brief: Check if SS6.3-Secure Driver supports a input HASH algorithm.
+ *
+ * param[in]	algo     - Cryptographic algorithm.
+ * return	uint32_t - Return SS_NOT_SUPPORT_ALG in case of unsupporting
+ *                         algorithm.
+ *                         Return SS_SUPPORT_ALG in case of supporting
+ *                         algorithm.
+ */
+uint32_t crypto_hw_hash_check_support(uint32_t algo)
+{
+	uint32_t ret;
+
+	switch ((int32_t)algo) {
+	case TEE_ALG_MD5:
+	case TEE_ALG_SHA1:
+	case TEE_ALG_SHA224:
+	case TEE_ALG_SHA256:
+	case TEE_ALG_SHA384:
+	case TEE_ALG_SHA512:
+		ret = SS_HW_SUPPORT_ALG;
+		break;
+	default:
+		ret = SS_HW_NOT_SUPPORT_ALG;
+		break;
+	}
+	PROV_DMSG("ret=%d\n", ret);
+	return ret;
+}
+
+/*
+ * brief: Check if SS6.3-Secure Driver supports a input MAC algorithm.
+ *
+ * param[in]	algo     - Cryptographic algorithm.
+ * return	uint32_t - Return SS_NOT_SUPPORT_ALG in case of unsupporting
+ *                         algorithm.
+ *                         Return SS_SUPPORT_ALG in case of supporting
+ *                         algorithm.
+ */
+uint32_t crypto_hw_mac_check_support(uint32_t algo)
+{
+	uint32_t ret;
+
+	switch ((int32_t)algo) {
+	case TEE_ALG_DES_CBC_MAC_NOPAD:
+	case TEE_ALG_DES_CBC_MAC_PKCS5:
+	case TEE_ALG_DES3_CBC_MAC_NOPAD:
+	case TEE_ALG_DES3_CBC_MAC_PKCS5:
+		ret = SS_HW_NOT_SUPPORT_ALG;
+		break;
+	default:
+		ret = SS_HW_SUPPORT_ALG;
+		break;
+	}
+	PROV_DMSG("ret=%d\n", ret);
+	return ret;
+}
+
+
+/*
+ * brief: Check if SS6.3-Secure Driver supports a input cipher algorithm.
+ *
+ * param[in]	algo     - Cryptographic algorithm.
+ * return	uint32_t - Return SS_NOT_SUPPORT_ALG in case of unsupporting
+ *                         algorithm.
+ *                         Return SS_SUPPORT_ALG in case of supporting
+ *                         algorithm.
+ */
+uint32_t crypto_hw_cipher_check_support(uint32_t algo)
+{
+	uint32_t ret;
+	switch ((int32_t)algo) {
+	case TEE_ALG_AES_XTS:
+		ret = SS_HW_NOT_SUPPORT_ALG;
+		break;
+	default:
+		ret = SS_HW_SUPPORT_ALG;
+		break;
+	}
+	PROV_DMSG("ret=%d\n", ret);
+	return ret;
+}
+
+/*
+ * brief: Check if SS6.3-Secure Driver supports a input RSA algorithm.
+ *
+ * param[in]	algo     - Cryptographic algorithm.
+ * param[in]	modSize  - Modulus size.
+ * return	uint32_t - Return SS_NOT_SUPPORT_ALG in case of unsupporting
+ *                         algorithm.
+ *                         Return SS_SUPPORT_ALG in case of supporting
+ *                         algorithm.
+ */
+uint32_t crypto_hw_acipher_check_support(uint32_t algo, uint32_t modSize)
+{
+	uint32_t ret;
+
+	ret = crypto_hw_acipher_check_support_key(modSize);
+
+	switch ((int32_t)algo) {
+	case TEE_ALG_RSASSA_PKCS1_V1_5_MD5:
+		ret = SS_HW_NOT_SUPPORT_ALG;
+		break;
+	default:
+		break;
+	}
+	PROV_DMSG("ret=%d\n", ret);
+	return ret;
+}
+
+/*
+ * brief: Check if SS6.3-Secure Driver supports a input RSA key size.
+ *
+ * param[in]	keySize  - RSA key size.
+ * return	uint32_t - Return SS_NOT_SUPPORT_ALG in case of unsupporting
+ *                         algorithm.
+ *                         Return SS_SUPPORT_ALG in case of supporting
+ *                         algorithm.
+ */
+uint32_t crypto_hw_acipher_check_support_key(uint32_t keySize)
+{
+	uint32_t ret;
+
+	switch (keySize) {
+	case 512U:
+	case 1024U:
+	case 2048U:
+	case 3072U:
+	case 4096U:
+		ret = SS_HW_SUPPORT_ALG;
+		break;
+	default:
+		ret = SS_HW_NOT_SUPPORT_ALG;
+		break;
+	}
+	PROV_DMSG("ret=%d\n", ret);
+	return ret;
+}
+
+/*
+ * brief: Check if SS6.3-Secure Driver supports ECC.
+ *
+ * param[in]	curve    - Elliptic Curve Cryptography
+ * return	uint32_t - Return SS_NOT_SUPPORT_ALG in case of unsupporting
+ *                         algorithm.
+ *                         Return SS_SUPPORT_ALG in case of supporting
+ *                         algorithm.
+ */
+uint32_t crypto_hw_acipher_ecc_check_support(uint32_t curve)
+{
+	uint32_t ret;
+
+	switch ((int32_t)curve) {
+	case TEE_ECC_CURVE_NIST_P192:
+	case TEE_ECC_CURVE_NIST_P224:
+	case TEE_ECC_CURVE_NIST_P256:
+	case TEE_ECC_CURVE_NIST_P384:
+	case TEE_ECC_CURVE_NIST_P521:
+		ret = SS_HW_SUPPORT_ALG;
+		break;
+	default:
+		ret = SS_HW_NOT_SUPPORT_ALG;
+		break;
+	}
+	PROV_DMSG("ret=%d\n", ret);
+	return ret;
+}
+
+/*
+ * brief: Check if SS6.3-Secure Driver supports a DH key size.
+ *
+ * param[in]	keySize  - DH key size.
+ * return	uint32_t - Return SS_NOT_SUPPORT_ALG in case of unsupporting
+ *                         algorithm.
+ *                         Return SS_SUPPORT_ALG in case of supporting
+ *                         algorithm.
+ */
+uint32_t crypto_hw_dh_check_support(uint32_t keySize)
+{
+	uint32_t ret;
+
+	switch (keySize) {
+	case 1024U:
+	case 2048U:
+		ret = SS_HW_SUPPORT_ALG;
+		break;
+	default:
+		ret = SS_HW_NOT_SUPPORT_ALG;
+		break;
+	}
+	PROV_DMSG("ret=%d\n", ret);
+	return ret;
+}
+
+
 /******************************************************************************
  * Message digest functions
  ******************************************************************************/
@@ -1187,7 +1245,7 @@ static SSError_t ss_buffer_update(void *ctx, uint32_t algo,
  * return	TEE_Result	- TEE internal API error code.
  */
 #ifdef _CFG_CRYPTO_WITH_HASH
-static TEE_Result hash_get_ctx_size(uint32_t algo, size_t *size)
+TEE_Result crypto_hw_hash_get_ctx_size(uint32_t algo, size_t *size)
 {
 	TEE_Result tee_res;
 	SSError_t res = SS_SUCCESS;
@@ -1235,7 +1293,7 @@ static TEE_Result hash_get_ctx_size(uint32_t algo, size_t *size)
  * param[in]	algo		- Cryptographic algorithm.
  * return	TEE_Result	- TEE internal API error code.
  */
-static TEE_Result hash_init(void *ctx, uint32_t algo)
+TEE_Result crypto_hw_hash_init(void *ctx, uint32_t algo)
 {
 	TEE_Result tee_res;
 	SSError_t res = SS_SUCCESS;
@@ -1248,7 +1306,6 @@ static TEE_Result hash_init(void *ctx, uint32_t algo)
 
 	if (ctx != NULL) {
 		ss_ctx = (SS_HASH_Context_t *)ctx;
-		(void)memset(ss_ctx,0,sizeof(SS_HASH_Context_t));
 		ss_ctx->crys_error = SS_SUCCESS;
 		ss_ctx->restBufSize = 0U;
 		ss_ctx->blockSize = 64U;
@@ -1326,8 +1383,8 @@ static TEE_Result hash_init(void *ctx, uint32_t algo)
  * param[in]	len		- Size of the data to HASH algorithm.
  * return	TEE_Result	- TEE internal API error code.
  */
-static TEE_Result hash_update(void *ctx, uint32_t algo __unused,
-		const uint8_t *data, size_t len)
+TEE_Result crypto_hw_hash_update(void *ctx, uint32_t algo, const uint8_t *data,
+		size_t len)
 {
 	TEE_Result tee_res;
 	SSError_t res = SS_SUCCESS;
@@ -1353,11 +1410,11 @@ static TEE_Result hash_update(void *ctx, uint32_t algo __unused,
  *
  * param[in]	*ctx		- Context to HASH algorithm.
  * param[in]	algo		- Cryptographic algorithm.
- * param[out]	*digest		- Pointer to the output buffer.
- * param[out]	len		- Size of the output data buffer.
+ * param[in]	*digest		- Pointer to the output buffer.
+ * param[in]	len		- Size of the output data buffer.
  * return	TEE_Result	- TEE internal API error code.
  */
-static TEE_Result hash_final(void *ctx, uint32_t algo, uint8_t *digest,
+TEE_Result crypto_hw_hash_final(void *ctx, uint32_t algo, uint8_t *digest,
 		size_t len)
 {
 	TEE_Result tee_res;
@@ -1450,133 +1507,6 @@ static TEE_Result hash_final(void *ctx, uint32_t algo, uint8_t *digest,
  ******************************************************************************/
 #if defined(_CFG_CRYPTO_WITH_ACIPHER)
 #if defined(CFG_CRYPTO_RSA)
-
-/*
- * brief:	Allocate member struct data of the RSA key pair.
- *
- * param[out]	*s		- Pointer to the struct data of RSA key pair.
- * return	TEE_Result	- TEE internal API error code.
- */
-static TEE_Result do_alloc_rsa_keypair(struct rsa_keypair *s,
-		size_t key_size_bits __unused)
-{
-	TEE_Result tee_res;
-	SSError_t res;
-	PROV_INMSG("s=%p, key_size_bits=%ld\n",(void*)s,key_size_bits);
-
-	if (NULL == s) {
-		res = SS_ERROR_BAD_PARAMETERS;
-		PROV_EMSG("BAD_PARAMETERS(s=%p)\n", s);
-	} else {
-		s->d = NULL;
-		s->e = NULL;
-		s->n = NULL;
-		s->p = NULL;
-		s->q = NULL;
-		s->dp = NULL;
-		s->dq = NULL;
-		s->qp = NULL;
-		PROV_DMSG("CALL: bn_alloc_max(&s->e)\n");
-		res = bn_alloc_max(&s->e);
-
-		if (res == SS_SUCCESS) {
-			PROV_DMSG("CALL: bn_alloc_max(&s->d)\n");
-			res = bn_alloc_max(&s->d);
-		}
-		if (res == SS_SUCCESS) {
-			PROV_DMSG("CALL: bn_alloc_max(&s->n)\n");
-			res = bn_alloc_max(&s->n);
-		}
-		if (res == SS_SUCCESS) {
-			PROV_DMSG("CALL: bn_alloc_max(&s->p)\n");
-			res = bn_alloc_max(&s->p);
-		}
-		if (res == SS_SUCCESS) {
-			PROV_DMSG("CALL: bn_alloc_max(&s->q)\n");
-			res = bn_alloc_max(&s->q);
-		}
-		if (res == SS_SUCCESS) {
-			PROV_DMSG("CALL: bn_alloc_max(&s->dp)\n");
-			res = bn_alloc_max(&s->dp);
-		}
-		if (res == SS_SUCCESS) {
-			PROV_DMSG("CALL:  bn_alloc_max(&s->dp)\n");
-			res = bn_alloc_max(&s->dq);
-		}
-		if (res == SS_SUCCESS) {
-			PROV_DMSG("CALL: bn_alloc_max(&s->qp)\n");
-			res = bn_alloc_max(&s->qp);
-		}
-		if (res != SS_SUCCESS) {
-			bn_free(s->e);
-			bn_free(s->d);
-			bn_free(s->n);
-			bn_free(s->p);
-			bn_free(s->q);
-			bn_free(s->dp);
-			bn_free(s->dq);
-			bn_free(s->qp);
-			PROV_DMSG("ERROR: OUT_OF_MEMORY\n");
-		}
-	}
-	tee_res = ss_translate_error_ss2tee(res);
-	PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n",res,tee_res);
-	return tee_res;
-}
-
-/*
- * brief:	Allocate member struct data of the RSA public key.
- *
- * param[out]	*s		- Pointer to the struct data of RSA public key.
- * return	TEE_Result	- TEE internal API error code.
- */
-static TEE_Result do_alloc_rsa_public_key(struct rsa_public_key *s,
-		size_t key_size_bits __unused)
-{
-	TEE_Result tee_res;
-	SSError_t res;
-
-	PROV_INMSG("s=%p, key_size_bits=%ld\n", (void * )s, key_size_bits);
-	if (NULL == s) {
-		res = SS_ERROR_BAD_PARAMETERS;
-		PROV_EMSG("BAD_PARAMETERS(s=%p)\n", s);
-	} else {
-		s->e = NULL;
-		s->n = NULL;
-		PROV_DMSG("CALL:  bn_alloc_max(&s->e)\n");
-		res = bn_alloc_max(&s->e);
-		if (res == SS_SUCCESS) {
-			PROV_DMSG("CALL:  bn_alloc_max(&s->n)\n");
-			res = bn_alloc_max(&s->n);
-		}
-		if (res != SS_SUCCESS) {
-			bn_free(s->e);
-			bn_free(s->n);
-			PROV_EMSG("Memory allocate failed\n");
-		}
-	}
-	tee_res = ss_translate_error_ss2tee(res);
-	PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n",res,tee_res);
-	return tee_res;
-}
-
-/*
- * brief:	Free RSA public key.
- *
- * param[out]	*s		- Pointer to the struct data of RSA public key.
- * return	void
- */
-static void free_rsa_public_key(struct rsa_public_key *s)
-{
-	if (NULL == s) {
-		PROV_EMSG("BAD_PARAMETERS(s=%p)\n", s);
-	} else {
-		PROV_DMSG("FREE RSA public key\n");
-		bn_free(s->n);
-		bn_free(s->e);
-	}
-}
-
 /*
  * brief:	Generate RSA key pair.
  *
@@ -1584,7 +1514,8 @@ static void free_rsa_public_key(struct rsa_public_key *s)
  * param[in]	key_sizse	- Size of RSA key pair.
  * return	TEE_Result	- TEE internal API error code.
  */
-static TEE_Result do_gen_rsa_key(struct rsa_keypair *key, size_t key_size)
+TEE_Result crypto_hw_acipher_gen_rsa_key(struct rsa_keypair *key,
+		size_t key_size)
 {
 	TEE_Result tee_res;
 	SSError_t res = SS_SUCCESS;
@@ -1934,9 +1865,9 @@ static SSError_t ss_build_pub_key(CRYS_RSAUserPubKey_t **userPubKey,
  * param[out]	*dst		- Pointer to the destination of the encrypt data buffer.
  * return	TEE_Result	- TEE internal API error code.
  */
-static TEE_Result do_rsanopad_encrypt(struct rsa_public_key *key,
+TEE_Result crypto_hw_acipher_rsanopad_encrypt(struct rsa_public_key *key,
 		const uint8_t *src, size_t src_len, uint8_t *dst,
-		size_t *dst_len __unused)
+		size_t *dst_len)
 {
 	TEE_Result tee_res;
 	SSError_t res = SS_SUCCESS;
@@ -2028,9 +1959,9 @@ static TEE_Result do_rsanopad_encrypt(struct rsa_public_key *key,
  * param[out]	*dst		- Pointer to the destination of the decrypt data buffer.
  * return	TEE_Result	- TEE internal API error code.
  */
-static TEE_Result do_rsanopad_decrypt(struct rsa_keypair *key,
+TEE_Result crypto_hw_acipher_rsanopad_decrypt(struct rsa_keypair *key,
 		const uint8_t *src, size_t src_len, uint8_t *dst,
-		size_t *dst_len __unused)
+		size_t *dst_len)
 {
 	TEE_Result tee_res;
 	SSError_t res = SS_SUCCESS;
@@ -2220,9 +2151,10 @@ static SSError_t ss_get_rsa_hash(uint32_t algo,
  * param[out]	*dst_len	- Size of destination data buffer.
  * return	TEE_Result	- TEE internal API error code.
  */
-static TEE_Result do_rsaes_encrypt(uint32_t algo, struct rsa_public_key *key,
-		const uint8_t *label, size_t label_len, const uint8_t *src,
-		size_t src_len, uint8_t *dst, size_t *dst_len)
+TEE_Result crypto_hw_acipher_rsaes_encrypt(uint32_t algo,
+		struct rsa_public_key *key, const uint8_t *label,
+		size_t label_len, const uint8_t *src, size_t src_len,
+		uint8_t *dst, size_t *dst_len)
 {
 	TEE_Result tee_res;
 	SSError_t res = SS_SUCCESS;
@@ -2323,7 +2255,7 @@ static TEE_Result do_rsaes_encrypt(uint32_t algo, struct rsa_public_key *key,
  * param[out]	*dst_len	- Size of destination data buffer.
  * return	TEE_Result	- TEE internal API error code.
  */
-static TEE_Result do_rsaes_decrypt(uint32_t algo, struct rsa_keypair *key,
+TEE_Result crypto_hw_acipher_rsaes_decrypt(uint32_t algo, struct rsa_keypair *key,
 		const uint8_t *label, size_t label_len, const uint8_t *src,
 		size_t src_len, uint8_t *dst, size_t *dst_len)
 {
@@ -2474,7 +2406,7 @@ static TEE_Result do_rsaes_decrypt(uint32_t algo, struct rsa_keypair *key,
  * param[out]	*sig_len	- Size of signature data buffer.
  * return	TEE_Result	- TEE internal API error code.
  */
-static TEE_Result do_rsassa_sign(uint32_t algo, struct rsa_keypair *key,
+TEE_Result crypto_hw_acipher_rsassa_sign(uint32_t algo, struct rsa_keypair *key,
 		int salt_len, const uint8_t *msg, size_t msg_len, uint8_t *sig,
 		size_t *sig_len)
 {
@@ -2590,9 +2522,9 @@ static TEE_Result do_rsassa_sign(uint32_t algo, struct rsa_keypair *key,
  * param[in]	*sig_len	- Size of signature data buffer.
  * return	TEE_Result	- TEE internal API error code.
  */
-static TEE_Result do_rsassa_verify(uint32_t algo, struct rsa_public_key *key,
-		int salt_len, const uint8_t *msg, size_t msg_len,
-		const uint8_t *sig, size_t sig_len)
+TEE_Result crypto_hw_acipher_rsassa_verify(uint32_t algo,
+		struct rsa_public_key *key, int salt_len, const uint8_t *msg,
+		size_t msg_len, const uint8_t *sig)
 {
 	TEE_Result tee_res;
 	SSError_t res = SS_SUCCESS;
@@ -2607,26 +2539,15 @@ static TEE_Result do_rsassa_verify(uint32_t algo, struct rsa_public_key *key,
 	uint32_t dataInSize = 0U;
 	uint8_t *sig_ptr;
 	CRYS_PKCS1_version version;
-	size_t modulas_size;
 	size_t hashSize;
 
 	PROV_INMSG("algo=%d, *key=%p, salt_len=%d, *msg=%p",algo,key,salt_len, msg);
-	PROV_INMSG("msg_len=%ld, *sig=%p, sig_len=%ld\n",msg_len,sig,sig_len);
+	PROV_INMSG("msg_len=%ld, *sig=%p\n",msg_len,sig);
 
 	dataIn_ptr = (uint8_t *)msg;
 	sig_ptr = (uint8_t *)sig;
 	NULL_CHECK_RSA_PUBLIC_KEY(key,res);
-	if (res == SS_SUCCESS) {
-		modulas_size = bn_num_bytes(key->n);
-		if (sig_len <= 0xFFFFU) {
-			if (sig_len != modulas_size) {
-				res = SS_ERROR_SHORT_BUFFER;
-				PROV_EMSG("SHORT_BUFFER(sig_len)\n");
-			}
-		} else {
-			res = SS_ERROR_OVERFLOW;
-		}
-	}
+
 	if (res == SS_SUCCESS) {
 		if (salt_len < 0xFFFF) {
 			saltLen = (uint16_t)salt_len;
@@ -2681,142 +2602,7 @@ static TEE_Result do_rsassa_verify(uint32_t algo, struct rsa_public_key *key,
 
 #endif /* CFG_CRYPTO_RSA */
 
-#if defined(CFG_CRYPTO_DSA)
-
-/*
- * brief:	Sansa does not support DSA
- *
- * return	TEE_Result	- Always return (TEE_ERROR_NOT_SUPPORTED).
- */
-static TEE_Result do_alloc_dsa_keypair(struct dsa_keypair *s __unused,
-		size_t key_size_bits __unused)
-{
-	TEE_Result tee_res;
-	PROV_INMSG("START: All argument unused.\n");
-	tee_res = ss_translate_error_ss2tee(SS_ERROR_NOT_SUPPORTED);
-	PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n",SS_ERROR_NOT_SUPPORTED,tee_res);
-	return tee_res;
-
-}
-
-/*
- * brief:	Sansa does not support DSA
- *
- * return	TEE_Result	- Always return (TEE_ERROR_NOT_SUPPORTED).
- */
-static TEE_Result do_alloc_dsa_public_key(struct dsa_public_key *s __unused,
-		size_t key_size_bits __unused)
-{
-	TEE_Result tee_res;
-	PROV_INMSG("START: do_alloc_dsa_public_key\n");
-	tee_res = ss_translate_error_ss2tee(SS_ERROR_NOT_SUPPORTED);
-	PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n",SS_ERROR_NOT_SUPPORTED,tee_res);
-	return tee_res;
-}
-
-/*
- * brief:	Sansa does not support DSA
- *
- * return	TEE_Result	- Always return (TEE_ERROR_NOT_SUPPORTED).
- */
-static TEE_Result do_gen_dsa_key(struct dsa_keypair *key __unused,
-		size_t key_size __unused)
-{
-	TEE_Result tee_res;
-	PROV_INMSG("START: do_gen_dsa_key\n");
-	tee_res = ss_translate_error_ss2tee(SS_ERROR_NOT_SUPPORTED);
-	PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n",SS_ERROR_NOT_SUPPORTED,tee_res);
-	return tee_res;
-}
-
-/*
- * brief:	Sansa does not support DSA
- *
- * return	TEE_Result	- Always return (TEE_ERROR_NOT_SUPPORTED).
- */
-static TEE_Result do_dsa_sign(uint32_t algo __unused,
-		struct dsa_keypair *key __unused, const uint8_t *msg __unused,
-		size_t msg_len __unused, uint8_t *sig __unused,
-		size_t *sig_len __unused)
-{
-	TEE_Result tee_res;
-	PROV_INMSG("START: do_dsa_sign\n");
-	tee_res = ss_translate_error_ss2tee(SS_ERROR_NOT_SUPPORTED);
-	PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n",SS_ERROR_NOT_SUPPORTED,tee_res);
-	return tee_res;
-}
-
-/*
- * brief:	Sansa does not support DSA
- *
- * return	TEE_Result	- Always return (TEE_SUCCESS).
- */
-static TEE_Result do_dsa_verify(uint32_t algo __unused,
-		struct dsa_public_key *key __unused,
-		const uint8_t *msg __unused, size_t msg_len __unused,
-		const uint8_t *sig __unused, size_t sig_len __unused)
-{
-	TEE_Result tee_res;
-	PROV_INMSG("START: do_dsa_verify\n");
-	tee_res = ss_translate_error_ss2tee(SS_ERROR_NOT_SUPPORTED);
-	PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n",SS_ERROR_NOT_SUPPORTED,tee_res);
-	return tee_res;
-}
-
-#endif /* CFG_CRYPTO_DSA */
-
 #if defined(CFG_CRYPTO_DH)
-/*
- * brief:	Allocate member struct data of the DH key pair.
- *
- * param[in]	*s		- Pointer to the struct data of DH key pair.
- * return	TEE_Result	- TEE internal API error code.
- */
-static TEE_Result do_alloc_dh_keypair(struct dh_keypair *s,
-		size_t key_size_bits __unused)
-{
-	TEE_Result tee_res;
-	SSError_t res;
-	PROV_INMSG("*s=%p\n",s);
-
-	if (NULL == s) {
-		res = SS_ERROR_BAD_PARAMETERS;
-		PROV_EMSG("BAD_PARAMETERS(s=%p)\n", s);
-	} else {
-		s->g = NULL;
-		s->p = NULL;
-		s->q = NULL;
-		s->x = NULL;
-		s->y = NULL;
-		s->xbits = 0U;
-		res = bn_alloc_max(&s->g);
-
-		if (res == SS_SUCCESS) {
-			res = bn_alloc_max(&s->p);
-		}
-		if (res == SS_SUCCESS) {
-			res = bn_alloc_max(&s->x);
-		}
-		if (res == SS_SUCCESS) {
-			res = bn_alloc_max(&s->y);
-		}
-		if (res == SS_SUCCESS) {
-			res = bn_alloc_max(&s->q);
-		}
-		if (res != SS_SUCCESS) {
-			bn_free(s->g);
-			bn_free(s->p);
-			bn_free(s->x);
-			bn_free(s->y);
-			bn_free(s->q);
-			PROV_EMSG("Allocate Memory Failed\n");
-		}
-	}
-	tee_res = ss_translate_error_ss2tee(res);
-	PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n",res,tee_res);
-	return tee_res;
-}
-
 /*
  * brief:	Generate DH key pair.
  *
@@ -2825,7 +2611,7 @@ static TEE_Result do_alloc_dh_keypair(struct dh_keypair *s,
  * param[in]	 *xbits		- Pointer to the bignum data of x bits.
  * return	 TEE_Result	- TEE internal API error code.
  */
-static TEE_Result do_gen_dh_key(struct dh_keypair *key, struct bignum *q,
+TEE_Result crypto_hw_acipher_gen_dh_key(struct dh_keypair *key, struct bignum *q,
 		size_t xbits)
 {
 	TEE_Result tee_res;
@@ -2906,7 +2692,7 @@ static TEE_Result do_gen_dh_key(struct dh_keypair *key, struct bignum *q,
 			/* q */
 			res = ss_copy_bn2bin_uint16(q, &q_ptr, &qSize);
 			if (res == SS_SUCCESS) {
-				bn_copy(q, key->q);
+				crypto_bignum_copy(q, key->q);
 				PROV_DMSG("CALL: CRYS_DH_ANSI_X942_GeneratePubPrv()\n");
 				crys_res = CRYS_DH_ANSI_X942_GeneratePubPrv(
 						generator_ptr, generatorSize,
@@ -2954,7 +2740,7 @@ static TEE_Result do_gen_dh_key(struct dh_keypair *key, struct bignum *q,
  * param[in]	 *secret	- Pointer to the bignum data of secret key.
  * return	 TEE_Result	- TEE internal API error code.
  */
-static TEE_Result do_dh_shared_secret(struct dh_keypair *private_key,
+TEE_Result crypto_hw_acipher_dh_shared_secret(struct dh_keypair *private_key,
 		struct bignum *public_key, struct bignum *secret)
 {
 	TEE_Result tee_res;
@@ -3018,7 +2804,7 @@ static TEE_Result do_dh_shared_secret(struct dh_keypair *private_key,
 	}
 
 	if (res == SS_SUCCESS) {
-		res = bn_bin2bn(secretKey_ptr,(size_t)secretKeySize, secret);
+		res = crypto_bignum_bin2bn(secretKey_ptr,(size_t)secretKeySize, secret);
 	}
 
 	ss_free((void *)tmpPubKey);
@@ -3036,105 +2822,47 @@ static TEE_Result do_dh_shared_secret(struct dh_keypair *private_key,
 #endif /* CFG_CRYPTO_DH */
 
 #if defined(CFG_CRYPTO_ECC)
-
 /*
- * brief:	Allocate  struct member's memory block of the ECC key pair.
+ * brief:	Get a digest algorithm used in ECDSA.
  *
- * param[out]	*s		- Pointer to the struct data of ECC key pair.
- * return	TEE_Result	- TEE internal API error code.
+ * param[in]	msg_len			- Input message size.
+ * param[out]	*hash			- Digest algorithm.
+ * return	SSError_t		- SS provider error code.
  */
-static TEE_Result do_alloc_ecc_keypair(struct ecc_keypair *s,
-		size_t key_size_bits __unused)
+static SSError_t ss_get_ecc_digest(uint32_t msg_len,
+		CRYS_ECPKI_HASH_OpMode_t *hash)
 {
-	TEE_Result tee_res;
-	SSError_t res;
+	SSError_t res = SS_SUCCESS;
 
-	PROV_INMSG("*s=%p\n", s);
-
-	if (NULL == s) {
-		res = SS_ERROR_BAD_PARAMETERS;
-		PROV_EMSG("BAD_PARAMETERS(s=%p)\n", s);
-	} else {
-		s->curve = 0U;
-		s->d = NULL;
-		s->x = NULL;
-		s->y = NULL;
-		PROV_DMSG("CALL: bn_alloc_max(&s->d)\n");
-		res = bn_alloc_max(&s->d);
-
-		if (res == SS_SUCCESS) {
-			PROV_DMSG("CALL: bn_alloc_max(&s->x)\n");
-			res = bn_alloc_max(&s->x);
-		}
-		if (res == SS_SUCCESS) {
-			PROV_DMSG("CALL: bn_alloc_max(&s->y)\n");
-			res = bn_alloc_max(&s->y);
-		}
-		if (res != SS_SUCCESS) {
-			bn_free(s->d);
-			bn_free(s->x);
-			bn_free(s->y);
-			PROV_EMSG("Allocate Memory Failed\n");
-		}
+	switch ((int32_t)msg_len) {
+	case CRYS_HASH_SHA1_DIGEST_SIZE_IN_BYTES:
+		PROV_DMSG("TEE_ALG_ECDSA_WITH_SHA1\n");
+		*hash = CRYS_ECPKI_AFTER_HASH_SHA1_mode;
+		break;
+	case CRYS_HASH_SHA224_DIGEST_SIZE_IN_BYTES:
+		PROV_DMSG("TEE_ALG_ECDSA_WITH_SHA224\n");
+		*hash = CRYS_ECPKI_AFTER_HASH_SHA224_mode;
+		break;
+	case CRYS_HASH_SHA256_DIGEST_SIZE_IN_BYTES:
+		PROV_DMSG("TEE_ALG_ECDSA_WITH_SHA256\n");
+		*hash = CRYS_ECPKI_AFTER_HASH_SHA256_mode;
+		break;
+	case CRYS_HASH_SHA384_DIGEST_SIZE_IN_BYTES:
+		PROV_DMSG("TEE_ALG_ECDSA_WITH_SHA384\n");
+		*hash = CRYS_ECPKI_AFTER_HASH_SHA384_mode;
+		break;
+	case CRYS_HASH_SHA512_DIGEST_SIZE_IN_BYTES:
+		PROV_DMSG("TEE_ALG_ECDSA_WITH_SHA512\n");
+		*hash = CRYS_ECPKI_AFTER_HASH_SHA512_mode;
+		break;
+	default:
+		PROV_EMSG("NOT SUPPORTED\n");
+		res = SS_ERROR_NOT_SUPPORTED;
+		break;
 	}
-	tee_res = ss_translate_error_ss2tee(res);
-	PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n",res,tee_res);
-	return tee_res;
-}
 
-/*
- * brief:	Allocate  struct member's memory block of the ECC public key.
- *
- * param[out]	*s		- Pointer to the struct data of ECC public key.
- * return	TEE_Result	- TEE internal API error code.
- */
-static TEE_Result do_alloc_ecc_public_key(struct ecc_public_key *s,
-		size_t key_size_bits __unused)
-{
-	TEE_Result tee_res;
-	SSError_t res;
-
-	PROV_INMSG("*s=%p\n", s);
-
-	if (NULL == s) {
-		res = SS_ERROR_BAD_PARAMETERS;
-		PROV_EMSG("BAD_PARAMETERS(s=%p)\n", s);
-	} else {
-		s->curve = 0U;
-		s->x = NULL;
-		s->y = NULL;
-		PROV_DMSG("CALL: bn_alloc_max(&s->x)\n");
-		res = bn_alloc_max(&s->x);
-		if (res == SS_SUCCESS) {
-			res = bn_alloc_max(&s->y);
-		}
-		if (res != SS_SUCCESS) {
-			bn_free(s->x);
-			bn_free(s->y);
-			PROV_EMSG("Allocate Memory Failed\n");
-		}
-	}
-	tee_res = ss_translate_error_ss2tee(res);
-	PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n",res,tee_res);
-	return tee_res;
-}
-
-/*
- * brief:	FREE  ECC public key.
- *
- * param[out]	*s		- Pointer to the struct data of ECC public key.
- * return	void
- */
-static void free_ecc_public_key(struct ecc_public_key *s)
-{
-	if (NULL == s) {
-		PROV_EMSG("BAD_PARAMETERS(s=%p)\n", s);
-	} else {
-		PROV_DMSG("FREE ECC public key\n");
-		bn_free(s->x);
-		bn_free(s->y);
-	}
-	return;
+	PROV_OUTMSG("return res=0x%08x", res);
+	return res;
 }
 
 /*
@@ -3153,7 +2881,7 @@ static SSError_t ss_get_ecc_keysize(uint32_t curve,
 
 	switch ((int32_t)curve) {
 	case TEE_ECC_CURVE_NIST_P192:
-		PROV_DMSG("v\n");
+		PROV_DMSG("curve=TEE_ECC_CURVE_NIST_P192\n");
 		*domain_id = CRYS_ECPKI_DomainID_secp192r1;
 		*key_size_bytes = 24U;
 		break;
@@ -3193,7 +2921,7 @@ static SSError_t ss_get_ecc_keysize(uint32_t curve,
  * param[in/out] *key		- Pointer to the struct data of ECC key pair.
  * return	 TEE_Result	- TEE internal API error code.
  */
-static TEE_Result do_gen_ecc_key(struct ecc_keypair *key)
+TEE_Result crypto_hw_acipher_gen_ecc_key(struct ecc_keypair *key)
 {
 	TEE_Result tee_res;
 	SSError_t res = SS_SUCCESS;
@@ -3262,7 +2990,7 @@ static TEE_Result do_gen_ecc_key(struct ecc_keypair *key)
  * param[out]	*sig_len	- Size of signature data buffer.
  * return	TEE_Result	- TEE internal API error code.
  */
-static TEE_Result do_ecc_sign(uint32_t algo __unused, struct ecc_keypair *key,
+TEE_Result crypto_hw_acipher_ecc_sign(struct ecc_keypair *key,
 		const uint8_t *msg, size_t msg_len, uint8_t *sig,
 		size_t *sig_len)
 {
@@ -3272,6 +3000,7 @@ static TEE_Result do_ecc_sign(uint32_t algo __unused, struct ecc_keypair *key,
 	CRYS_ECPKI_DomainID_t domain_id;
 	CRYS_ECDSA_SignUserContext_t *signUserContext_ptr = NULL;
 	CRYS_ECPKI_UserPrivKey_t *signerPrivKey_ptr = NULL;
+	CRYS_ECPKI_HASH_OpMode_t eccHashMode;
 	uint8_t *privKeySizeIn_ptr = NULL;
 	size_t privKeySizeInBytes;
 	uint8_t *messageDataIn_ptr;
@@ -3280,8 +3009,9 @@ static TEE_Result do_ecc_sign(uint32_t algo __unused, struct ecc_keypair *key,
 	uint32_t *signatureOutSize_ptr;
 	uint32_t modulusbytes;
 
-	PROV_INMSG("algo=%d, *key=%p, *msg=%p\n",algo,key,msg);
-	PROV_INMSG("msg_len=0x%08lx, *sig=%p, *sig_len=0x%08lx\n",msg_len,sig,*sig_len);
+	PROV_INMSG("*key=%p, *msg=%p\n", key, msg);
+	PROV_INMSG("msg_len=0x%08lx, *sig=%p, *sig_len=0x%08lx\n", msg_len, sig,
+			*sig_len);
 
 	NULL_CHECK_ECC_KEYPAIR(key,res);
 	messageDataIn_ptr = (uint8_t *)msg;
@@ -3307,6 +3037,10 @@ static TEE_Result do_ecc_sign(uint32_t algo __unused, struct ecc_keypair *key,
 	}
 
 	if (res == SS_SUCCESS) {
+		res = ss_get_ecc_digest(messageSizeInBytes, &eccHashMode);
+	}
+
+	if (res == SS_SUCCESS) {
 		PROV_DMSG("CALL:  CRYS_ECPKI_BuildPrivKey()\n");
 		crys_res = CRYS_ECPKI_BuildPrivKey(domain_id, privKeySizeIn_ptr,
 				(uint32_t)privKeySizeInBytes, signerPrivKey_ptr);
@@ -3315,7 +3049,7 @@ static TEE_Result do_ecc_sign(uint32_t algo __unused, struct ecc_keypair *key,
 			PROV_DMSG("CALL:  CRYS_ECDSA_Sign()\n");
 			crys_res = CRYS_ECDSA_Sign(signUserContext_ptr,
 					signerPrivKey_ptr,
-					CRYS_ECPKI_AFTER_HASH_SHA1_mode,
+					eccHashMode,
 					messageDataIn_ptr, messageSizeInBytes,
 					signatureOut_ptr, signatureOutSize_ptr);
 			PROV_DMSG("Result: crys_res=0x%08x\n", crys_res);
@@ -3354,7 +3088,7 @@ static SSError_t ss_ecc_verify_secure(struct ecc_public_key *key,
 
 	CRYS_ECPKI_UserPublKey_t *userPublKey_ptr = NULL;
 	CRYS_ECDSA_VerifyUserContext_t *verifyUserContext_ptr = NULL;
-	CRYS_ECPKI_HASH_OpMode_t eccHashMode = CRYS_ECPKI_AFTER_HASH_SHA1_mode;
+	CRYS_ECPKI_HASH_OpMode_t eccHashMode;
 	uint8_t *messageDataIn_ptr;
 	uint32_t messageSizeInBytes;
 	uint8_t *signatureOut_ptr;
@@ -3404,6 +3138,11 @@ static SSError_t ss_ecc_verify_secure(struct ecc_public_key *key,
 
 		publKeyIn_ptr = (uint8_t *)ss_calloc(1U, publKeySizeInBytes, &res);
 	}
+
+	if (res == SS_SUCCESS) {
+		res = ss_get_ecc_digest(messageSizeInBytes, &eccHashMode);
+	}
+
 	if (res == SS_SUCCESS) {
 		/* build public key */
 		*publKeyIn_ptr = (uint8_t)CRYS_EC_PointUncompressed;
@@ -3450,9 +3189,9 @@ static SSError_t ss_ecc_verify_secure(struct ecc_public_key *key,
  * param[in]	*sig_len	- Size of signature data buffer.
  * return	TEE_Result	- TEE internal API error code.
  */
-static TEE_Result do_ecc_verify(uint32_t algo __unused,
-		struct ecc_public_key *key, const uint8_t *msg, size_t msg_len,
-		const uint8_t *sig, size_t sig_len)
+TEE_Result crypto_hw_acipher_ecc_verify(struct ecc_public_key *key,
+		const uint8_t *msg, size_t msg_len, const uint8_t *sig,
+		size_t sig_len)
 {
 	TEE_Result tee_res;
 	SSError_t res;
@@ -3481,7 +3220,7 @@ static TEE_Result do_ecc_verify(uint32_t algo __unused,
  * param[out]	*secret_len	- Pointer to the secret key Size.
  * return	TEE_Result	- TEE internal API error code.
  */
-static TEE_Result do_ecc_shared_secret(struct ecc_keypair *private_key,
+TEE_Result crypto_hw_acipher_ecc_shared_secret(struct ecc_keypair *private_key,
 		struct ecc_public_key *public_key, void *secret,
 		unsigned long *secret_len)
 {
@@ -3602,63 +3341,6 @@ static TEE_Result do_ecc_shared_secret(struct ecc_keypair *private_key,
  ******************************************************************************/
 
 #if defined(_CFG_CRYPTO_WITH_CIPHER)
-
-/*
- * brief:	Get block size to AES,DES algorithm.
- *
- * param[in]	algo		- Cryptographic algorithm.
- * param[out]	*size		- Size of block to AES,DES algorithm.
- * return	TEE_Result	- TEE internal API error code.
- */
-static TEE_Result cipher_get_block_size(uint32_t algo, size_t *size)
-{
-	TEE_Result tee_res;
-	SSError_t res = SS_SUCCESS;
-	PROV_INMSG("algo=%d, *size=%p\n",algo,size);
-
-	switch ((int32_t)algo) {
-#if defined(CFG_CRYPTO_AES)
-#if defined(CFG_CRYPTO_ECB)
-	case TEE_ALG_AES_ECB_NOPAD:
-#endif
-#if defined(CFG_CRYPTO_CBC)
-	case TEE_ALG_AES_CBC_NOPAD:
-#endif
-#if defined(CFG_CRYPTO_CTR)
-	case TEE_ALG_AES_CTR:
-#endif
-#if defined(CFG_CRYPTO_CTS)
-	case TEE_ALG_AES_CTS:
-#endif
-#if defined(CFG_CRYPTO_XTS)
-	case TEE_ALG_AES_XTS:
-#endif
-		*size = 16U;
-		break;
-#endif
-#if defined(CFG_CRYPTO_DES)
-#if defined(CFG_CRYPTO_ECB)
-	case TEE_ALG_DES_ECB_NOPAD:
-	case TEE_ALG_DES3_ECB_NOPAD:
-#endif
-#if defined(CFG_CRYPTO_CBC)
-	case TEE_ALG_DES_CBC_NOPAD:
-	case TEE_ALG_DES3_CBC_NOPAD:
-#endif
-		*size = 8U;
-		break;
-#endif
-	default:
-		res = SS_ERROR_NOT_SUPPORTED;
-		break;
-	}
-	tee_res = ss_translate_error_ss2tee(res);
-	PROV_DMSG("*size=%ld\n",*size);
-	PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n",res,tee_res);
-	return tee_res;
-}
-
-
 /*
  * brief:	Get context size to AES,DES algorithm.
  *
@@ -3666,7 +3348,7 @@ static TEE_Result cipher_get_block_size(uint32_t algo, size_t *size)
  * param[out]	*size		- Size of context to AES,DES algorithm.
  * return	TEE_Result	- TEE internal API error code.
  */
-static TEE_Result cipher_get_ctx_size(uint32_t algo, size_t *size)
+TEE_Result crypto_hw_cipher_get_ctx_size(uint32_t algo, size_t *size)
 {
 	TEE_Result tee_res;
 	SSError_t res = SS_SUCCESS;
@@ -3682,11 +3364,11 @@ static TEE_Result cipher_get_ctx_size(uint32_t algo, size_t *size)
 #if defined(CFG_CRYPTO_CTR)
 	case TEE_ALG_AES_CTR:
 #endif
+#if defined(CFG_CRYPTO_OFB)
+	case TEE_ALG_AES_OFB:
+#endif
 #if defined(CFG_CRYPTO_CTS)
 	case TEE_ALG_AES_CTS:
-#endif
-#if defined(CFG_CRYPTO_XTS)
-	case TEE_ALG_AES_XTS:
 #endif
 		PROV_DMSG("ctx size = sizeof(SS_AES_Context_t)\n");
 		*size = sizeof(SS_AES_Context_t);
@@ -3731,8 +3413,8 @@ static TEE_Result cipher_get_ctx_size(uint32_t algo, size_t *size)
  * return	SSError_t	- SS provider error code.
  */
 static SSError_t ss_aes_init(void *ctx, uint32_t algo, TEE_OperationMode mode,
-		const uint8_t *key1, size_t key1_len, const uint8_t *key2,
-		size_t key2_len, const uint8_t *iv, size_t iv_len)
+		const uint8_t *key1, size_t key1_len, const uint8_t *iv,
+		size_t iv_len)
 {
 	SSError_t res = SS_SUCCESS;
 	CRYSError_t crys_res;
@@ -3773,66 +3455,36 @@ static SSError_t ss_aes_init(void *ctx, uint32_t algo, TEE_OperationMode mode,
 	}
 
 	if (res == SS_SUCCESS) {
-		if ((int32_t)algo == TEE_ALG_AES_XTS) {
-			PROV_DMSG("Copy AES key (XTS)\n");
-			if ((key1 != NULL) && (key2 != NULL) && (key1_len == key2_len)) {
-				switch (key1_len + key2_len) {
-				case 32U:
-					aesKeySize = CRYS_AES_Key256BitSize;
-					break;
-				case 64U:
-					PROV_DMSG("KeySize=512Bit\n");
-					aesKeySize = CRYS_AES_Key512BitSize;
-					break;
-				default:
-					PROV_DMSG("ERROR:BAD_PARAMETERS key_len=%ld\n",
-							key1_len + key2_len);
-					res = SS_ERROR_BAD_PARAMETERS;
-					break;
-				}
-				if (res == SS_SUCCESS) {
-					(void)memcpy(aesKey, key1, key1_len);
-					(void)memcpy((void *)&aesKey[key1_len],
-							key2, key1_len);
-					PROV_DMSG("AES key ...%x%x sizse_num=%d\n",
-							aesKey[1],aesKey[0],aesKeySize);
-				}
-			} else {
-				PROV_DMSG("ERROR:BAD_PARAMETERS(key_ptr)\n");
+		PROV_DMSG("Copy AES key (non XTS)\n");
+		if (key1 != NULL) {
+			switch (key1_len) {
+			case 16U:
+				PROV_DMSG("KeySize=128Bit\n");
+				aesKeySize = CRYS_AES_Key128BitSize;
+				break;
+			case 24U:
+				PROV_DMSG("KeySize=192Bit\n");
+				aesKeySize = CRYS_AES_Key192BitSize;
+				break;
+			case 32U:
+				PROV_DMSG("KeySize=256Bit\n");
+				aesKeySize = CRYS_AES_Key256BitSize;
+				break;
+			default:
+				PROV_DMSG("ERROR:BAD_PARAMETERS key_len=%ld\n",
+						key1_len);
 				res = SS_ERROR_BAD_PARAMETERS;
+				break;
+			}
+			if (res == SS_SUCCESS) {
+				(void)memcpy(aesKey, key1, key1_len);
+				PROV_DMSG("AES key ...%x%x sizse_num=%d\n",
+						aesKey[1], aesKey[0],
+						aesKeySize);
 			}
 		} else {
-			PROV_DMSG("Copy AES key (non XTS)\n");
-			if (key1 != NULL) {
-				switch (key1_len) {
-				case 16U:
-					PROV_DMSG("KeySize=128Bit\n");
-					aesKeySize = CRYS_AES_Key128BitSize;
-					break;
-				case 24U:
-					PROV_DMSG("KeySize=192Bit\n");
-					aesKeySize = CRYS_AES_Key192BitSize;
-					break;
-				case 32U:
-					PROV_DMSG("KeySize=256Bit\n");
-					aesKeySize = CRYS_AES_Key256BitSize;
-					break;
-				default:
-					PROV_DMSG("ERROR:BAD_PARAMETERS key_len=%ld\n",
-							key1_len);
-					res = SS_ERROR_BAD_PARAMETERS;
-					break;
-				}
-				if (res == SS_SUCCESS) {
-					(void)memcpy(aesKey, key1,
-							key1_len);
-					PROV_DMSG("AES key ...%x%x sizse_num=%d\n",
-							aesKey[1],aesKey[0],aesKeySize);
-				}
-			} else {
-				PROV_DMSG("ERROR:BAD_PARAMETERS(key_ptr)\n");
-				res = SS_ERROR_BAD_PARAMETERS;
-			}
+			PROV_DMSG("ERROR:BAD_PARAMETERS(key_ptr)\n");
+			res = SS_ERROR_BAD_PARAMETERS;
 		}
 	}
 	if (res == SS_SUCCESS) {
@@ -3865,14 +3517,13 @@ static SSError_t ss_aes_init(void *ctx, uint32_t algo, TEE_OperationMode mode,
 			PROV_DMSG("opeMode=CRYS_AES_CTR_mode\n");
 			opeMode = CRYS_AES_CTR_mode;
 			break;
+		case TEE_ALG_AES_OFB:
+			PROV_DMSG("opeMode=CRYS_AES_OFB_mode\n");
+			opeMode = CRYS_AES_OFB_mode;
+			break;
 		case TEE_ALG_AES_CTS:
 			PROV_DMSG("opeMode=CRYS_AES_CBC_CTS_mode\n");
 			opeMode = CRYS_AES_CBC_CTS_mode;
-			break;
-		case TEE_ALG_AES_XTS:
-			PROV_DMSG("opeMode=CRYS_AES_XTS_mode\n");
-			ss_ctx->blockSize = 32U;
-			opeMode = CRYS_AES_XTS_mode;
 			break;
 		default:
 			PROV_DMSG("ERROR:BAD_PARAMETERS(algo)\n");
@@ -3915,9 +3566,8 @@ static SSError_t ss_aes_init(void *ctx, uint32_t algo, TEE_OperationMode mode,
  */
 #define DESKEY_SIZE_BYTE 8U
 static SSError_t ss_des_init(void *ctx, uint32_t algo, TEE_OperationMode mode,
-		const uint8_t *key1, size_t key1_len,
-		const uint8_t *key2 __unused, size_t key2_len __unused,
-		const uint8_t *iv, size_t iv_len)
+		const uint8_t *key1, size_t key1_len, const uint8_t *iv,
+		size_t iv_len)
 {
 
 	SSError_t res = SS_SUCCESS;
@@ -3961,10 +3611,6 @@ static SSError_t ss_des_init(void *ctx, uint32_t algo, TEE_OperationMode mode,
 	if (res == SS_SUCCESS) {
 		if (key1 == NULL) {
 			PROV_DMSG("ERROR: BAD_PARAMETERS(key1)\n");
-			res = SS_ERROR_BAD_PARAMETERS;
-		}
-		if (key2_len != 0U) {
-			PROV_DMSG("ERROR: BAD_PARAMETERS(key2_len)\n");
 			res = SS_ERROR_BAD_PARAMETERS;
 		}
 	}
@@ -4090,12 +3736,10 @@ static SSError_t ss_des_init(void *ctx, uint32_t algo, TEE_OperationMode mode,
  * param[in]	iv_len		- Initialize vector size.
  * return	SSError_t	- SS provider error code.
  */
-static TEE_Result cipher_init(
-		void *ctx, uint32_t algo,
-		TEE_OperationMode mode,
-		const uint8_t *key1, size_t key1_len,
-		const uint8_t *key2, size_t key2_len,
-		const uint8_t *iv,   size_t iv_len)
+TEE_Result crypto_hw_cipher_init(void *ctx, uint32_t algo,
+		TEE_OperationMode mode __maybe_unused, const uint8_t *key1,
+		size_t key1_len, const uint8_t *iv __maybe_unused,
+		size_t iv_len __maybe_unused)
 {
 	SSError_t res;
 	PROV_INMSG("*ctx=%p, algo=%d, mode=%d, *key1=%p, key1_len=%ld\n",ctx,algo,mode,key1,key1_len);
@@ -4119,17 +3763,16 @@ static TEE_Result cipher_init(
 #if defined(CFG_CRYPTO_CTR)
 	case TEE_ALG_AES_CTR:
 #endif
+#if defined(CFG_CRYPTO_OFB)
+	case TEE_ALG_AES_OFB:
+#endif
 #if defined(CFG_CRYPTO_CTS)
 	case TEE_ALG_AES_CTS:
-#endif
-#if defined(CFG_CRYPTO_XTS)
-	case TEE_ALG_AES_XTS:
 #endif
 		PROV_DMSG("Input ctx\n");
 		PROV_DHEXDUMP(ctx,sizeof(SS_AES_Context_t));
 		PROV_DMSG("CALL: ss_aes_init\n");
-		res = ss_aes_init(ctx, algo, mode, key1, key1_len, key2,
-				key2_len, iv, iv_len);
+		res = ss_aes_init(ctx, algo, mode, key1, key1_len, iv, iv_len);
 		PROV_DMSG("Result: 0x%08x\n",res);
 		break;
 #endif
@@ -4143,8 +3786,7 @@ static TEE_Result cipher_init(
 	case TEE_ALG_DES3_CBC_NOPAD:
 #endif
 		PROV_DMSG("CALL: ss_aes_init\n");
-		res = ss_des_init(ctx, algo, mode, key1, key1_len, key2,
-				key2_len, iv, iv_len);
+		res = ss_des_init(ctx, algo, mode, key1, key1_len, iv, iv_len);
 		PROV_DMSG("Result: 0x%08x\n",res);
 		break;
 #endif
@@ -4155,6 +3797,7 @@ static TEE_Result cipher_init(
 	case TEE_ALG_AES_GCM:
 	case TEE_ALG_AES_CCM:
 	case TEE_ALG_AES_CBC_MAC_NOPAD:
+	case TEE_ALG_AES_XCBC_MAC:
 	case TEE_ALG_AES_CBC_MAC_PKCS5:
 	case TEE_ALG_AES_CMAC:
 	default:
@@ -4346,9 +3989,10 @@ static SSError_t ss_des_update(void *ctx, uint32_t algo, const uint8_t *data,
  * param[in]	*dst		- Pointer to destination data buffer.
  * return	TEE_Result	- TEE internal API error code.
  */
-static TEE_Result cipher_update(void *ctx, uint32_t algo,
+TEE_Result crypto_hw_cipher_update(void *ctx, uint32_t algo,
 		TEE_OperationMode mode __unused,
-		bool last_block, const uint8_t *data, size_t len, uint8_t *dst)
+		bool last_block __maybe_unused, const uint8_t *data, size_t len,
+		uint8_t *dst)
 {
 	TEE_Result tee_res;
 	SSError_t res;
@@ -4372,11 +4016,11 @@ static TEE_Result cipher_update(void *ctx, uint32_t algo,
 #if defined(CFG_CRYPTO_CTR)
 	case TEE_ALG_AES_CTR:
 #endif
+#if defined(CFG_CRYPTO_OFB)
+	case TEE_ALG_AES_OFB:
+#endif
 #if defined(CFG_CRYPTO_CTS)
 	case TEE_ALG_AES_CTS:
-#endif
-#if defined(CFG_CRYPTO_XTS)
-	case TEE_ALG_AES_XTS:
 #endif
 		PROV_DMSG("CALL: ss_aes_update\n");
 		PROV_DMSG("Input ctx\n");
@@ -4408,6 +4052,7 @@ static TEE_Result cipher_update(void *ctx, uint32_t algo,
 	case TEE_ALG_AES_GCM:
 	case TEE_ALG_AES_CCM:
 	case TEE_ALG_AES_CBC_MAC_NOPAD:
+	case TEE_ALG_AES_XCBC_MAC:
 	case TEE_ALG_AES_CBC_MAC_PKCS5:
 	case TEE_ALG_AES_CMAC:
 	default:
@@ -4459,11 +4104,11 @@ static void ss_aes_final(void *ctx, uint32_t algo)
 #if defined(CFG_CRYPTO_CTR)
 		case TEE_ALG_AES_CTR:
 #endif
+#if defined(CFG_CRYPTO_OFB)
+		case TEE_ALG_AES_OFB:
+#endif
 #if defined(CFG_CRYPTO_CTS)
 		case TEE_ALG_AES_CTS:
-#endif
-#if defined(CFG_CRYPTO_XTS)
-		case TEE_ALG_AES_XTS:
 #endif
 			PROV_DMSG("CALL: CRYS_AES_Finish\n");
 			crys_res = CRYS_AES_Finish(contextID_ptr, NULL, 0U,
@@ -4476,6 +4121,7 @@ static void ss_aes_final(void *ctx, uint32_t algo)
 		case TEE_ALG_AES_CCM:
 		case TEE_ALG_AES_CBC_MAC_NOPAD:
 		case TEE_ALG_AES_CBC_MAC_PKCS5:
+		case TEE_ALG_AES_XCBC_MAC:
 		case TEE_ALG_AES_CMAC:
 		default:
 			break;
@@ -4545,7 +4191,7 @@ static void ss_des_final(void *ctx, uint32_t algo)
  * param[in]	algo		- Cryptographic algorithm.
  * return	TEE_Result	- TEE internal API error code.
  */
-static void cipher_final(void *ctx, uint32_t algo)
+void crypto_hw_cipher_final(void *ctx, uint32_t algo)
 {
 	PROV_INMSG("*ctx=%p, algo=%d\n",ctx,algo);
 
@@ -4560,11 +4206,11 @@ static void cipher_final(void *ctx, uint32_t algo)
 #if defined(CFG_CRYPTO_CTR)
 	case TEE_ALG_AES_CTR:
 #endif
+#if defined(CFG_CRYPTO_OFB)
+	case TEE_ALG_AES_OFB:
+#endif
 #if defined(CFG_CRYPTO_CTS)
 	case TEE_ALG_AES_CTS:
-#endif
-#if defined(CFG_CRYPTO_XTS)
-	case TEE_ALG_AES_XTS:
 #endif
 		PROV_DMSG("CALL: ss_aes_final\n");
 		PROV_DMSG("Input ctx\n");
@@ -4596,6 +4242,7 @@ static void cipher_final(void *ctx, uint32_t algo)
 	case TEE_ALG_AES_CBC_MAC_NOPAD:
 	case TEE_ALG_AES_CBC_MAC_PKCS5:
 	case TEE_ALG_AES_CMAC:
+	case TEE_ALG_AES_XCBC_MAC:
 	default:
 		break;
 	}
@@ -4616,7 +4263,7 @@ static void cipher_final(void *ctx, uint32_t algo)
  * param[out]	*size		- Size of context to AES,DES algorithm.
  * return	TEE_Result	- TEE internal API error code.
  */
-static TEE_Result mac_get_ctx_size(uint32_t algo, size_t *size)
+TEE_Result crypto_hw_mac_get_ctx_size(uint32_t algo, size_t *size)
 {
 	TEE_Result tee_res;
 	SSError_t res = SS_SUCCESS;
@@ -4644,6 +4291,12 @@ static TEE_Result mac_get_ctx_size(uint32_t algo, size_t *size)
 #endif
 #if defined(CFG_CRYPTO_CMAC)
 	case TEE_ALG_AES_CMAC:
+		PROV_DMSG("ctx size = sizeof(SS_AES_Context_t)\n");
+		*size = sizeof(SS_AES_Context_t);
+		break;
+#endif
+#if defined(CFG_CRYPTO_XCBC_MAC)
+	case TEE_ALG_AES_XCBC_MAC:
 		PROV_DMSG("ctx size = sizeof(SS_AES_Context_t)\n");
 		*size = sizeof(SS_AES_Context_t);
 		break;
@@ -4737,6 +4390,12 @@ static SSError_t ss_aesmac_init(void *ctx, uint32_t algo __unused,
 		case TEE_ALG_AES_CMAC:
 			PROV_DMSG("algo = CMAC\n");
 			aesMode = CRYS_AES_CMAC_mode;
+			break;
+#endif
+#if defined(CFG_CRYPTO_XCBC_MAC)
+		case TEE_ALG_AES_XCBC_MAC:
+			PROV_DMSG("algo = XCBC MAC\n");
+			aesMode = CRYS_AES_XCBC_MAC_mode;
 			break;
 #endif
 		default:
@@ -4865,7 +4524,7 @@ static SSError_t ss_hmac_init(void *ctx, uint32_t algo, const uint8_t *key,
  * param[in]	len		- Random key size.
  * return	SSError_t	- SS provider error code.
  */
-static TEE_Result mac_init(void *ctx, uint32_t algo, const uint8_t *key,
+TEE_Result crypto_hw_mac_init(void *ctx, uint32_t algo, const uint8_t *key,
 		size_t len)
 {
 	TEE_Result tee_res;
@@ -4894,6 +4553,12 @@ static TEE_Result mac_init(void *ctx, uint32_t algo, const uint8_t *key,
 #endif
 #if defined(CFG_CRYPTO_CMAC)
 	case TEE_ALG_AES_CMAC:
+		PROV_DMSG("CALL:  ss_aesmac_init()\n");
+		res = ss_aesmac_init(ctx, algo, key, len);
+		break;
+#endif
+#if defined(CFG_CRYPTO_XCBC_MAC)
+	case TEE_ALG_AES_XCBC_MAC:
 		PROV_DMSG("CALL:  ss_aesmac_init()\n");
 		res = ss_aesmac_init(ctx, algo, key, len);
 		break;
@@ -4973,7 +4638,7 @@ static SSError_t ss_aesmac_update(void *ctx, uint32_t algo, const uint8_t *data,
  * param[in]	len		- Source data size.
  * return	TEE_Result	- TEE internal API error code.
  */
-static TEE_Result mac_update(void *ctx, uint32_t algo, const uint8_t *data,
+TEE_Result crypto_hw_mac_update(void *ctx, uint32_t algo, const uint8_t *data,
 		size_t len)
 {
 	TEE_Result tee_res;
@@ -5000,6 +4665,9 @@ static TEE_Result mac_update(void *ctx, uint32_t algo, const uint8_t *data,
 #endif
 #if defined(CFG_CRYPTO_CMAC)
 	case TEE_ALG_AES_CMAC:
+#endif
+#if defined(CFG_CRYPTO_XCBC_MAC)
+	case TEE_ALG_AES_XCBC_MAC:
 #endif
 		PROV_DMSG("CALL: ss_aesmac_update() algo=CMAC\n");
 		res = ss_aesmac_update(ctx, algo, data, len);
@@ -5200,7 +4868,7 @@ static SSError_t ss_aesmac_final(void *ctx, uint32_t algo, uint8_t *digest, size
  * param[out]	digest_len	- Digest(MAC) data size.
  * return	TEE_Result	- TEE internal API error code.
  */
-static TEE_Result mac_final(void *ctx, uint32_t algo, uint8_t *digest,
+TEE_Result crypto_hw_mac_final(void *ctx, uint32_t algo, uint8_t *digest,
 		size_t digest_len)
 {
 	TEE_Result tee_res;
@@ -5233,6 +4901,12 @@ static TEE_Result mac_final(void *ctx, uint32_t algo, uint8_t *digest,
 		res = ss_aesmac_final(ctx, algo, digest, digest_len);
 		break;
 #endif
+#if defined(CFG_CRYPTO_XCBC_MAC)
+	case TEE_ALG_AES_XCBC_MAC:
+		PROV_DMSG("CALL: ss_aesmac_final() algo=CMAC\n");
+		res = ss_aesmac_final(ctx, algo, digest, digest_len);
+		break;
+#endif
 	case TEE_ALG_DES_CBC_MAC_NOPAD:
 	case TEE_ALG_DES_CBC_MAC_PKCS5:
 	case TEE_ALG_DES3_CBC_MAC_NOPAD:
@@ -5257,47 +4931,46 @@ static TEE_Result mac_final(void *ctx, uint32_t algo, uint8_t *digest,
 #define TEE_CCM_NONCE_MIN_LENGTH	7U
 #define TEE_CCM_TAG_MAX_LENGTH		16U
 #define TEE_CCM_TAG_MIN_LENGTH		4U
-#define TEE_xCM_TAG_MAX_LENGTH		16U
+
+#if defined(CFG_CRYPTO_CCM)
+/*
+ * brief:	Allocate a context for AESCCM algorithm.
+ *
+ * param[in]	ctx		- Pointer to the AESCCM context.
+ * return	TEE_Result	- TEE Internal API error code.
+ */
+TEE_Result crypto_hw_aes_ccm_alloc_ctx(void **ctx)
+{
+	TEE_Result tee_ret;
+	SSError_t ret = SS_SUCCESS;
+	SS_AESCCM_Context_t *ss_ctx;
+
+	ss_ctx = (SS_AESCCM_Context_t *)ss_calloc(1U,
+			sizeof(SS_AESCCM_Context_t), &ret);
+	if (ret == SS_SUCCESS) {
+		*ctx = ss_ctx;
+	}
+	tee_ret = ss_translate_error_ss2tee(ret);
+
+	return tee_ret;
+}
 
 /*
- * brief:	Get context size to AESCCM algorithm.
+ * brief:	Copy a context for AESCCM algorithm.
  *
- * param[in]	algo		- Cryptographic algorithm.
- * param[out]	*size		- Size of context to AESCCM algorithm.
- * return	TEE_Result	- TEE internal API error code.
+ * param[in]	dst_ctx		- Pointer to a destination context.
+ * param[in]	src_ctx		- Pointer to a source context.
+ * return	void
  */
-static TEE_Result authenc_get_ctx_size(uint32_t algo, size_t *size)
+void crypto_hw_aes_ccm_copy_state(void *dst_ctx, const void *src_ctx)
 {
-	TEE_Result tee_res;
-	SSError_t res = SS_SUCCESS;
-	PROV_INMSG("START: authenc_get_ctx_size\n");
-
-	switch ((int32_t)algo) {
-#if defined(CFG_CRYPTO_CCM)
-	case TEE_ALG_AES_CCM:
-		PROV_DMSG("ctx_size=sizeof(SS_AESCCM_Context_t)\n");
-		*size = sizeof(SS_AESCCM_Context_t);
-		break;
-#endif
-#if defined(CFG_CRYPTO_GCM)
-	case TEE_ALG_AES_GCM:
-#endif
-	default:
-		PROV_EMSG("NOT_SUPPORTED\n");
-		res = SS_ERROR_NOT_SUPPORTED;
-		break;
-	}
-
-	tee_res = ss_translate_error_ss2tee(res);
-	PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n",res,tee_res);
-	return tee_res;
+	(void)memcpy(dst_ctx, src_ctx, sizeof(SS_AESCCM_Context_t));
 }
 
 /*
  * brief:	Initialize state of AESCCM algorithm.
  *
  * param[in]	*ctx		- Pointer to the AESCCM contest.
- * param[in]	algo		- Cryptographic algorithm.
  * param[in]	mode		- Operation Mode (Encrypt or Decrypt).
  * param[in]	*key		- Pinter to the AES key.
  * param[in]	key_len		- AES key size.
@@ -5306,9 +4979,9 @@ static TEE_Result authenc_get_ctx_size(uint32_t algo, size_t *size)
  * param[in]	tag_len		- Tag data size.
  * param[in]	aad_len		- Add data size.
  * param[in]	payload_len	- Payload data size.
- * return	SSError_t	- SS provider error code.
+ * return	TEE_Result	- TEE internal API error code.
  */
-static TEE_Result authenc_init(void *ctx, uint32_t algo, TEE_OperationMode mode,
+TEE_Result crypto_hw_aes_ccm_init(void *ctx, TEE_OperationMode mode,
 		const uint8_t *key, size_t key_len, const uint8_t *nonce,
 		size_t nonce_len, size_t tag_len, size_t aad_len,
 		size_t payload_len)
@@ -5327,7 +5000,7 @@ static TEE_Result authenc_init(void *ctx, uint32_t algo, TEE_OperationMode mode,
 	uint8_t sizeOfN;
 	uint8_t sizeOfT;
 
-	PROV_INMSG("START: authenc_init\n");
+	PROV_INMSG("START: crypto_aes_ccm_init\n");
 
 	if (ctx != NULL) {
 		ss_ctx = (SS_AESCCM_Context_t *)ctx;
@@ -5396,44 +5069,37 @@ static TEE_Result authenc_init(void *ctx, uint32_t algo, TEE_OperationMode mode,
 
 	if (res == SS_SUCCESS) {
 		(void)memcpy(ccmkey, key, key_len);
-		switch ((int32_t)algo) {
-#if defined(CFG_CRYPTO_CCM)
-		case TEE_ALG_AES_CCM:
-			PROV_DMSG("algo=TEE_ALG_AES_CCM\n");
-			if ((nonce_len > TEE_CCM_NONCE_MAX_LENGTH)
-					|| (nonce_len < TEE_CCM_NONCE_MIN_LENGTH)) {
-				PROV_EMSG("BAD_PARAMETERS(nonce_len)\n");
-				res = SS_ERROR_BAD_PARAMETERS;
-			}
-			if ((sizeOfT > TEE_CCM_TAG_MAX_LENGTH)
-					|| (sizeOfT < TEE_CCM_TAG_MIN_LENGTH)) {
-				PROV_EMSG("BAD_PARAMETERS(sizeOfT) size\n");
-				res = SS_ERROR_BAD_PARAMETERS;
-			}
-			if ((sizeOfT & 0x01U) == 1U) {
-				PROV_EMSG("BAD_PARAMETERS(sizeOfT) even\n");
-				res = SS_ERROR_BAD_PARAMETERS;
-			}
-			if (res == SS_SUCCESS) {
-				PROV_DMSG("CALL: CRYS_AESCCM_Init()\n");
-				crys_res = CRYS_AESCCM_Init(contextID_ptr,
-						encrDecrMode, ccmkey,
-						ccmkeySize, ddataSize, textSize,
-						n_ptr, sizeOfN, sizeOfT);
-				ss_ctx->crys_error = crys_res;
-				res = ss_translate_error_crys2ss_ccm(crys_res);
-				PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n",crys_res,res);
-			}
-			break;
-#endif
-#if defined(CFG_CRYPTO_GCM)
-		case TEE_ALG_AES_GCM:
-#endif
-		default:
-			PROV_EMSG("NOT_SUPPORTED\n");
-			res = SS_ERROR_NOT_SUPPORTED;
-			break;
+		if ((nonce_len > TEE_CCM_NONCE_MAX_LENGTH)
+				|| (nonce_len < TEE_CCM_NONCE_MIN_LENGTH)) {
+			PROV_EMSG("BAD_PARAMETERS(nonce_len)\n");
+			res = SS_ERROR_BAD_PARAMETERS;
 		}
+	}
+
+	if (res == SS_SUCCESS) {
+		if ((sizeOfT > TEE_CCM_TAG_MAX_LENGTH)
+				|| (sizeOfT < TEE_CCM_TAG_MIN_LENGTH)) {
+			PROV_EMSG("BAD_PARAMETERS(sizeOfT) size\n");
+			res = SS_ERROR_BAD_PARAMETERS;
+		}
+	}
+
+	if (res == SS_SUCCESS) {
+		if ((sizeOfT & 0x01U) == 1U) {
+			PROV_EMSG("BAD_PARAMETERS(sizeOfT) value\n");
+			res = SS_ERROR_BAD_PARAMETERS;
+		}
+	}
+
+	if (res == SS_SUCCESS) {
+			PROV_DMSG("CALL: CRYS_AESCCM_Init()\n");
+			crys_res = CRYS_AESCCM_Init(contextID_ptr, encrDecrMode,
+					ccmkey, ccmkeySize, ddataSize, textSize,
+					n_ptr, sizeOfN, sizeOfT);
+			ss_ctx->crys_error = crys_res;
+			res = ss_translate_error_crys2ss_ccm(crys_res);
+			PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n",
+					crys_res, res);
 	}
 
 	tee_res = ss_translate_error_ss2tee(res);
@@ -5445,13 +5111,11 @@ static TEE_Result authenc_init(void *ctx, uint32_t algo, TEE_OperationMode mode,
  * brief:	Block Add Data Update state of AESCCM algorithm.
  *
  * param[in]	*ctx		- Pointer to the AESCCM context.
- * param[in]	algo		- Cryptographic algorithm.
  * param[in]	*data		- Pointer to source data buffer.
  * param[in]	len		- Source data size.
  * return	TEE_Result	- TEE internal API error code.
  */
-static TEE_Result authenc_update_aad(void *ctx, uint32_t algo,
-		TEE_OperationMode mode __unused, const uint8_t *data,
+TEE_Result crypto_hw_aes_ccm_update_aad(void *ctx, const uint8_t *data,
 		size_t len)
 {
 	TEE_Result tee_res;
@@ -5462,7 +5126,7 @@ static TEE_Result authenc_update_aad(void *ctx, uint32_t algo,
 	uint8_t *dataIn_ptr;
 	uint32_t dataInSize;
 
-	PROV_INMSG("START: authenc_update_aad\n");
+	PROV_INMSG("START: crypto_aes_ccm_update_aad\n");
 
 	if (ctx != NULL) {
 		ss_ctx = (SS_AESCCM_Context_t *)ctx;
@@ -5479,27 +5143,12 @@ static TEE_Result authenc_update_aad(void *ctx, uint32_t algo,
 			contextID_ptr = &ss_ctx->crys_ctx;
 			dataIn_ptr = (uint8_t *)data;
 			dataInSize = (uint32_t)len;
-
-			switch ((int32_t)algo) {
-#if defined(CFG_CRYPTO_CCM)
-			case TEE_ALG_AES_CCM:
-				PROV_DMSG("algo=TEE_ALG_AES_CCM\n");
-				PROV_DMSG("CALL: CRYS_AESCCM_BlockAdata()\n");
-				crys_res = CRYS_AESCCM_BlockAdata(contextID_ptr,
-						dataIn_ptr, dataInSize);
-				ss_ctx->crys_error = crys_res;
-				res = ss_translate_error_crys2ss_ccm(crys_res);
-				PROV_DMSG("Result: crys_res=0x%08x\n", crys_res);
-				break;
-#endif
-#if defined(CFG_CRYPTO_GCM)
-			case TEE_ALG_AES_GCM:
-#endif
-			default:
-				PROV_EMSG("BAD_PARAMETERS(ctx)\n");
-				res = SS_ERROR_NOT_SUPPORTED;
-				break;
-			}
+			PROV_DMSG("CALL: CRYS_AESCCM_BlockAdata()\n");
+			crys_res = CRYS_AESCCM_BlockAdata(contextID_ptr,
+					dataIn_ptr, dataInSize);
+			ss_ctx->crys_error = crys_res;
+			res = ss_translate_error_crys2ss_ccm(crys_res);
+			PROV_DMSG("Result: crys_res=0x%08x\n", crys_res);
 		}
 	}
 
@@ -5509,67 +5158,40 @@ static TEE_Result authenc_update_aad(void *ctx, uint32_t algo,
 }
 
 /*
- * brief:	Block Payload Data Update state of AESCCM algorithm.
+ * brief:	Block payload data update state of AESCCM algorithm.
  *
  * param[in]	*ctx		- Pointer to the AESCCM context.
- * param[in]	algo		- Cryptographic algorithm.
  * param[in]	*src_data	- Pointer to source data buffer.
- * param[in]	src_len		- Source data size.
+ * param[in]	len		- Source and destination data size.
  * param[in]	*dst_data	- Pointer to destination data buffer.
- * param[in]	dst_len		- Destination data size.
  * return	TEE_Result	- TEE internal API error code.
  */
-static TEE_Result authenc_update_payload(void *ctx, uint32_t algo,
-		TEE_OperationMode mode __unused, const uint8_t *src_data,
-		size_t src_len, uint8_t *dst_data, size_t *dst_len)
+TEE_Result crypto_hw_aes_ccm_update_payload(void *ctx, const uint8_t *src_data,
+		size_t len, uint8_t *dst_data)
 {
 	TEE_Result tee_res;
 	SSError_t res = SS_SUCCESS;
 	SS_AESCCM_Context_t *ss_ctx;
 
-	PROV_INMSG("START: authenc_update_payload\n");
+	PROV_INMSG("START: crypto_aes_ccm_update_payload\n");
 
 	CHECK_CONTEXT(res, ss_ctx, SS_AESCCM_Context_t, ctx);
 
 	if (SS_SUCCESS == res) {
-		if ((MAX_DATAIN_CCM_SIZE < src_len)
-				|| ((src_len % 16U) != 0U)) {
+		if ((MAX_DATAIN_CCM_SIZE < len)
+				|| ((len % 16U) != 0U)) {
 			res = SS_ERROR_BAD_PARAMETERS;
-			PROV_EMSG("BAD_PARAMETERS src_len=%ld\n", src_len);
+			PROV_EMSG("BAD_PARAMETERS len=%ld\n", len);
 		}
 
 	}
 
 	if (SS_SUCCESS == res) {
-		if (*dst_len < src_len) {
-			res = SS_ERROR_SHORT_BUFFER;
-			PROV_EMSG("SHORT_BUFFER src_len=%ld dst_len=%ld\n",
-					src_len, *dst_len);
-		}
-	}
-
-	if (SS_SUCCESS == res) {
-		switch ((int32_t)algo) {
-#if defined(CFG_CRYPTO_CCM)
-		case TEE_ALG_AES_CCM:
-			PROV_DMSG("ctx=%p algo=0x%08x\n", ctx, algo);
-			PROV_DMSG("src_data=%p dst_len=%ld dst_data=%p\n",
-					src_data, src_len, dst_data);
-			res = ss_buffer_update(ctx, algo, src_data,
-					src_len, &dst_data);
-			if(SS_SUCCESS == res){
-				*dst_len = src_len;
-			}
-			break;
-#endif
-#if defined(CFG_CRYPTO_GCM)
-		case TEE_ALG_AES_GCM:
-#endif
-		default:
-			res = SS_ERROR_NOT_SUPPORTED;
-			PROV_EMSG("BAD_PARAMETERS(algo)\n");
-			break;
-		}
+		PROV_DMSG("ctx=%p\n", ctx);
+		PROV_DMSG("src_data=%p len=%ld dst_data=%p\n",
+				src_data, len, dst_data);
+		res = ss_buffer_update(ctx, TEE_ALG_AES_CCM, src_data,
+				len, &dst_data);
 	}
 
 	/* dst_len not used for SS provider*/
@@ -5582,17 +5204,16 @@ static TEE_Result authenc_update_payload(void *ctx, uint32_t algo,
  * brief:	Finalize state (Encrypt) of AESCCM algorithm.
  *
  * param[in]	*ctx		- Pointer to the AESCCM context.
- * param[in]	algo		- Cryptographic algorithm.
  * param[in]	*src_data	- Pointer to source data buffer.
- * param[in]	src_len		- Source data size.
+ * param[in]	len		- Source and destination data size.
  * param[out]	*dst_data	- Pointer to destination data buffer.
  * param[out]	*dst_tag	- Pointer to tag data buffer.
  * param[out]	dst_tag_len	- Tag data size.
  * return	TEE_Result	- TEE internal API error code.
  */
-static TEE_Result authenc_enc_final(void *ctx, uint32_t algo,
-		const uint8_t *src_data, size_t src_len, uint8_t *dst_data,
-		size_t *dst_len __unused, uint8_t *dst_tag, size_t *dst_tag_len)
+TEE_Result crypto_hw_aes_ccm_enc_final(void *ctx, const uint8_t *src_data,
+		size_t len, uint8_t *dst_data, uint8_t *dst_tag,
+		size_t *dst_tag_len)
 {
 	TEE_Result tee_res;
 	SSError_t res = SS_SUCCESS;
@@ -5622,7 +5243,7 @@ static TEE_Result authenc_enc_final(void *ctx, uint32_t algo,
 		} else {
 			contextID_ptr = &ss_ctx->crys_ctx;
 			dataIn_ptr = (uint8_t *)src_data;
-			dataInSize = (uint32_t)src_len;
+			dataInSize = (uint32_t)len;
 			dataOut_ptr = (uint8_t *)dst_data;
 			sizeOfT = (uint8_t)*dst_tag_len;
 			/* Check the tag length */
@@ -5634,33 +5255,17 @@ static TEE_Result authenc_enc_final(void *ctx, uint32_t algo,
 		}
 	}
 	if (res == SS_SUCCESS) {
-		switch ((int32_t)algo) {
-#if defined(CFG_CRYPTO_CCM)
-		case TEE_ALG_AES_CCM:
-			PROV_DMSG("algo=TEE_ALG_AES_CCM\n");
-			/* Compute the tag */
-			PROV_DMSG("CALL: CRYS_AESCCM_Finish()\n");
-			crys_res = CRYS_AESCCM_Finish(contextID_ptr, dataIn_ptr,
-					dataInSize, dataOut_ptr, macRes,
-					&sizeOfT);
-			ss_ctx->crys_error = crys_res;
-			res = ss_translate_error_crys2ss_ccm(crys_res);
-			PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n",crys_res,res);
-
-			break;
-#endif
-#if defined(CFG_CRYPTO_GCM)
-		case TEE_ALG_AES_GCM:
-#endif
-		default:
-			res = SS_ERROR_NOT_SUPPORTED;
-			PROV_EMSG("NOT_SUPPORTED\n");
-			break;
-		}
+		/* Compute the tag */
+		PROV_DMSG("CALL: CRYS_AESCCM_Finish()\n");
+		crys_res = CRYS_AESCCM_Finish(contextID_ptr, dataIn_ptr,
+				dataInSize, dataOut_ptr, macRes,
+				&sizeOfT);
+		ss_ctx->crys_error = crys_res;
+		res = ss_translate_error_crys2ss_ccm(crys_res);
+		PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n",crys_res,res);
 	}
 
 	if (res == SS_SUCCESS) {
-		*dst_len = dataInSize;
 		*dst_tag_len = sizeOfT;
 		(void)memcpy(dst_tag, macRes, (size_t)sizeOfT);
 	}
@@ -5674,17 +5279,16 @@ static TEE_Result authenc_enc_final(void *ctx, uint32_t algo,
  * brief:	Finalize state (Decrypt) of AESCCM algorithm.
  *
  * param[in]	*ctx		- Pointer to the AESCCM context.
- * param[in]	algo		- Cryptographic algorithm.
  * param[in]	*src_data	- Pointer to source data buffer.
- * param[in]	src_len		- Source data size.
+ * param[in]	len		- Source data size.
  * param[out]	*dst_data	- Pointer to destination data buffer.
  * param[in]	*tag		- Pointer to tag data buffer.
  * param[in]	tag_len		- Tag data size.
  * return	TEE_Result	- TEE internal API error code.
  */
-static TEE_Result authenc_dec_final(void *ctx, uint32_t algo,
-		const uint8_t *src_data, size_t src_len, uint8_t *dst_data,
-		size_t *dst_len __unused, const uint8_t *tag, size_t tag_len)
+TEE_Result crypto_hw_aes_ccm_dec_final(void *ctx, const uint8_t *src_data,
+		size_t len, uint8_t *dst_data, const uint8_t *tag,
+		size_t tag_len)
 {
 	TEE_Result tee_res;
 	SSError_t res = SS_SUCCESS;
@@ -5715,7 +5319,7 @@ static TEE_Result authenc_dec_final(void *ctx, uint32_t algo,
 		} else {
 			contextID_ptr = &ss_ctx->crys_ctx;
 			dataIn_ptr = (uint8_t *)src_data;
-			dataInSize = (uint32_t)src_len;
+			dataInSize = (uint32_t)len;
 			dataOut_ptr = (uint8_t *)dst_data;
 			sizeOfT = (uint8_t)tag_len;
 			if (sizeOfT == 0U) {
@@ -5725,7 +5329,7 @@ static TEE_Result authenc_dec_final(void *ctx, uint32_t algo,
 		}
 	}
 	if (res == SS_SUCCESS) {
-		if (sizeOfT > (uint8_t) TEE_xCM_TAG_MAX_LENGTH) {
+		if (sizeOfT > (uint8_t) TEE_CCM_TAG_MAX_LENGTH) {
 			res = SS_ERROR_BAD_PARAMETERS;
 			PROV_EMSG("BAD_PARAMETERS(sizeOfT)\n");
 		} else {
@@ -5733,29 +5337,12 @@ static TEE_Result authenc_dec_final(void *ctx, uint32_t algo,
 		}
 	}
 	if (res == SS_SUCCESS) {
-		switch ((int32_t)algo) {
-#if defined(CFG_CRYPTO_CCM)
-		case TEE_ALG_AES_CCM:
-
-			crys_res = CRYS_AESCCM_Finish(contextID_ptr, dataIn_ptr,
-					dataInSize, dataOut_ptr, macRes,
-					&sizeOfT);
-			ss_ctx->crys_error = crys_res;
-			res = ss_translate_error_crys2ss_ccm(crys_res);
-			PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n",crys_res,res);
-			if (res == SS_SUCCESS) {
-				*dst_len = dataInSize;
-			}
-			break;
-#endif
-#if defined(CFG_CRYPTO_GCM)
-		case TEE_ALG_AES_GCM:
-#endif
-		default:
-			res = SS_ERROR_NOT_SUPPORTED;
-			PROV_EMSG("BAD_PARAMETERS(algo)\n");
-			break;
-		}
+		crys_res = CRYS_AESCCM_Finish(contextID_ptr, dataIn_ptr,
+				dataInSize, dataOut_ptr, macRes,
+				&sizeOfT);
+		ss_ctx->crys_error = crys_res;
+		res = ss_translate_error_crys2ss_ccm(crys_res);
+		PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n",crys_res,res);
 	}
 
 	tee_res = ss_translate_error_ss2tee(res);
@@ -5767,11 +5354,12 @@ static TEE_Result authenc_dec_final(void *ctx, uint32_t algo,
  * brief:	In case of SS provider, this function do nothing.
  * return	void
  */
-static void authenc_final(void *ctx __unused, uint32_t algo __unused)
+void crypto_hw_aes_ccm_final(void)
 {
 	PROV_INMSG("START: authenc_final (do nothing)\n");
 	return;
 }
+#endif /* CFG_CRYPTO_CCM */
 #endif /* _CFG_CRYPTO_WITH_AUTHENC */
 
 /******************************************************************************
@@ -5783,14 +5371,15 @@ static void authenc_final(void *ctx __unused, uint32_t algo __unused)
  *
  * param[in]	*outPtr		- Pointer of output buffer.
  * param[in]	outSize		- Byte size of the output data buffer.
- * return	SSError_t	- SS provider error code.
+ * return	TEE_Result	- TEE internal API error code.
  */
-static SSError_t ss_generate_random(uint8_t *outPtr, size_t outSize)
+TEE_Result crypto_hw_rng_read(void *outPtr, size_t outSize)
 {
 	SSError_t res;
 	CRYSError_t crys_res = (CRYSError_t)CRYS_OK;
 	size_t remain = outSize;
 	uint16_t crysOutSize;
+	uint8_t *compOutPtr = (uint8_t *)outPtr;
 
 	PROV_DMSG("crysOutSize=%ld  outPtr=%p\n", outSize, outPtr);
 
@@ -5802,8 +5391,8 @@ static SSError_t ss_generate_random(uint8_t *outPtr, size_t outSize)
 		}
 		PROV_DMSG("CALL: CRYS_RND_GenerateVector()\n");
 		PROV_DMSG("crysOutSize=%d  outPtr=%p\n", crysOutSize, outPtr);
-		crys_res = CRYS_RND_GenerateVector(crysOutSize, outPtr);
-		outPtr += crysOutSize;
+		crys_res = CRYS_RND_GenerateVector(crysOutSize, compOutPtr);
+		compOutPtr += crysOutSize;
 		remain -= crysOutSize;
 	}
 
@@ -5813,39 +5402,13 @@ static SSError_t ss_generate_random(uint8_t *outPtr, size_t outSize)
 }
 
 /*
- * brief:	Generate a random number (SHE).
- *
- * param[in]	*buf		- Pointer to the memory block to output data buffer.
- * param[in]	blen		- Size of Output data buffer you want.
- * return	TEE_Result	- TEE internal API error code.
- */
-static TEE_Result prng_read_without_init(void *buf, size_t blen)
-{
-	TEE_Result tee_res;
-	SSError_t res;
-	uint8_t *out_ptr;
-
-	PROV_INMSG("START: prng_read\n");
-
-	out_ptr = (uint8_t *)buf;
-
-	PROV_DMSG("CALL: ss_generate_random()\n");
-	PROV_DMSG("out_ptr=%p  blen=%ld\n", out_ptr, blen);
-	res = ss_generate_random(out_ptr, blen);
-
-	tee_res = ss_translate_error_ss2tee(res);
-	PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n", res, tee_res);
-	return tee_res;
-}
-
-/*
  * brief:	Add entropy for PRNG.
  *
  * param[in]	*inbuf		- Pointer to the entropy data buffer.
  * param[in]	len		- Size of entropy data.
  * return	TEE_Result	- TEE internal API error code.
  */
-static TEE_Result prng_add_entropy(const uint8_t *inbuf, size_t len)
+TEE_Result crypto_hw_rng_add_entropy(const uint8_t *inbuf, size_t len)
 {
 	TEE_Result tee_res;
 	SSError_t res;
@@ -5888,7 +5451,7 @@ static TEE_Result prng_add_entropy(const uint8_t *inbuf, size_t len)
  *
  * return	TEE_Result	- TEE internal API error code.
  */
-static TEE_Result prng_init(void)
+TEE_Result crypto_hw_rng_init(void)
 {
 	TEE_Result tee_res;
 	SSError_t res = SS_SUCCESS;
@@ -5925,7 +5488,7 @@ static TEE_Result prng_init(void)
  * param[in]	outSize		- Size of Output buffer address.
  * return	TEE_Result	- TEE internal API error code.
  */
-static TEE_Result do_cmac_derivekey(uint32_t keyType, uint8_t *in,
+TEE_Result crypto_hw_cmac_derivekey(uint32_t keyType, uint8_t *in,
 		uint32_t inSize, uint8_t *out, uint32_t outSize)
 {
 	TEE_Result tee_res;
@@ -5981,7 +5544,7 @@ static TEE_Result do_cmac_derivekey(uint32_t keyType, uint8_t *in,
  * param[out]	outSize		- Size of Output buffer size.
  * return	TEE_Result	- TEE internal API error code.
  */
-static TEE_Result do_rpmb_derivekey(uint8_t *out, uint32_t outSize)
+TEE_Result crypto_hw_rpmb_derivekey(uint8_t *out, uint32_t outSize)
 {
 	TEE_Result tee_res;
 	SSError_t res = SS_SUCCESS;
@@ -6027,8 +5590,8 @@ static TEE_Result do_rpmb_derivekey(uint8_t *out, uint32_t outSize)
  * param[out]	outSize		- Size of Output buffer size.
  * return	TEE_Result	- TEE internal API error code.
  */
-static TEE_Result do_rpmb_signframes(uint64_t *in, uint32_t listSize,
-		uint8_t *out, uint32_t outSize)
+TEE_Result crypto_hw_rpmb_signframes(uint64_t *in, uint32_t listSize, uint8_t *out,
+		uint32_t outSize)
 {
 	TEE_Result tee_res;
 	SSError_t res = SS_SUCCESS;
@@ -6089,7 +5652,7 @@ static TEE_Result do_rpmb_signframes(uint64_t *in, uint32_t listSize,
  * param[in/out] *dstLen	- Size of Output buffer address.
  * return	 TEE_Result	- TEE internal API error code.
  */
-static TEE_Result cipher_unwrap(void *srcData, uint32_t srcLen,
+TEE_Result crypto_hw_cipher_unwrap(void *srcData, uint32_t srcLen,
 		const void *keyData, uint32_t keySize, uint32_t isSecretKey,
 		void *destData, uint32_t *dstLen)
 {
@@ -6157,7 +5720,7 @@ static TEE_Result cipher_unwrap(void *srcData, uint32_t srcLen,
  * param[out]	 *skeyPackageBuf - Output buffer address to Secure Key Package.
  * return	 TEE_Result	 - TEE internal API error code.
  */
-static TEE_Result do_gen_skey_package(RCAR_SkeyParams_t *skeyParams,
+TEE_Result crypto_hw_gen_skey_package(RCAR_SkeyParams_t *skeyParams,
 		uint8_t *skeyPackageBuf, uint32_t skeyPackageSize)
 {
 	SSError_t res = SS_SUCCESS;
@@ -6280,7 +5843,7 @@ static TEE_Result do_gen_skey_package(RCAR_SkeyParams_t *skeyParams,
  * param[out]	 *pUserData		- Optionally user data embedded in the package.
  * return	- TEE internal API error code.
  */
-static TEE_Result do_asset_unpack(uint32_t assetId,
+TEE_Result crypto_hw_asset_unpack(uint32_t assetId,
 		uint8_t *pAssetPackage, uint32_t assetPackagLen,
 		uint8_t *pAssetData, uint32_t *pAssetDataLen,
 		uint32_t *pUserData)
@@ -6324,21 +5887,6 @@ static TEE_Result do_asset_unpack(uint32_t assetId,
 	return tee_res;
 }
 
-#define LTC_MAX_BITS_PER_VARIABLE   (4096U)
-#define LTC_VARIABLE_NUMBER         (50U)
-static uint32_t _ltc_mempool_u32[mpa_scratch_mem_size_in_U32(
-	LTC_VARIABLE_NUMBER, LTC_MAX_BITS_PER_VARIABLE)];
-static void tee_ltc_alloc_mpa(void)
-{
-	mpa_scratch_mem mem_pool = (void *)_ltc_mempool_u32;
-
-	init_mpa_tomcrypt(mem_pool);
-	mpa_init_scratch_mem(mem_pool, sizeof(_ltc_mempool_u32),
-			     LTC_MAX_BITS_PER_VARIABLE);
-
-	mpa_set_random_generator(crypto_ops.prng.read);
-}
-
 /*
  * brief:	Callback function to use Suspend To RAM.
  *
@@ -6363,18 +5911,60 @@ static void ss_backup_cb(enum suspend_to_ram_state state,
 	return;
 }
 suspend_to_ram_cbfunc(ss_backup_cb);
+
+#if defined(CFG_CRYPTO_SHA256)
+/*
+ * brief:	Generate SHA256 from input data and compare it with input digest.
+ *
+ * param[in]	hash		- HASH data generated from input data.
+ * param[in]	data		- Input data address.
+ * param[in]    data_size       - Size of input data
+ * return	TEE_Result      - TEE Internal API error code.
+ */
+TEE_Result crypto_hw_hash_sha256_check(const uint8_t *hash, const uint8_t *data,
+		size_t data_size)
+{
+	TEE_Result ret;
+	uint8_t gen_hash[TEE_SHA256_HASH_SIZE];
+	int32_t mem_ret;
+
+	CRYS_HASHUserContext_t ctx;
+
+	ret = crypto_hw_hash_init(&ctx, TEE_ALG_SHA256);
+
+	if (ret == (TEE_Result)TEE_SUCCESS) {
+		ret = crypto_hw_hash_update(&ctx, TEE_ALG_SHA256, data,
+				data_size);
+	}
+
+	if (ret == (TEE_Result)TEE_SUCCESS) {
+		ret = crypto_hw_hash_final(&ctx, TEE_ALG_SHA256, gen_hash,
+				(size_t)TEE_SHA256_HASH_SIZE);
+	}
+
+	if (ret == (TEE_Result)TEE_SUCCESS) {
+		mem_ret = memcmp(gen_hash, hash, (size_t)TEE_SHA256_HASH_SIZE);
+		if (mem_ret != 0) {
+			ret = (TEE_Result)TEE_ERROR_SECURITY;
+		}
+	}
+
+	return ret;
+}
+#endif /* CFG_CRYPTO_SHA256 */
+
 /*
  * brief:	Initialize of Crypto Engine Secure and PKA engines.
  *
  * return	TEE_Result	- TEE internal API error code.
  */
-static TEE_Result tee_ss_init(void)
+static TEE_Result crypto_hw_init_crypto_engine(void)
 {
 	TEE_Result tee_res;
 	SSError_t res;
 	DX_CclibRetCode_t crys_res;
 	DxUTILError_t util_res;
-	PROV_INMSG("START tee_ss_init\n");
+	PROV_INMSG("START %s\n", __func__);
 	crys_res = DX_CclibInit();
 	res = ss_translate_error_crys2ss_init(crys_res);
 	PROV_DMSG("crys_res=0x%08x -> res=0x%08x \n",crys_res,res);
@@ -6387,119 +5977,10 @@ static TEE_Result tee_ss_init(void)
 		res = pka_verify_init();
 	}
 #endif
-	if (res == SS_SUCCESS) {
-		tee_ltc_alloc_mpa();
-	}
 	tee_res = ss_translate_error_ss2tee(res);
 	PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n",res,tee_res);
 
 	return tee_res;
 }
 
-const struct crypto_ops crypto_ops = {
-	.name = "Crypto Engine Secure/PKA provider",
-	.init = &tee_ss_init,
-#if defined(_CFG_CRYPTO_WITH_HASH)
-	.hash = {
-		.get_ctx_size = &hash_get_ctx_size,
-		.init = &hash_init,
-		.update = &hash_update,
-		.final = &hash_final,
-	},
-#endif
-#if defined(_CFG_CRYPTO_WITH_CIPHER)
-	.cipher = {
-		.get_ctx_size = &cipher_get_ctx_size,
-		.init = &cipher_init,
-		.update = &cipher_update,
-		.final = &cipher_final,
-		.get_block_size = &cipher_get_block_size,
-		.unwrap = &cipher_unwrap,
-	},
-#endif
-#if defined(_CFG_CRYPTO_WITH_MAC)
-	.mac = {
-		.get_ctx_size = &mac_get_ctx_size,
-		.init = &mac_init,
-		.update = &mac_update,
-		.final = &mac_final,
-	},
-#endif
-#if defined(_CFG_CRYPTO_WITH_AUTHENC)
-	.authenc = {
-		.get_ctx_size = &authenc_get_ctx_size,
-		.init = &authenc_init,
-		.update_aad = &authenc_update_aad,
-		.update_payload = &authenc_update_payload,
-		.enc_final = &authenc_enc_final,
-		.dec_final = &authenc_dec_final,
-		.final = &authenc_final,
-	},
-#endif
-#if defined(_CFG_CRYPTO_WITH_ACIPHER)
-	.acipher = {
-#if defined(CFG_CRYPTO_RSA)
-		.alloc_rsa_keypair = &do_alloc_rsa_keypair,
-		.alloc_rsa_public_key = &do_alloc_rsa_public_key,
-		.free_rsa_public_key = &free_rsa_public_key,
-		.gen_rsa_key = &do_gen_rsa_key,
-		.rsaes_decrypt = &do_rsaes_decrypt,
-		.rsaes_encrypt = &do_rsaes_encrypt,
-		.rsanopad_decrypt = &do_rsanopad_decrypt,
-		.rsanopad_encrypt = &do_rsanopad_encrypt,
-		.rsassa_sign = &do_rsassa_sign,
-		.rsassa_verify = &do_rsassa_verify,
-#endif
-#if defined(CFG_CRYPTO_DH)
-		.alloc_dh_keypair = &do_alloc_dh_keypair,
-		.gen_dh_key = &do_gen_dh_key,
-		.dh_shared_secret = &do_dh_shared_secret,
-#endif
-#if defined(CFG_CRYPTO_DSA)
-		/* DSA (DO NOT SUPPOTED) */
-		.alloc_dsa_keypair = &do_alloc_dsa_keypair,
-		.alloc_dsa_public_key = &do_alloc_dsa_public_key,
-		.gen_dsa_key = &do_gen_dsa_key,
-		.dsa_sign = &do_dsa_sign,
-		.dsa_verify = &do_dsa_verify,
-#endif
-#if defined(CFG_CRYPTO_ECC)
-		/* ECDSA and ECDH */
-		.alloc_ecc_keypair = &do_alloc_ecc_keypair,
-		.alloc_ecc_public_key = &do_alloc_ecc_public_key,
-		.gen_ecc_key = &do_gen_ecc_key,
-		.free_ecc_public_key = &free_ecc_public_key,
-
-		/* ECDSA only */
-		.ecc_sign = &do_ecc_sign,
-		.ecc_verify = &do_ecc_verify,
-		/* ECDH only */
-		.ecc_shared_secret = &do_ecc_shared_secret,
-#endif
-	},
-	.bignum = {
-		.allocate = &bn_allocate,
-		.bin2bn = &bn_bin2bn,
-		.num_bytes = &bn_num_bytes,
-		.bn2bin = &bn_bn2bin,
-		.copy = &bn_copy,
-		.free = &bn_free,
-		.clear = &bn_clear,
-		.num_bits = &bn_num_bits,
-		.compare = &bn_compare,
-	},
-#endif /* _CFG_CRYPTO_WITH_ACIPHER */
-	.prng = {
-		.add_entropy = &prng_add_entropy,
-		.read = &prng_read_without_init,
-		.read_without_init = &prng_read_without_init,
-		.init = &prng_init,
-	},
-	.util = {
-		.cmac_derivekey = &do_cmac_derivekey,
-		.rpmb_derivekey = &do_rpmb_derivekey,
-		.rpmb_signframes = &do_rpmb_signframes,
-		.gen_skey_package = &do_gen_skey_package,
-		.asset_unpack = &do_asset_unpack,
-	}
-};
+service_init(crypto_hw_init_crypto_engine);

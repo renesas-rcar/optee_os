@@ -1,28 +1,6 @@
+/* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2015, Linaro Limited
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
  */
 #ifndef OPTEE_SMC_H
 #define OPTEE_SMC_H
@@ -145,7 +123,8 @@
  * Trusted OS, not of the API.
  *
  * Returns revision in a0-1 in the same way as OPTEE_SMC_CALLS_REVISION
- * described above.
+ * described above. May optionally return a 32-bit build identifier in a2,
+ * with zero meaning unspecified.
  */
 #define OPTEE_SMC_FUNCID_GET_OS_REVISION OPTEE_MSG_FUNCID_GET_OS_REVISION
 #define OPTEE_SMC_CALL_GET_OS_REVISION \
@@ -390,6 +369,58 @@
 #define OPTEE_SMC_FUNCID_BOOT_SECONDARY  12
 #define OPTEE_SMC_BOOT_SECONDARY \
 	OPTEE_SMC_FAST_CALL_VAL(OPTEE_SMC_FUNCID_BOOT_SECONDARY)
+
+/*
+ * Inform OP-TEE about a new virtual machine
+ *
+ * Hypervisor issues this call during virtual machine (guest) creation.
+ * OP-TEE records client id of new virtual machine and prepares
+ * to receive requests from it. This call is available only if OP-TEE
+ * was built with virtualization support.
+ *
+ * Call requests usage:
+ * a0	SMC Function ID, OPTEE_SMC_VM_CREATED
+ * a1	Hypervisor Client ID of newly created virtual machine
+ * a2-6 Not used
+ * a7	Hypervisor Client ID register. Must be 0, because only hypervisor
+ *      can issue this call
+ *
+ * Normal return register usage:
+ * a0	OPTEE_SMC_RETURN_OK
+ * a1-7	Preserved
+ *
+ * Error return:
+ * a0	OPTEE_SMC_RETURN_ENOTAVAIL	OP-TEE have no resources for
+ *					another VM
+ * a1-7	Preserved
+ *
+ */
+#define OPTEE_SMC_FUNCID_VM_CREATED	13
+#define OPTEE_SMC_VM_CREATED \
+	OPTEE_SMC_FAST_CALL_VAL(OPTEE_SMC_FUNCID_VM_CREATED)
+
+/*
+ * Inform OP-TEE about shutdown of a virtual machine
+ *
+ * Hypervisor issues this call during virtual machine (guest) destruction.
+ * OP-TEE will clean up all resources associated with this VM. This call is
+ * available only if OP-TEE was built with virtualization support.
+ *
+ * Call requests usage:
+ * a0	SMC Function ID, OPTEE_SMC_VM_DESTROYED
+ * a1	Hypervisor Client ID of virtual machine being shut down
+ * a2-6 Not used
+ * a7	Hypervisor Client ID register. Must be 0, because only hypervisor
+ *      can issue this call
+ *
+ * Normal return register usage:
+ * a0	OPTEE_SMC_RETURN_OK
+ * a1-7	Preserved
+ *
+ */
+#define OPTEE_SMC_FUNCID_VM_DESTROYED	14
+#define OPTEE_SMC_VM_DESTROYED \
+	OPTEE_SMC_FAST_CALL_VAL(OPTEE_SMC_FUNCID_VM_DESTROYED)
 
 /*
  * Resume from RPC (for example after processing a foreign interrupt)

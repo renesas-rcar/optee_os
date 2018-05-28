@@ -14,6 +14,8 @@ SHELL = /bin/bash
 # (we include many *.cmd and *.d files).
 unexport MAKEFILE_LIST
 
+include mk/checkconf.mk
+
 .PHONY: all
 all:
 
@@ -35,7 +37,7 @@ $(foreach op,$(ops),$(eval override $(op)))
 endif
 
 # Make these default for now
-ARCH            ?= arm
+$(call force,ARCH,arm)
 PLATFORM        ?= vexpress
 # Default value for PLATFORM_FLAVOR is set in plat-$(PLATFORM)/conf.mk
 ifeq ($O,)
@@ -86,7 +88,7 @@ include mk/cleandirs.mk
 .PHONY: clean
 clean:
 	@$(cmd-echo-silent) '  CLEAN   $(out-dir)'
-	${q}rm -f $(cleanfiles)
+	$(call do-rm-f, $(cleanfiles))
 	${q}dirs="$(call cleandirs-for-rmdir)"; if [ "$$dirs" ]; then $(RMDIR) $$dirs; fi
 	@if [ "$(out-dir)" != "$(O)" ]; then $(cmd-echo-silent) '  CLEAN   $(O)'; fi
 	${q}if [ -d "$(O)" ]; then $(RMDIR) $(O); fi
@@ -95,5 +97,5 @@ clean:
 cscope:
 	@echo '  CSCOPE  .'
 	${q}rm -f cscope.*
-	${q}find $(PWD) -name "*.[chSs]" > cscope.files
+	${q}find $(PWD) -name "*.[chSs]" | grep -v "$(PWD)/out" > cscope.files
 	${q}cscope -b -q -k

@@ -1,28 +1,6 @@
+// SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2015, Linaro Limited
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include <assert.h>
@@ -30,6 +8,7 @@
 #include <kernel/panic.h>
 #include <kernel/thread.h>
 #include <mm/core_memprot.h>
+#include <mm/tee_pager.h>
 #include <optee_msg_supplicant.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,7 +17,6 @@
 #include <sys/queue.h>
 #include <tee/fs_dirfile.h>
 #include <tee/fs_htree.h>
-#include <tee/tee_cryp_provider.h>
 #include <tee/tee_fs.h>
 #include <tee/tee_fs_rpc.h>
 #include <tee/tee_pobj.h>
@@ -71,7 +49,41 @@ static int pos_to_block_num(int position)
 
 static struct mutex ree_fs_mutex = MUTEX_INITIALIZER;
 
+#ifdef CFG_WITH_PAGER
+static void *ree_fs_tmp_block;
+static bool ree_fs_tmp_block_busy;
 
+static void *get_tmp_block(void)
+{
+	assert(!ree_fs_tmp_block_busy);
+	if (!ree_fs_tmp_block)
+		ree_fs_tmp_block = tee_pager_alloc(BLOCK_SIZE,
+						   TEE_MATTR_LOCKED);
+
+	if (ree_fs_tmp_block)
+		ree_fs_tmp_block_busy = true;
+
+	return ree_fs_tmp_block;
+}
+
+static void put_tmp_block(void *tmp_block)
+{
+	assert(ree_fs_tmp_block_busy);
+	assert(tmp_block == ree_fs_tmp_block);
+	tee_pager_release_phys(tmp_block, BLOCK_SIZE);
+	ree_fs_tmp_block_busy = false;
+}
+#else
+static void *get_tmp_block(void)
+{
+	return malloc(BLOCK_SIZE);
+}
+
+static void put_tmp_block(void *tmp_block)
+{
+	free(tmp_block);
+}
+#endif
 
 static TEE_Result out_of_place_write(struct tee_fs_fd *fdp, size_t pos,
 				     const void *buf, size_t len)
@@ -84,7 +96,7 @@ static TEE_Result out_of_place_write(struct tee_fs_fd *fdp, size_t pos,
 	uint8_t *block;
 	struct tee_fs_htree_meta *meta = tee_fs_htree_get_meta(fdp->ht);
 
-	block = malloc(BLOCK_SIZE);
+	block = get_tmp_block();
 	if (!block)
 		return TEE_ERROR_OUT_OF_MEMORY;
 
@@ -122,11 +134,14 @@ static TEE_Result out_of_place_write(struct tee_fs_fd *fdp, size_t pos,
 		pos += size_to_write;
 	}
 
-	if (pos > meta->length)
+	if (pos > meta->length) {
 		meta->length = pos;
+		tee_fs_htree_meta_set_dirty(fdp->ht);
+	}
 
 exit:
-	free(block);
+	if (block)
+		put_tmp_block(block);
 	return res;
 }
 
@@ -142,6 +157,10 @@ static TEE_Result get_offs_size(enum tee_fs_htree_type type, size_t idx,
 
 	/*
 	 * File layout
+	 * [demo with input:
+	 * BLOCK_SIZE = 4096,
+	 * node_size = 66,
+	 * block_nodes = 4096/(66*2) = 31 ]
 	 *
 	 * phys block 0:
 	 * tee_fs_htree_image vers 0 @ offs = 0
@@ -153,8 +172,8 @@ static TEE_Result get_offs_size(enum tee_fs_htree_type type, size_t idx,
 	 * tee_fs_htree_node_image 1  vers 0 @ offs = node_size * 2
 	 * tee_fs_htree_node_image 1  vers 1 @ offs = node_size * 3
 	 * ...
-	 * tee_fs_htree_node_image 61 vers 0 @ offs = node_size * 122
-	 * tee_fs_htree_node_image 61 vers 1 @ offs = node_size * 123
+	 * tee_fs_htree_node_image 30 vers 0 @ offs = node_size * 60
+	 * tee_fs_htree_node_image 30 vers 1 @ offs = node_size * 61
 	 *
 	 * phys block 2:
 	 * data block 0 vers 0
@@ -163,21 +182,26 @@ static TEE_Result get_offs_size(enum tee_fs_htree_type type, size_t idx,
 	 * data block 0 vers 1
 	 *
 	 * ...
+	 * phys block 62:
+	 * data block 30 vers 0
+	 *
 	 * phys block 63:
-	 * data block 61 vers 0
+	 * data block 30 vers 1
 	 *
 	 * phys block 64:
-	 * data block 61 vers 1
+	 * tee_fs_htree_node_image 31  vers 0 @ offs = 0
+	 * tee_fs_htree_node_image 31  vers 1 @ offs = node_size
+	 * tee_fs_htree_node_image 32  vers 0 @ offs = node_size * 2
+	 * tee_fs_htree_node_image 32  vers 1 @ offs = node_size * 3
+	 * ...
+	 * tee_fs_htree_node_image 61 vers 0 @ offs = node_size * 60
+	 * tee_fs_htree_node_image 61 vers 1 @ offs = node_size * 61
 	 *
 	 * phys block 65:
-	 * tee_fs_htree_node_image 62  vers 0 @ offs = 0
-	 * tee_fs_htree_node_image 62  vers 1 @ offs = node_size
-	 * tee_fs_htree_node_image 63  vers 0 @ offs = node_size * 2
-	 * tee_fs_htree_node_image 63  vers 1 @ offs = node_size * 3
-	 * ...
-	 * tee_fs_htree_node_image 121 vers 0 @ offs = node_size * 122
-	 * tee_fs_htree_node_image 121 vers 1 @ offs = node_size * 123
+	 * data block 31 vers 0
 	 *
+	 * phys block 66:
+	 * data block 31 vers 1
 	 * ...
 	 */
 
@@ -281,6 +305,7 @@ static TEE_Result ree_fs_ftruncate_internal(struct tee_fs_fd *fdp,
 			return res;
 
 		meta->length = new_file_len;
+		tee_fs_htree_meta_set_dirty(fdp->ht);
 	}
 
 	return TEE_SUCCESS;
@@ -314,7 +339,7 @@ static TEE_Result ree_fs_read_primitive(struct tee_file_handle *fh, size_t pos,
 	start_block_num = pos_to_block_num(pos);
 	end_block_num = pos_to_block_num(pos + remain_bytes - 1);
 
-	block = malloc(BLOCK_SIZE);
+	block = get_tmp_block();
 	if (!block) {
 		res = TEE_ERROR_OUT_OF_MEMORY;
 		goto exit;
@@ -341,7 +366,8 @@ static TEE_Result ree_fs_read_primitive(struct tee_file_handle *fh, size_t pos,
 	}
 	res = TEE_SUCCESS;
 exit:
-	free(block);
+	if (block)
+		put_tmp_block(block);
 	return res;
 }
 
@@ -863,19 +889,21 @@ static TEE_Result ree_fs_truncate(struct tee_file_handle *fh, size_t len)
 	mutex_lock(&ree_fs_mutex);
 
 	res = get_dirh(&dirh);
-	if (res != TEE_SUCCESS)
+	if (res)
 		goto out;
 
 	res = ree_fs_ftruncate_internal(fdp, len);
-	if (!res)
+	if (res)
 		goto out;
 
 	res = tee_fs_htree_sync_to_storage(&fdp->ht, fdp->dfh.hash);
-	if (!res)
+	if (res)
 		goto out;
 
 	res = tee_fs_dirfile_update_hash(dirh, &fdp->dfh);
-
+	if (res)
+		goto out;
+	res = commit_dirh_writes(dirh);
 out:
 	put_dirh(dirh, res);
 	mutex_unlock(&ree_fs_mutex);

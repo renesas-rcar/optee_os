@@ -1,6 +1,6 @@
+/* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (C) 2015 Freescale Semiconductor, Inc.
- * All rights reserved.
  * Copyright (c) 2016, Wind River Systems.
  * All rights reserved.
  *
@@ -132,7 +132,7 @@
 #define IOMUXC_GPR10_OCRAM_TZ_ADDR_LOCK_OFFSET_6UL	(27)
 #define IOMUXC_GPR10_OCRAM_TZ_ADDR_LOCK_MASK_6UL	GENMASK_32(31, 27)
 
-#if defined(CFG_MX6UL) || defined(CFG_MX6ULL)
+#if defined(CFG_MX6UL) || defined(CFG_MX6ULL) || defined(CFG_MX6SX)
 #define DRAM0_BASE			0x80000000
 #else
 #define DRAM0_BASE			0x10000000
@@ -219,6 +219,11 @@
 #define SRC_A7RCR1			0x008
 #define SRC_A7RCR0_A7_CORE_RESET0_OFFSET	0
 #define SRC_A7RCR1_A7_CORE1_ENABLE_OFFSET	1
+
+#define SNVS_LPCR_OFF			0x38
+#define SNVS_LPCR_TOP_MASK		BIT(6)
+#define SNVS_LPCR_DP_EN_MASK		BIT(5)
+#define SNVS_LPCR_SRTC_ENV_MASK		1
 
 #define WCR_OFF				0
 

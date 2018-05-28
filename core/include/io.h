@@ -1,34 +1,13 @@
+/* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2014, Linaro Limited
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
  */
 #ifndef IO_H
 #define IO_H
 
 #include <stdint.h>
 #include <types_ext.h>
+#include <utee_defines.h>
 
 static inline void write8(uint8_t val, vaddr_t addr)
 {
@@ -73,6 +52,36 @@ static inline void io_mask16(vaddr_t addr, uint16_t val, uint16_t mask)
 static inline void io_mask32(vaddr_t addr, uint32_t val, uint32_t mask)
 {
 	write32((read32(addr) & ~mask) | (val & mask), addr);
+}
+
+static inline uint64_t get_be64(const void *p)
+{
+	return TEE_U64_FROM_BIG_ENDIAN(*(const uint64_t *)p);
+}
+
+static inline void put_be64(void *p, uint64_t val)
+{
+	*(uint64_t *)p = TEE_U64_TO_BIG_ENDIAN(val);
+}
+
+static inline uint32_t get_be32(const void *p)
+{
+	return TEE_U32_FROM_BIG_ENDIAN(*(const uint32_t *)p);
+}
+
+static inline void put_be32(void *p, uint32_t val)
+{
+	*(uint32_t *)p = TEE_U32_TO_BIG_ENDIAN(val);
+}
+
+static inline uint16_t get_be16(const void *p)
+{
+	return TEE_U16_FROM_BIG_ENDIAN(*(const uint16_t *)p);
+}
+
+static inline void put_be16(void *p, uint16_t val)
+{
+	*(uint16_t *)p = TEE_U16_TO_BIG_ENDIAN(val);
 }
 
 #endif /*IO_H*/

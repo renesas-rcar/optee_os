@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2016, Linaro Limited
  * Copyright (c) 2014, STMicroelectronics International N.V.
@@ -32,12 +33,6 @@
 #include <sys/cdefs.h>
 #include <stdint.h>
 #include <util.h>
-
-#define CORTEX_A7_PART_NUM		0xC07
-#define CORTEX_A9_PART_NUM		0xC09
-
-#define MIDR_PRIMARY_PART_NUM_SHIFT	4
-#define MIDR_PRIMARY_PART_NUM_WIDTH	12
 
 #define CPSR_MODE_MASK	ARM32_CPSR_MODE_MASK
 #define CPSR_MODE_USR	ARM32_CPSR_MODE_USR
@@ -90,13 +85,12 @@
 #define SCTLR_AFE	BIT32(29)
 #define SCTLR_TE	BIT32(30)
 
+/* Only valid for Cortex-A15 */
+#define ACTLR_CA15_ENABLE_INVALIDATE_BTB	BIT(0)
+/* Only valid for Cortex-A8 */
+#define ACTLR_CA8_ENABLE_INVALIDATE_BTB		BIT(6)
+
 #define ACTLR_SMP	BIT32(6)
-#define ACTLR_DODMBS	BIT32(10)
-#define ACTLR_L2RADIS	BIT32(11)
-#define ACTLR_L1RADIS	BIT32(12)
-#define ACTLR_L1PCTL	BIT32(13)
-#define ACTLR_DDVM	BIT32(15)
-#define ACTLR_DDI	BIT32(28)
 
 #define NSACR_CP10	BIT32(10)
 #define NSACR_CP11	BIT32(11)
@@ -178,7 +172,24 @@
 /* Valid if FSR.LPAE is 0 */
 #define FSR_FS_MASK		(BIT32(10) | (BIT32(4) - 1))
 
+/* ID_PFR1 bit fields */
+#define IDPFR1_VIRT_SHIFT            12
+#define IDPFR1_VIRT_MASK             (0xF << IDPFR1_VIRT_SHIFT)
+#define IDPFR1_GENTIMER_SHIFT        16
+#define IDPFR1_GENTIMER_MASK         (0xF << IDPFR1_GENTIMER_SHIFT)
+
 #ifndef ASM
+static inline uint32_t read_midr(void)
+{
+	uint32_t midr;
+
+	asm volatile ("mrc	p15, 0, %[midr], c0, c0, 0"
+			: [midr] "=r" (midr)
+	);
+
+	return midr;
+}
+
 static inline uint32_t read_mpidr(void)
 {
 	uint32_t mpidr;

@@ -1,29 +1,7 @@
+/* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2015, Linaro Limited
- * Copyright (c) 2017, Renesas Electronics Corporation
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
+ * Copyright (c) 2017-2018, Renesas Electronics Corporation
  */
 
 #include <platform_config.h>
@@ -41,11 +19,11 @@
 	 * SP_EL1 is assigned thread_core_local[cpu_id]
 	 */
 	.macro set_sp
-		bl	get_core_pos
+		bl	__get_core_pos
 		cmp	x0, #CFG_TEE_CORE_NB_CORE
 		/* Unsupported CPU, park it before it breaks something */
 		bge	unhandled_cpu
-		adr	x1, stack_tmp_stride
+		ldr	x1, =stack_tmp_stride
 		ldr	w1, [x1]
 		mul	x1, x0, x1
 		adrp	x0, stack_tmp_export
@@ -74,7 +52,6 @@
 		msr	sctlr_el1, x0
 	.endm
 
-.section .text.boot
 FUNC _start , :
 	mov	x19, x0		/* Save pagable part address */
 	mov	x20, x2		/* Save DT address */
@@ -190,7 +167,6 @@ END_FUNC _start
 KEEP_INIT _start
 
 
-.section .text.cpu_on_handler
 FUNC cpu_on_handler , :
 	mov	x19, x0
 	mov	x20, x1
@@ -219,6 +195,7 @@ FUNC cpu_on_handler , :
 	mov	x30, x21
 	b	generic_boot_cpu_on_handler
 END_FUNC cpu_on_handler
+KEEP_PAGER cpu_on_handler
 
 LOCAL_FUNC unhandled_cpu , :
 	wfi
@@ -237,6 +214,7 @@ END_FUNC unhandled_cpu
 	  .endif
 	.endm
 
+	.section .text.reset_vect_table
 	.align	11
 LOCAL_FUNC reset_vect_table , :
 	/* -----------------------------------------------------

@@ -44,16 +44,14 @@ WARNS ?= 3
 # so assertions are disabled.
 CFG_TEE_CORE_DEBUG ?= y
 
-# Max level of the tee core traces. 0 means disable, 4 is max.
-# Supported values: 0 (no traces) to 4 (all traces)
-# If CFG_TEE_DRV_DEBUGFS is set, the level of traces to print can be
-# dynamically changes via debugfs in the range 1 => CFG_TEE_CORE_LOG_LEVEL
+# Log levels for the TEE core and user-mode TAs
+# Defines which messages are displayed on the secure console
+# 0: none
+# 1: error
+# 2: error + warning
+# 3: error + warning + debug
+# 4: error + warning + debug + flow
 CFG_TEE_CORE_LOG_LEVEL ?= 1
-
-# TA and TEECore log level
-# Supported values: 0 (no traces) to 4 (all traces)
-# If CFG_TEE_DRV_DEBUGFS is set, the level of traces to print can be
-# dynamically changes via debugfs in the range 1 => CFG_TEE_TA_LOG_LEVEL
 CFG_TEE_TA_LOG_LEVEL ?= 1
 
 # TA enablement
@@ -66,7 +64,16 @@ CFG_TEE_CORE_TA_TRACE ?= y
 # feature.
 CFG_TEE_CORE_USER_MEM_DEBUG ?= 1
 
-# If y, enable memory leak detection feature in bget memory allocator.
+# If y, enable the memory leak detection feature in the bget memory allocator.
+# When this feature is enabled, calling mdbg_check(1) will print a list of all
+# the currently allocated buffers and the location of the allocation (file and
+# line number).
+# Note: make sure the log level is high enough for the messages to show up on
+# the secure console! For instance:
+# - To debug user-mode (TA) allocations: build OP-TEE *and* the TA with:
+#   $ make CFG_TEE_TA_MALLOC_DEBUG=y CFG_TEE_TA_LOG_LEVEL=3
+# - To debug TEE core allocations: build OP-TEE with:
+#   $ make CFG_TEE_CORE_MALLOC_DEBUG=y CFG_TEE_CORE_LOG_LEVEL=3
 CFG_TEE_CORE_MALLOC_DEBUG ?= n
 CFG_TEE_TA_MALLOC_DEBUG ?= n
 
@@ -92,14 +99,23 @@ CFG_TEE_API_VERSION ?= GPD-1.1-dev
 # Implementation description (implementation-dependent)
 CFG_TEE_IMPL_DESCR ?= OPTEE
 
+# Should OPTEE_SMC_CALL_GET_OS_REVISION return a build identifier to Normal
+# World?
+CFG_OS_REV_REPORTS_GIT_SHA1 ?= y
+
 # Trusted OS implementation version
 TEE_IMPL_VERSION ?= $(shell git describe --always --dirty=-dev 2>/dev/null || echo Unknown)
+ifeq ($(CFG_OS_REV_REPORTS_GIT_SHA1),y)
+TEE_IMPL_GIT_SHA1 := 0x$(shell git rev-parse --short=8 HEAD 2>/dev/null || echo 0)
+else
+TEE_IMPL_GIT_SHA1 := 0x0
+endif
 # The following values are not extracted from the "git describe" output because
 # we might be outside of a Git environment, or the tree may have been cloned
 # with limited depth not including any tag, so there is really no guarantee
 # that TEE_IMPL_VERSION contains the major and minor revision numbers.
-CFG_OPTEE_REVISION_MAJOR ?= 2
-CFG_OPTEE_REVISION_MINOR ?= 6
+CFG_OPTEE_REVISION_MAJOR ?= 3
+CFG_OPTEE_REVISION_MINOR ?= 1
 
 # Trusted OS implementation manufacturer name
 CFG_TEE_MANUFACTURER ?= LINARO
@@ -226,7 +242,7 @@ CFG_DT ?= n
 # editing of the supplied DTB.
 CFG_DTB_MAX_SIZE ?= 0x10000
 
-# Enable static TA and core self tests
+# Enable core self tests and related pseudo TAs
 CFG_TEE_CORE_EMBED_INTERNAL_TESTS ?= y
 
 # This option enables OP-TEE to respond to SMP boot request: the Rich OS
@@ -262,6 +278,16 @@ CFG_GP_SOCKETS ?= y
 # invocation parameters referring to specific secure memories).
 CFG_SECURE_DATA_PATH ?= n
 
+# Enable storage for TAs in secure storage, depends on CFG_REE_FS=y
+# TA binaries are stored encrypted in the REE FS and are protected by
+# metadata in secure storage.
+CFG_SECSTOR_TA ?= $(call cfg-all-enabled,CFG_REE_FS CFG_WITH_USER_TA)
+$(eval $(call cfg-depends-all,CFG_SECSTOR_TA,CFG_REE_FS CFG_WITH_USER_TA))
+
+# Enable the pseudo TA that managages TA storage in secure storage
+CFG_SECSTOR_TA_MGMT_PTA ?= $(call cfg-all-enabled,CFG_SECSTOR_TA)
+$(eval $(call cfg-depends-all,CFG_SECSTOR_TA_MGMT_PTA,CFG_SECSTOR_TA))
+
 # Define the number of cores per cluster used in calculating core position.
 # The cluster number is shifted by this value and added to the core ID,
 # so its value represents log2(cores/cluster).
@@ -278,3 +304,16 @@ CFG_DYN_SHM_CAP ?= y
 # Enables support for larger physical addresses, that is, it will define
 # paddr_t as a 64-bit type.
 CFG_CORE_LARGE_PHYS_ADDR ?= n
+
+# Define the maximum size, in bits, for big numbers in the Internal Core API
+# Arithmetical functions. This does *not* influence the key size that may be
+# manipulated through the Cryptographic API.
+# Set this to a lower value to reduce the TA memory footprint.
+CFG_TA_BIGNUM_MAX_BITS ?= 2048
+
+# Define the maximum size, in bits, for big numbers in the TEE core (privileged
+# layer).
+# This value is an upper limit for the key size in any cryptographic algorithm
+# implemented by the TEE core.
+# Set this to a lower value to reduce the memory footprint.
+CFG_CORE_BIGNUM_MAX_BITS ?= 4096

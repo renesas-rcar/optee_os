@@ -1,29 +1,7 @@
+// SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2015, Linaro Limited
- * Copyright (c) 2016-2017, Renesas Electronics Corporation
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
+ * Copyright (c) 2016-2018, Renesas Electronics Corporation
  */
 
 
@@ -45,7 +23,7 @@
 #include <string.h>
 #include <kernel/tee_common_otp.h>
 #include <tee/tee_cryp_utl.h>
-#include <tee/tee_cryp_provider.h>
+#include <crypto/crypto.h>
 #include <tee/tee_fs_key_manager.h>
 #include <compiler.h>
 #include <trace.h>
@@ -69,7 +47,7 @@ static TEE_Result generate_cmac(const uint8_t *data_in, size_t data_size,
 
 TEE_Result tee_sfkm_generate_random(uint8_t *buf, uint8_t len)
 {
-	return crypto_ops.prng.read(buf, len);
+	return crypto_rng_read(buf, len);
 }
 
 static TEE_Result generate_ssk(uint8_t *ssk, uint32_t ssk_size,
@@ -77,8 +55,7 @@ static TEE_Result generate_ssk(uint8_t *ssk, uint32_t ssk_size,
 			uint8_t *message, uint32_t message_size)
 {
 	TEE_Result res = TEE_SUCCESS;
-	uint8_t *ctx = NULL;
-	size_t hash_ctx_size = 0;
+	void *ctx = NULL;
 	const uint32_t algo = TEE_FS_KM_HMAC_ALG;
 
 	if ((ssk == NULL) || (huk == NULL) || (message == NULL)) {
@@ -86,26 +63,19 @@ static TEE_Result generate_ssk(uint8_t *ssk, uint32_t ssk_size,
 	}
 
 	if (res == TEE_SUCCESS) {
-		res = crypto_ops.mac.get_ctx_size(algo, &hash_ctx_size);
+		res = crypto_mac_alloc_ctx(&ctx, algo);
 	}
 
 	if (res == TEE_SUCCESS) {
-		ctx = malloc(hash_ctx_size);
-		if (ctx == NULL) {
-			res = TEE_ERROR_OUT_OF_MEMORY;
-		}
+		res = crypto_mac_init(ctx, algo, huk, huk_size);
 	}
 
 	if (res == TEE_SUCCESS) {
-		res = crypto_ops.mac.init(ctx, algo, huk, huk_size);
+		res = crypto_mac_update(ctx, algo, message, message_size);
 	}
 
 	if (res == TEE_SUCCESS) {
-		res = crypto_ops.mac.update(ctx, algo, message, message_size);
-	}
-
-	if (res == TEE_SUCCESS) {
-		res = crypto_ops.mac.final(ctx, algo, ssk, ssk_size);
+		res = crypto_mac_final(ctx, algo, ssk, ssk_size);
 	}
 
 	if (ctx != NULL) {
@@ -290,29 +260,21 @@ TEE_Result tee_sfkm_generate_sha256(const uint8_t *data_in, size_t data_size,
 			uint8_t *hash_out)
 {
 	TEE_Result res;
-	uint8_t *ctx = NULL;
-	size_t ctx_size;
+	void *ctx = NULL;
 	const uint32_t algo = TEE_ALG_SHA256;
 
-	res = crypto_ops.hash.get_ctx_size(algo, &ctx_size);
+	res = crypto_hash_alloc_ctx(&ctx, algo);
 
 	if (res == TEE_SUCCESS) {
-		ctx = malloc(ctx_size);
-		if (ctx == NULL) {
-			res = TEE_ERROR_OUT_OF_MEMORY;
-		}
+		res = crypto_hash_init(ctx, algo);
 	}
 
 	if (res == TEE_SUCCESS) {
-		res = crypto_ops.hash.init(ctx, algo);
+		res = crypto_hash_update(ctx, algo, data_in, data_size);
 	}
 
 	if (res == TEE_SUCCESS) {
-		res = crypto_ops.hash.update(ctx, algo, data_in, data_size);
-	}
-
-	if (res == TEE_SUCCESS) {
-		res = crypto_ops.hash.final(ctx, algo, hash_out,
+		res = crypto_hash_final(ctx, algo, hash_out,
 				TEE_SHA256_HASH_SIZE);
 	}
 
@@ -333,30 +295,22 @@ static TEE_Result crypt_aes(uint32_t algo, TEE_OperationMode mode,
 			uint8_t *data_out)
 {
 	TEE_Result res;
-	uint8_t *ctx = NULL;
-	size_t ctx_size;
+	void *ctx = NULL;
 
-	res = crypto_ops.cipher.get_ctx_size(algo, &ctx_size);
-
-	if (res == TEE_SUCCESS) {
-		ctx = malloc(ctx_size);
-		if (ctx == NULL) {
-			res = TEE_ERROR_OUT_OF_MEMORY;
-		}
-	}
+	res = crypto_cipher_alloc_ctx(&ctx, algo);
 
 	if (res == TEE_SUCCESS) {
-		res = crypto_ops.cipher.init(ctx, algo, mode, c->key,
+		res = crypto_cipher_init(ctx, algo, mode, c->key,
 				c->key_size, NULL, 0, c->iv, c->iv_size);
 	}
 
 	if (res == TEE_SUCCESS) {
-		res = crypto_ops.cipher.update(ctx, algo, mode, true,
+		res = crypto_cipher_update(ctx, algo, mode, true,
 				c->data_in, c->data_size, data_out);
 	}
 
 	if (res == TEE_SUCCESS) {
-		crypto_ops.cipher.final(ctx, algo);
+		crypto_cipher_final(ctx, algo);
 		res = TEE_SUCCESS;
 	}
 
@@ -377,34 +331,26 @@ static TEE_Result generate_cmac(const uint8_t *data_in, size_t data_size,
 			const uint8_t *data2_in, size_t data2_size)
 {
 	TEE_Result res;
-	uint8_t *ctx = NULL;
-	size_t ctx_size;
+	void *ctx = NULL;
 	const uint32_t algo = TEE_ALG_AES_CMAC;
 	const size_t mac_size = TEE_AES_BLOCK_SIZE;
 
-	res = crypto_ops.mac.get_ctx_size(algo, &ctx_size);
+	res = crypto_mac_alloc_ctx(&ctx, algo);
 
 	if (res == TEE_SUCCESS) {
-		ctx = malloc(ctx_size);
-		if (ctx == NULL) {
-			res = TEE_ERROR_OUT_OF_MEMORY;
-		}
+		res = crypto_mac_init(ctx, algo, key, key_size);
 	}
 
 	if (res == TEE_SUCCESS) {
-		res = crypto_ops.mac.init(ctx, algo, key, key_size);
-	}
-
-	if (res == TEE_SUCCESS) {
-		res = crypto_ops.mac.update(ctx, algo, data_in, data_size);
+		res = crypto_mac_update(ctx, algo, data_in, data_size);
 	}
 
 	if ((res == TEE_SUCCESS) && (data2_in != NULL)) {
-		res = crypto_ops.mac.update(ctx, algo, data2_in, data2_size);
+		res = crypto_mac_update(ctx, algo, data2_in, data2_size);
 	}
 
 	if (res == TEE_SUCCESS) {
-		res = crypto_ops.mac.final(ctx, algo, mac_out, mac_size);
+		res = crypto_mac_final(ctx, algo, mac_out, mac_size);
 	}
 
 	if (ctx != NULL) {

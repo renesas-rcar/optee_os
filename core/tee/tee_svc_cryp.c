@@ -1,6 +1,7 @@
+// SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
- * Copyright (c) 2017, Renesas Electronics Corporation.
+ * Copyright (c) 2017-2018, Renesas Electronics Corporation.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,19 +28,19 @@
  */
 
 #include <assert.h>
-#include <tee_api_types.h>
+#include <crypto/crypto.h>
 #include <kernel/tee_ta_manager.h>
-#include <utee_defines.h>
 #include <mm/tee_mmu.h>
-#include <tee/tee_svc.h>
-#include <tee/tee_svc_cryp.h>
-#include <tee/tee_cryp_utl.h>
-#include <sys/queue.h>
-#include <tee/tee_obj.h>
-#include <tee/tee_cryp_provider.h>
-#include <trace.h>
 #include <string_ext.h>
 #include <string.h>
+#include <sys/queue.h>
+#include <tee_api_types.h>
+#include <tee/tee_cryp_utl.h>
+#include <tee/tee_obj.h>
+#include <tee/tee_svc_cryp.h>
+#include <tee/tee_svc.h>
+#include <trace.h>
+#include <utee_defines.h>
 #include <util.h>
 #if defined(CFG_CRYPTO_HKDF) || defined(CFG_CRYPTO_CONCAT_KDF) || \
 	defined(CFG_CRYPTO_PBKDF2)
@@ -62,7 +63,6 @@ struct tee_cryp_state {
 	uint32_t mode;
 	vaddr_t key1;
 	vaddr_t key2;
-	size_t ctx_size;
 	void *ctx;
 	tee_cryp_ctx_finalize_func_t ctx_finalize;
 };
@@ -464,11 +464,11 @@ static const struct tee_cryp_obj_type_props tee_cryp_obj_props[] = {
 		4096 / 8 + sizeof(struct tee_cryp_obj_secret),
 		tee_cryp_obj_pbkdf2_passwd_attrs),
 #endif
-	PROP(TEE_TYPE_RSA_PUBLIC_KEY, 1, 256, 4096,
+	PROP(TEE_TYPE_RSA_PUBLIC_KEY, 1, 256, CFG_CORE_BIGNUM_MAX_BITS,
 		sizeof(struct rsa_public_key),
 		tee_cryp_obj_rsa_pub_key_attrs),
 
-	PROP(TEE_TYPE_RSA_KEYPAIR, 1, 256, 4096,
+	PROP(TEE_TYPE_RSA_KEYPAIR, 1, 256, CFG_CORE_BIGNUM_MAX_BITS,
 		sizeof(struct rsa_keypair),
 		tee_cryp_obj_rsa_keypair_attrs),
 
@@ -505,8 +505,8 @@ struct attr_ops {
 	TEE_Result (*from_user)(void *attr, const void *buffer, size_t size);
 	TEE_Result (*to_user)(void *attr, struct tee_ta_session *sess,
 			      void *buffer, uint64_t *size);
-	void (*to_binary)(void *attr, void *data, size_t data_len,
-			  size_t *offs);
+	TEE_Result (*to_binary)(void *attr, void *data, size_t data_len,
+			    size_t *offs);
 	bool (*from_binary)(void *attr, const void *data, size_t data_len,
 			    size_t *offs);
 	TEE_Result (*from_obj)(void *attr, void *src_attr);
@@ -514,16 +514,22 @@ struct attr_ops {
 	void (*clear)(void *attr);
 };
 
-static void op_u32_to_binary_helper(uint32_t v, uint8_t *data,
+static TEE_Result op_u32_to_binary_helper(uint32_t v, uint8_t *data,
 				    size_t data_len, size_t *offs)
 {
 	uint32_t field;
+	size_t next_offs;
 
-	if (data && (*offs + sizeof(field)) <= data_len) {
+	if (ADD_OVERFLOW(*offs, sizeof(field), &next_offs))
+		return TEE_ERROR_OVERFLOW;
+
+	if (data && next_offs <= data_len) {
 		field = TEE_U32_TO_BIG_ENDIAN(v);
 		memcpy(data + *offs, &field, sizeof(field));
 	}
-	(*offs) += sizeof(field);
+	(*offs) = next_offs;
+
+	return TEE_SUCCESS;
 }
 
 static bool op_u32_from_binary_helper(uint32_t *v, const uint8_t *data,
@@ -577,15 +583,25 @@ static TEE_Result op_attr_secret_value_to_user(void *attr,
 	return tee_svc_copy_to_user(buffer, key + 1, key->key_size);
 }
 
-static void op_attr_secret_value_to_binary(void *attr, void *data,
+static TEE_Result op_attr_secret_value_to_binary(void *attr, void *data,
 					   size_t data_len, size_t *offs)
 {
+	TEE_Result res;
 	struct tee_cryp_obj_secret *key = attr;
+	size_t next_offs;
 
-	op_u32_to_binary_helper(key->key_size, data, data_len, offs);
-	if (data && (*offs + key->key_size) <= data_len)
+	res = op_u32_to_binary_helper(key->key_size, data, data_len, offs);
+	if (res != TEE_SUCCESS)
+		return res;
+
+	if (ADD_OVERFLOW(*offs, key->key_size, &next_offs))
+		return TEE_ERROR_OVERFLOW;
+
+	if (data && next_offs <= data_len)
 		memcpy((uint8_t *)data + *offs, key + 1, key->key_size);
-	(*offs) += key->key_size;
+	(*offs) = next_offs;
+
+	return TEE_SUCCESS;
 }
 
 static bool op_attr_secret_value_from_binary(void *attr, const void *data,
@@ -635,9 +651,7 @@ static TEE_Result op_attr_bignum_from_user(void *attr, const void *buffer,
 {
 	struct bignum **bn = attr;
 
-	if (!crypto_ops.bignum.bin2bn)
-		return TEE_ERROR_NOT_IMPLEMENTED;
-	return crypto_ops.bignum.bin2bn(buffer, size, *bn);
+	return crypto_bignum_bin2bn(buffer, size, *bn);
 }
 
 static TEE_Result op_attr_bignum_to_user(void *attr,
@@ -653,7 +667,7 @@ static TEE_Result op_attr_bignum_to_user(void *attr,
 	if (res != TEE_SUCCESS)
 		return res;
 
-	req_size = crypto_ops.bignum.num_bytes(*bn);
+	req_size = crypto_bignum_num_bytes(*bn);
 	res = tee_svc_copy_to_user(size, &req_size, sizeof(req_size));
 	if (res != TEE_SUCCESS)
 		return res;
@@ -674,21 +688,30 @@ static TEE_Result op_attr_bignum_to_user(void *attr,
 	* Write the bignum (wich raw data points to) into an array of
 	* bytes (stored in buffer)
 	*/
-	crypto_ops.bignum.bn2bin(*bn, buffer);
+	crypto_bignum_bn2bin(*bn, buffer);
 	return TEE_SUCCESS;
 }
 
-static void op_attr_bignum_to_binary(void *attr, void *data, size_t data_len,
-				     size_t *offs)
+static TEE_Result op_attr_bignum_to_binary(void *attr, void *data,
+					   size_t data_len, size_t *offs)
 {
+	TEE_Result res;
 	struct bignum **bn = attr;
-	uint32_t n = crypto_ops.bignum.num_bytes(*bn);
+	uint32_t n = crypto_bignum_num_bytes(*bn);
+	size_t next_offs;
 
-	op_u32_to_binary_helper(n, data, data_len, offs);
+	res = op_u32_to_binary_helper(n, data, data_len, offs);
+	if (res != TEE_SUCCESS)
+		return res;
 
-	if (data && (*offs + n) <= data_len)
-		crypto_ops.bignum.bn2bin(*bn, (uint8_t *)data + *offs);
-	(*offs) += n;
+	if (ADD_OVERFLOW(*offs, n, &next_offs))
+		return TEE_ERROR_OVERFLOW;
+
+	if (data && next_offs <= data_len)
+		crypto_bignum_bn2bin(*bn, (uint8_t *)data + *offs);
+	(*offs) = next_offs;
+
+	return TEE_SUCCESS;
 }
 
 static bool op_attr_bignum_from_binary(void *attr, const void *data,
@@ -702,8 +725,7 @@ static bool op_attr_bignum_from_binary(void *attr, const void *data,
 
 	if ((*offs + n) > data_len)
 		return false;
-	if (crypto_ops.bignum.bin2bn((const uint8_t *)data + *offs,
-				     n, *bn) != TEE_SUCCESS)
+	if (crypto_bignum_bin2bn((const uint8_t *)data + *offs, n, *bn))
 		return false;
 	(*offs) += n;
 	return true;
@@ -714,7 +736,7 @@ static TEE_Result op_attr_bignum_from_obj(void *attr, void *src_attr)
 	struct bignum **bn = attr;
 	struct bignum **src_bn = src_attr;
 
-	crypto_ops.bignum.copy(*bn, *src_bn);
+	crypto_bignum_copy(*bn, *src_bn);
 	return TEE_SUCCESS;
 }
 
@@ -722,14 +744,14 @@ static void op_attr_bignum_clear(void *attr)
 {
 	struct bignum **bn = attr;
 
-	crypto_ops.bignum.clear(*bn);
+	crypto_bignum_clear(*bn);
 }
 
 static void op_attr_bignum_free(void *attr)
 {
 	struct bignum **bn = attr;
 
-	crypto_ops.bignum.free(*bn);
+	crypto_bignum_free(*bn);
 	*bn = NULL;
 }
 
@@ -766,12 +788,12 @@ static TEE_Result op_attr_value_to_user(void *attr,
 	return tee_svc_copy_to_user(buffer, value, req_size);
 }
 
-static void op_attr_value_to_binary(void *attr, void *data, size_t data_len,
-				    size_t *offs)
+static TEE_Result op_attr_value_to_binary(void *attr, void *data,
+					  size_t data_len, size_t *offs)
 {
 	uint32_t *v = attr;
 
-	op_u32_to_binary_helper(*v, data, data_len, offs);
+	return op_u32_to_binary_helper(*v, data, data_len, offs);
 }
 
 static bool op_attr_value_from_binary(void *attr, const void *data,
@@ -1009,6 +1031,7 @@ TEE_Result tee_obj_attr_to_binary(struct tee_obj *o, void *data,
 	size_t n;
 	size_t offs = 0;
 	size_t len = data ? *data_len : 0;
+	TEE_Result res;
 
 	if (o->info.objectType == TEE_TYPE_DATA) {
 		*data_len = 0;
@@ -1024,7 +1047,9 @@ TEE_Result tee_obj_attr_to_binary(struct tee_obj *o, void *data,
 		const struct tee_cryp_obj_type_attrs *ta = tp->type_attrs + n;
 		void *attr = (uint8_t *)o->attr + ta->raw_offs;
 
-		attr_ops[ta->ops_index].to_binary(attr, data, len, &offs);
+		res = attr_ops[ta->ops_index].to_binary(attr, data, len, &offs);
+		if (res != TEE_SUCCESS)
+			return res;
 	}
 
 	*data_len = offs;
@@ -1173,48 +1198,30 @@ TEE_Result tee_obj_set_type(struct tee_obj *o, uint32_t obj_type,
 	/* If we have a key structure, pre-allocate the bignums inside */
 	switch (obj_type) {
 	case TEE_TYPE_RSA_PUBLIC_KEY:
-		if (!crypto_ops.acipher.alloc_rsa_public_key)
-			return TEE_ERROR_NOT_IMPLEMENTED;
-		res = crypto_ops.acipher.alloc_rsa_public_key(o->attr,
-							      max_key_size);
+		res = crypto_acipher_alloc_rsa_public_key(o->attr,
+							  max_key_size);
 		break;
 	case TEE_TYPE_RSA_KEYPAIR:
-		if (!crypto_ops.acipher.alloc_rsa_keypair)
-			return TEE_ERROR_NOT_IMPLEMENTED;
-		res = crypto_ops.acipher.alloc_rsa_keypair(o->attr,
-							   max_key_size);
+		res = crypto_acipher_alloc_rsa_keypair(o->attr, max_key_size);
 		break;
 	case TEE_TYPE_DSA_PUBLIC_KEY:
-		if (!crypto_ops.acipher.alloc_dsa_public_key)
-			return TEE_ERROR_NOT_IMPLEMENTED;
-		res = crypto_ops.acipher.alloc_dsa_public_key(o->attr,
-							      max_key_size);
+		res = crypto_acipher_alloc_dsa_public_key(o->attr,
+							  max_key_size);
 		break;
 	case TEE_TYPE_DSA_KEYPAIR:
-		if (!crypto_ops.acipher.alloc_dsa_keypair)
-			return TEE_ERROR_NOT_IMPLEMENTED;
-		res = crypto_ops.acipher.alloc_dsa_keypair(o->attr,
-							   max_key_size);
+		res = crypto_acipher_alloc_dsa_keypair(o->attr, max_key_size);
 		break;
 	case TEE_TYPE_DH_KEYPAIR:
-		if (!crypto_ops.acipher.alloc_dh_keypair)
-			return TEE_ERROR_NOT_IMPLEMENTED;
-		res = crypto_ops.acipher.alloc_dh_keypair(o->attr,
-							  max_key_size);
+		res = crypto_acipher_alloc_dh_keypair(o->attr, max_key_size);
 		break;
 	case TEE_TYPE_ECDSA_PUBLIC_KEY:
 	case TEE_TYPE_ECDH_PUBLIC_KEY:
-		if (!crypto_ops.acipher.alloc_ecc_public_key)
-			return TEE_ERROR_NOT_IMPLEMENTED;
-		res = crypto_ops.acipher.alloc_ecc_public_key(o->attr,
-							      max_key_size);
+		res = crypto_acipher_alloc_ecc_public_key(o->attr,
+							  max_key_size);
 		break;
 	case TEE_TYPE_ECDSA_KEYPAIR:
 	case TEE_TYPE_ECDH_KEYPAIR:
-		if (!crypto_ops.acipher.alloc_ecc_keypair)
-			return TEE_ERROR_NOT_IMPLEMENTED;
-		res = crypto_ops.acipher.alloc_ecc_keypair(o->attr,
-							   max_key_size);
+		res = crypto_acipher_alloc_ecc_keypair(o->attr, max_key_size);
 		break;
 	default:
 		if (obj_type != TEE_TYPE_DATA) {
@@ -1599,18 +1606,14 @@ static TEE_Result tee_svc_obj_generate_key_rsa(
 	struct rsa_keypair *key = o->attr;
 	uint32_t e = TEE_U32_TO_BIG_ENDIAN(65537);
 
-	if (!crypto_ops.acipher.gen_rsa_key || !crypto_ops.bignum.bin2bn)
-		return TEE_ERROR_NOT_IMPLEMENTED;
-
 	/* Copy the present attributes into the obj before starting */
 	res = tee_svc_cryp_obj_populate_type(o, type_props, params,
 					     param_count);
 	if (res != TEE_SUCCESS)
 		return res;
 	if (!get_attribute(o, type_props, TEE_ATTR_RSA_PUBLIC_EXPONENT))
-		crypto_ops.bignum.bin2bn((const uint8_t *)&e, sizeof(e),
-					 key->e);
-	res = crypto_ops.acipher.gen_rsa_key(key, key_size);
+		crypto_bignum_bin2bn((const uint8_t *)&e, sizeof(e), key->e);
+	res = crypto_acipher_gen_rsa_key(key, key_size);
 	if (res != TEE_SUCCESS)
 		return res;
 
@@ -1626,9 +1629,7 @@ static TEE_Result tee_svc_obj_generate_key_dsa(
 {
 	TEE_Result res;
 
-	if (!crypto_ops.acipher.gen_dsa_key)
-		return TEE_ERROR_NOT_IMPLEMENTED;
-	res = crypto_ops.acipher.gen_dsa_key(o->attr, key_size);
+	res = crypto_acipher_gen_dsa_key(o->attr, key_size);
 	if (res != TEE_SUCCESS)
 		return res;
 
@@ -1660,9 +1661,7 @@ static TEE_Result tee_svc_obj_generate_key_dh(
 		dh_q = tee_dh_key->q;
 	if (get_attribute(o, type_props, TEE_ATTR_DH_X_BITS))
 		dh_xbits = tee_dh_key->xbits;
-	if (!crypto_ops.acipher.gen_dh_key)
-		return TEE_ERROR_NOT_IMPLEMENTED;
-	res = crypto_ops.acipher.gen_dh_key(tee_dh_key, dh_q, dh_xbits);
+	res = crypto_acipher_gen_dh_key(tee_dh_key, dh_q, dh_xbits);
 	if (res != TEE_SUCCESS)
 		return res;
 
@@ -1689,9 +1688,7 @@ static TEE_Result tee_svc_obj_generate_key_ecc(
 
 	tee_ecc_key = (struct ecc_keypair *)o->attr;
 
-	if (!crypto_ops.acipher.gen_ecc_key)
-		return TEE_ERROR_NOT_IMPLEMENTED;
-	res = crypto_ops.acipher.gen_ecc_key(tee_ecc_key);
+	res = crypto_acipher_gen_ecc_key(tee_ecc_key);
 	if (res != TEE_SUCCESS)
 		return res;
 
@@ -1786,7 +1783,7 @@ TEE_Result syscall_obj_generate_key(unsigned long obj, unsigned long key_size,
 			goto out;
 		}
 
-		res = crypto_ops.prng.read((void *)(key + 1), byte_size);
+		res = crypto_rng_read((void *)(key + 1), byte_size);
 		if (res != TEE_SUCCESS)
 			goto out;
 
@@ -1866,7 +1863,24 @@ static void cryp_state_free(struct user_ta_ctx *utc, struct tee_cryp_state *cs)
 	TAILQ_REMOVE(&utc->cryp_states, cs, link);
 	if (cs->ctx_finalize != NULL)
 		cs->ctx_finalize(cs->ctx, cs->algo);
-	free(cs->ctx);
+
+	switch (TEE_ALG_GET_CLASS(cs->algo)) {
+	case TEE_OPERATION_CIPHER:
+		crypto_cipher_free_ctx(cs->ctx, cs->algo);
+		break;
+	case TEE_OPERATION_AE:
+		crypto_authenc_free_ctx(cs->ctx, cs->algo);
+		break;
+	case TEE_OPERATION_DIGEST:
+		crypto_hash_free_ctx(cs->ctx, cs->algo);
+		break;
+	case TEE_OPERATION_MAC:
+		crypto_mac_free_ctx(cs->ctx, cs->algo);
+		break;
+	default:
+		assert(!cs->ctx);
+	}
+
 	free(cs);
 }
 
@@ -2001,64 +2015,36 @@ TEE_Result syscall_cryp_state_alloc(unsigned long algo, unsigned long mode,
 		    (algo != TEE_ALG_AES_XTS && (key1 == 0 || key2 != 0))) {
 			res = TEE_ERROR_BAD_PARAMETERS;
 		} else {
-			if (crypto_ops.cipher.get_ctx_size)
-				res = crypto_ops.cipher.get_ctx_size(algo,
-								&cs->ctx_size);
-			else
-				res = TEE_ERROR_NOT_IMPLEMENTED;
+			res = crypto_cipher_alloc_ctx(&cs->ctx, algo);
 			if (res != TEE_SUCCESS)
 				break;
-			cs->ctx = calloc(1, cs->ctx_size);
-			if (!cs->ctx)
-				res = TEE_ERROR_OUT_OF_MEMORY;
 		}
 		break;
 	case TEE_OPERATION_AE:
 		if (key1 == 0 || key2 != 0) {
 			res = TEE_ERROR_BAD_PARAMETERS;
 		} else {
-			if (crypto_ops.authenc.get_ctx_size)
-				res = crypto_ops.authenc.get_ctx_size(algo,
-								&cs->ctx_size);
-			else
-				res = TEE_ERROR_NOT_IMPLEMENTED;
+			res = crypto_authenc_alloc_ctx(&cs->ctx, algo);
 			if (res != TEE_SUCCESS)
 				break;
-			cs->ctx = calloc(1, cs->ctx_size);
-			if (!cs->ctx)
-				res = TEE_ERROR_OUT_OF_MEMORY;
 		}
 		break;
 	case TEE_OPERATION_MAC:
 		if (key1 == 0 || key2 != 0) {
 			res = TEE_ERROR_BAD_PARAMETERS;
 		} else {
-			if (crypto_ops.mac.get_ctx_size)
-				res = crypto_ops.mac.get_ctx_size(algo,
-								&cs->ctx_size);
-			else
-				res = TEE_ERROR_NOT_IMPLEMENTED;
+			res = crypto_mac_alloc_ctx(&cs->ctx, algo);
 			if (res != TEE_SUCCESS)
 				break;
-			cs->ctx = calloc(1, cs->ctx_size);
-			if (!cs->ctx)
-				res = TEE_ERROR_OUT_OF_MEMORY;
 		}
 		break;
 	case TEE_OPERATION_DIGEST:
 		if (key1 != 0 || key2 != 0) {
 			res = TEE_ERROR_BAD_PARAMETERS;
 		} else {
-			if (crypto_ops.hash.get_ctx_size)
-				res = crypto_ops.hash.get_ctx_size(algo,
-								&cs->ctx_size);
-			else
-				res = TEE_ERROR_NOT_IMPLEMENTED;
+			res = crypto_hash_alloc_ctx(&cs->ctx, algo);
 			if (res != TEE_SUCCESS)
 				break;
-			cs->ctx = calloc(1, cs->ctx_size);
-			if (!cs->ctx)
-				res = TEE_ERROR_OUT_OF_MEMORY;
 		}
 		break;
 	case TEE_OPERATION_ASYMMETRIC_CIPHER:
@@ -2117,11 +2103,26 @@ TEE_Result syscall_cryp_state_copy(unsigned long dst, unsigned long src)
 		return res;
 	if (cs_dst->algo != cs_src->algo || cs_dst->mode != cs_src->mode)
 		return TEE_ERROR_BAD_PARAMETERS;
-	/* "Can't happen" */
-	if (cs_dst->ctx_size != cs_src->ctx_size)
-		return TEE_ERROR_BAD_STATE;
 
-	memcpy(cs_dst->ctx, cs_src->ctx, cs_src->ctx_size);
+	switch (TEE_ALG_GET_CLASS(cs_src->algo)) {
+	case TEE_OPERATION_CIPHER:
+		crypto_cipher_copy_state(cs_dst->ctx, cs_src->ctx,
+					 cs_src->algo);
+		break;
+	case TEE_OPERATION_AE:
+		crypto_authenc_copy_state(cs_dst->ctx, cs_src->ctx,
+					  cs_src->algo);
+		break;
+	case TEE_OPERATION_DIGEST:
+		crypto_hash_copy_state(cs_dst->ctx, cs_src->ctx, cs_src->algo);
+		break;
+	case TEE_OPERATION_MAC:
+		crypto_mac_copy_state(cs_dst->ctx, cs_src->ctx, cs_src->algo);
+		break;
+	default:
+		return TEE_ERROR_BAD_STATE;
+	}
+
 	return TEE_SUCCESS;
 }
 
@@ -2168,9 +2169,7 @@ TEE_Result syscall_hash_init(unsigned long state,
 
 	switch (TEE_ALG_GET_CLASS(cs->algo)) {
 	case TEE_OPERATION_DIGEST:
-		if (!crypto_ops.hash.init)
-			return TEE_ERROR_NOT_IMPLEMENTED;
-		res = crypto_ops.hash.init(cs->ctx, cs->algo);
+		res = crypto_hash_init(cs->ctx, cs->algo);
 		if (res != TEE_SUCCESS)
 			return res;
 		break;
@@ -2188,11 +2187,8 @@ TEE_Result syscall_hash_init(unsigned long state,
 				return TEE_ERROR_BAD_PARAMETERS;
 
 			key = (struct tee_cryp_obj_secret *)o->attr;
-			if (!crypto_ops.mac.init)
-				return TEE_ERROR_NOT_IMPLEMENTED;
-			res = crypto_ops.mac.init(cs->ctx, cs->algo,
-						  (void *)(key + 1),
-						  key->key_size);
+			res = crypto_mac_init(cs->ctx, cs->algo,
+					      (void *)(key + 1), key->key_size);
 			if (res != TEE_SUCCESS)
 				return res;
 			break;
@@ -2236,18 +2232,12 @@ TEE_Result syscall_hash_update(unsigned long state, const void *chunk,
 
 	switch (TEE_ALG_GET_CLASS(cs->algo)) {
 	case TEE_OPERATION_DIGEST:
-		if (!crypto_ops.hash.update)
-			return TEE_ERROR_NOT_IMPLEMENTED;
-		res = crypto_ops.hash.update(cs->ctx, cs->algo, chunk,
-					     chunk_size);
+		res = crypto_hash_update(cs->ctx, cs->algo, chunk, chunk_size);
 		if (res != TEE_SUCCESS)
 			return res;
 		break;
 	case TEE_OPERATION_MAC:
-		if (!crypto_ops.mac.update)
-			return TEE_ERROR_NOT_IMPLEMENTED;
-		res = crypto_ops.mac.update(cs->ctx, cs->algo, chunk,
-					    chunk_size);
+		res = crypto_mac_update(cs->ctx, cs->algo, chunk, chunk_size);
 		if (res != TEE_SUCCESS)
 			return res;
 		break;
@@ -2300,8 +2290,6 @@ TEE_Result syscall_hash_final(unsigned long state, const void *chunk,
 
 	switch (TEE_ALG_GET_CLASS(cs->algo)) {
 	case TEE_OPERATION_DIGEST:
-		if (!crypto_ops.hash.update || !crypto_ops.hash.final)
-			return TEE_ERROR_NOT_IMPLEMENTED;
 		res = tee_hash_get_digest_size(cs->algo, &hash_size);
 		if (res != TEE_SUCCESS)
 			return res;
@@ -2311,21 +2299,18 @@ TEE_Result syscall_hash_final(unsigned long state, const void *chunk,
 		}
 
 		if (chunk_size) {
-			res = crypto_ops.hash.update(cs->ctx, cs->algo, chunk,
-						     chunk_size);
+			res = crypto_hash_update(cs->ctx, cs->algo, chunk,
+						 chunk_size);
 			if (res != TEE_SUCCESS)
 				return res;
 		}
 
-		res = crypto_ops.hash.final(cs->ctx, cs->algo, hash,
-					    hash_size);
+		res = crypto_hash_final(cs->ctx, cs->algo, hash, hash_size);
 		if (res != TEE_SUCCESS)
 			return res;
 		break;
 
 	case TEE_OPERATION_MAC:
-		if (!crypto_ops.mac.update || !crypto_ops.mac.final)
-			return TEE_ERROR_NOT_IMPLEMENTED;
 		res = tee_mac_get_digest_size(cs->algo, &hash_size);
 		if (res != TEE_SUCCESS)
 			return res;
@@ -2335,13 +2320,13 @@ TEE_Result syscall_hash_final(unsigned long state, const void *chunk,
 		}
 
 		if (chunk_size) {
-			res = crypto_ops.mac.update(cs->ctx, cs->algo, chunk,
-						    chunk_size);
+			res = crypto_mac_update(cs->ctx, cs->algo, chunk,
+						chunk_size);
 			if (res != TEE_SUCCESS)
 				return res;
 		}
 
-		res = crypto_ops.mac.final(cs->ctx, cs->algo, hash, hash_size);
+		res = crypto_mac_final(cs->ctx, cs->algo, hash, hash_size);
 		if (res != TEE_SUCCESS)
 			return res;
 		break;
@@ -2391,33 +2376,25 @@ TEE_Result syscall_cipher_init(unsigned long state, const void *iv,
 
 	key1 = o->attr;
 
-	if (!crypto_ops.cipher.init)
-		return TEE_ERROR_NOT_IMPLEMENTED;
-
 	if (tee_obj_get(utc, cs->key2, &o) == TEE_SUCCESS) {
 		struct tee_cryp_obj_secret *key2 = o->attr;
 
 		if ((o->info.handleFlags & TEE_HANDLE_FLAG_INITIALIZED) == 0)
 			return TEE_ERROR_BAD_PARAMETERS;
 
-		res = crypto_ops.cipher.init(cs->ctx, cs->algo, cs->mode,
-					     (uint8_t *)(key1 + 1),
-					     key1->key_size,
-					     (uint8_t *)(key2 + 1),
-					     key2->key_size,
-					     iv, iv_len);
+		res = crypto_cipher_init(cs->ctx, cs->algo, cs->mode,
+					 (uint8_t *)(key1 + 1), key1->key_size,
+					 (uint8_t *)(key2 + 1), key2->key_size,
+					 iv, iv_len);
 	} else {
-		res = crypto_ops.cipher.init(cs->ctx, cs->algo, cs->mode,
-					     (uint8_t *)(key1 + 1),
-					     key1->key_size,
-					     NULL,
-					     0,
-					     iv, iv_len);
+		res = crypto_cipher_init(cs->ctx, cs->algo, cs->mode,
+					 (uint8_t *)(key1 + 1), key1->key_size,
+					 NULL, 0, iv, iv_len);
 	}
 	if (res != TEE_SUCCESS)
 		return res;
 
-	cs->ctx_finalize = crypto_ops.cipher.final;
+	cs->ctx_finalize = crypto_cipher_final;
 	return TEE_SUCCESS;
 }
 
@@ -2697,15 +2674,6 @@ TEE_Result syscall_cryp_derive_key(unsigned long state,
 		struct bignum *pub;
 		struct bignum *ss;
 
-		if (!crypto_ops.bignum.allocate ||
-		    !crypto_ops.bignum.free ||
-		    !crypto_ops.bignum.bin2bn ||
-		    !crypto_ops.bignum.bn2bin ||
-		    !crypto_ops.bignum.num_bytes ||
-		    !crypto_ops.acipher.dh_shared_secret) {
-			res = TEE_ERROR_NOT_IMPLEMENTED;
-			goto out;
-		}
 		if (param_count != 1 ||
 		    params[0].attributeID != TEE_ATTR_DH_PUBLIC_VALUE) {
 			res = TEE_ERROR_BAD_PARAMETERS;
@@ -2713,17 +2681,16 @@ TEE_Result syscall_cryp_derive_key(unsigned long state,
 		}
 
 		alloc_size = params[0].content.ref.length * 8;
-		pub = crypto_ops.bignum.allocate(alloc_size);
-		ss = crypto_ops.bignum.allocate(alloc_size);
+		pub = crypto_bignum_allocate(alloc_size);
+		ss = crypto_bignum_allocate(alloc_size);
 		if (pub && ss) {
-			crypto_ops.bignum.bin2bn(params[0].content.ref.buffer,
-					params[0].content.ref.length, pub);
-			res = crypto_ops.acipher.dh_shared_secret(ko->attr,
-								  pub, ss);
+			crypto_bignum_bin2bn(params[0].content.ref.buffer,
+					     params[0].content.ref.length, pub);
+			res = crypto_acipher_dh_shared_secret(ko->attr,
+							      pub, ss);
 			if (res == TEE_SUCCESS) {
-				sk->key_size = crypto_ops.bignum.num_bytes(ss);
-				crypto_ops.bignum.bn2bin(ss,
-							 (uint8_t *)(sk + 1));
+				sk->key_size = crypto_bignum_num_bytes(ss);
+				crypto_bignum_bn2bin(ss, (uint8_t *)(sk + 1));
 				so->info.handleFlags |=
 						TEE_HANDLE_FLAG_INITIALIZED;
 				set_attribute(so, type_props,
@@ -2732,21 +2699,14 @@ TEE_Result syscall_cryp_derive_key(unsigned long state,
 		} else {
 			res = TEE_ERROR_OUT_OF_MEMORY;
 		}
-		crypto_ops.bignum.free(pub);
-		crypto_ops.bignum.free(ss);
+		crypto_bignum_free(pub);
+		crypto_bignum_free(ss);
 	} else if (TEE_ALG_GET_MAIN_ALG(cs->algo) == TEE_MAIN_ALGO_ECDH) {
 		size_t alloc_size;
 		struct ecc_public_key key_public;
 		uint8_t *pt_secret;
 		unsigned long pt_secret_len;
 
-		if (!crypto_ops.bignum.bin2bn ||
-		    !crypto_ops.acipher.alloc_ecc_public_key ||
-		    !crypto_ops.acipher.free_ecc_public_key ||
-		    !crypto_ops.acipher.ecc_shared_secret) {
-			res = TEE_ERROR_NOT_IMPLEMENTED;
-			goto out;
-		}
 		if (param_count != 2 ||
 		    params[0].attributeID != TEE_ATTR_ECC_PUBLIC_VALUE_X ||
 		    params[1].attributeID != TEE_ATTR_ECC_PUBLIC_VALUE_Y) {
@@ -2776,22 +2736,23 @@ TEE_Result syscall_cryp_derive_key(unsigned long state,
 		}
 
 		/* Create the public key */
-		res = crypto_ops.acipher.alloc_ecc_public_key(&key_public,
-							      alloc_size);
+		res = crypto_acipher_alloc_ecc_public_key(&key_public,
+							  alloc_size);
 		if (res != TEE_SUCCESS)
 			goto out;
 		key_public.curve = ((struct ecc_keypair *)ko->attr)->curve;
-		crypto_ops.bignum.bin2bn(params[0].content.ref.buffer,
-					 params[0].content.ref.length,
-					 key_public.x);
-		crypto_ops.bignum.bin2bn(params[1].content.ref.buffer,
-					 params[1].content.ref.length,
-					 key_public.y);
+		crypto_bignum_bin2bn(params[0].content.ref.buffer,
+				     params[0].content.ref.length,
+				     key_public.x);
+		crypto_bignum_bin2bn(params[1].content.ref.buffer,
+				     params[1].content.ref.length,
+				     key_public.y);
 
 		pt_secret = (uint8_t *)(sk + 1);
 		pt_secret_len = sk->alloc_size;
-		res = crypto_ops.acipher.ecc_shared_secret(ko->attr,
-				&key_public, pt_secret, &pt_secret_len);
+		res = crypto_acipher_ecc_shared_secret(ko->attr, &key_public,
+						       pt_secret,
+						       &pt_secret_len);
 
 		if (res == TEE_SUCCESS) {
 			sk->key_size = pt_secret_len;
@@ -2800,7 +2761,7 @@ TEE_Result syscall_cryp_derive_key(unsigned long state,
 		}
 
 		/* free the public key */
-		crypto_ops.acipher.free_ecc_public_key(&key_public);
+		crypto_acipher_free_ecc_public_key(&key_public);
 	}
 #if defined(CFG_CRYPTO_HKDF)
 	else if (TEE_ALG_GET_MAIN_ALG(cs->algo) == TEE_MAIN_ALGO_HKDF) {
@@ -2913,7 +2874,7 @@ TEE_Result syscall_cryp_random_number_generate(void *buf, size_t blen)
 	if (res != TEE_SUCCESS)
 		return res;
 
-	res = crypto_ops.prng.read(buf, blen);
+	res = crypto_rng_read(buf, blen);
 	if (res != TEE_SUCCESS)
 		return res;
 
@@ -2944,18 +2905,15 @@ TEE_Result syscall_authenc_init(unsigned long state, const void *nonce,
 	if ((o->info.handleFlags & TEE_HANDLE_FLAG_INITIALIZED) == 0)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	if (!crypto_ops.authenc.init)
-		return TEE_ERROR_NOT_IMPLEMENTED;
 	key = o->attr;
-	res = crypto_ops.authenc.init(cs->ctx, cs->algo, cs->mode,
-				      (uint8_t *)(key + 1), key->key_size,
-				      nonce, nonce_len, tag_len, aad_len,
-				      payload_len);
+	res = crypto_authenc_init(cs->ctx, cs->algo, cs->mode,
+				  (uint8_t *)(key + 1), key->key_size,
+				  nonce, nonce_len, tag_len, aad_len,
+				  payload_len);
 	if (res != TEE_SUCCESS)
 		return res;
 
-	cs->ctx_finalize = (tee_cryp_ctx_finalize_func_t)
-				crypto_ops.authenc.final;
+	cs->ctx_finalize = (tee_cryp_ctx_finalize_func_t)crypto_authenc_final;
 	return TEE_SUCCESS;
 }
 
@@ -2982,10 +2940,8 @@ TEE_Result syscall_authenc_update_aad(unsigned long state,
 	if (res != TEE_SUCCESS)
 		return res;
 
-	if (!crypto_ops.authenc.update_aad)
-		return TEE_ERROR_NOT_IMPLEMENTED;
-	res = crypto_ops.authenc.update_aad(cs->ctx, cs->algo, cs->mode,
-					    aad_data, aad_data_len);
+	res = crypto_authenc_update_aad(cs->ctx, cs->algo, cs->mode,
+					aad_data, aad_data_len);
 	if (res != TEE_SUCCESS)
 		return res;
 
@@ -3034,12 +2990,10 @@ TEE_Result syscall_authenc_update_payload(unsigned long state,
 		goto out;
 	}
 
-	if (!crypto_ops.authenc.update_payload)
-		return TEE_ERROR_NOT_IMPLEMENTED;
 	tmp_dlen = dlen;
-	res = crypto_ops.authenc.update_payload(cs->ctx, cs->algo, cs->mode,
-						src_data, src_len, dst_data,
-						&tmp_dlen);
+	res = crypto_authenc_update_payload(cs->ctx, cs->algo, cs->mode,
+					    src_data, src_len, dst_data,
+					    &tmp_dlen);
 	dlen = tmp_dlen;
 
 out:
@@ -3061,7 +3015,7 @@ TEE_Result syscall_authenc_enc_final(unsigned long state,
 	struct tee_cryp_state *cs;
 	struct tee_ta_session *sess;
 	uint64_t dlen;
-	uint64_t tlen;
+	uint64_t tlen = 0;
 	size_t tmp_dlen;
 	size_t tmp_tlen;
 
@@ -3116,13 +3070,11 @@ TEE_Result syscall_authenc_enc_final(unsigned long state,
 	if (res != TEE_SUCCESS)
 		return res;
 
-	if (!crypto_ops.authenc.enc_final)
-		return TEE_ERROR_NOT_IMPLEMENTED;
 	tmp_dlen = dlen;
 	tmp_tlen = tlen;
-	res = crypto_ops.authenc.enc_final(cs->ctx, cs->algo, src_data,
-					   src_len, dst_data, &tmp_dlen, tag,
-					   &tmp_tlen);
+	res = crypto_authenc_enc_final(cs->ctx, cs->algo, src_data,
+				       src_len, dst_data, &tmp_dlen, tag,
+				       &tmp_tlen);
 	dlen = tmp_dlen;
 	tlen = tmp_tlen;
 
@@ -3201,12 +3153,9 @@ TEE_Result syscall_authenc_dec_final(unsigned long state,
 	if (res != TEE_SUCCESS)
 		return res;
 
-	if (!crypto_ops.authenc.dec_final)
-		return TEE_ERROR_NOT_IMPLEMENTED;
 	tmp_dlen = dlen;
-	res = crypto_ops.authenc.dec_final(cs->ctx, cs->algo, src_data,
-					   src_len, dst_data, &tmp_dlen, tag,
-					   tag_len);
+	res = crypto_authenc_dec_final(cs->ctx, cs->algo, src_data, src_len,
+				       dst_data, &tmp_dlen, tag, tag_len);
 	dlen = tmp_dlen;
 
 out:
@@ -3308,19 +3257,13 @@ TEE_Result syscall_asymm_operate(unsigned long state,
 	switch (cs->algo) {
 	case TEE_ALG_RSA_NOPAD:
 		if (cs->mode == TEE_MODE_ENCRYPT) {
-			if (crypto_ops.acipher.rsanopad_encrypt)
-				res = crypto_ops.acipher.rsanopad_encrypt(
-					o->attr, src_data, src_len,
-					dst_data, &dlen);
-			else
-				res = TEE_ERROR_NOT_IMPLEMENTED;
+			res = crypto_acipher_rsanopad_encrypt(o->attr, src_data,
+							      src_len, dst_data,
+							      &dlen);
 		} else if (cs->mode == TEE_MODE_DECRYPT) {
-			if (crypto_ops.acipher.rsanopad_decrypt)
-				res = crypto_ops.acipher.rsanopad_decrypt(
-					o->attr, src_data, src_len, dst_data,
-					&dlen);
-			else
-				res = TEE_ERROR_NOT_IMPLEMENTED;
+			res = crypto_acipher_rsanopad_decrypt(o->attr, src_data,
+							      src_len, dst_data,
+							      &dlen);
 		} else {
 			/*
 			 * We will panic because "the mode is not compatible
@@ -3345,20 +3288,14 @@ TEE_Result syscall_asymm_operate(unsigned long state,
 		}
 
 		if (cs->mode == TEE_MODE_ENCRYPT) {
-			if (crypto_ops.acipher.rsaes_encrypt)
-				res = crypto_ops.acipher.rsaes_encrypt(
+			res = crypto_acipher_rsaes_encrypt(cs->algo, o->attr,
+							   label, label_len,
+							   src_data, src_len,
+							   dst_data, &dlen);
+		} else if (cs->mode == TEE_MODE_DECRYPT) {
+			res = crypto_acipher_rsaes_decrypt(
 					cs->algo, o->attr, label, label_len,
 					src_data, src_len, dst_data, &dlen);
-			else
-				res = TEE_ERROR_NOT_IMPLEMENTED;
-		} else if (cs->mode == TEE_MODE_DECRYPT) {
-			if (crypto_ops.acipher.rsaes_decrypt)
-				res = crypto_ops.acipher.rsaes_decrypt(
-					cs->algo, o->attr,
-					label, label_len,
-					src_data, src_len, dst_data, &dlen);
-			else
-				res = TEE_ERROR_NOT_IMPLEMENTED;
 		} else {
 			res = TEE_ERROR_BAD_PARAMETERS;
 		}
@@ -3380,36 +3317,24 @@ TEE_Result syscall_asymm_operate(unsigned long state,
 			break;
 		}
 		salt_len = pkcs1_get_salt_len(params, num_params, src_len);
-		if (!crypto_ops.acipher.rsassa_sign) {
-			res = TEE_ERROR_NOT_IMPLEMENTED;
-			break;
-		}
-		res = crypto_ops.acipher.rsassa_sign(cs->algo, o->attr,
-						     salt_len, src_data,
-						     src_len, dst_data, &dlen);
+		res = crypto_acipher_rsassa_sign(cs->algo, o->attr, salt_len,
+						 src_data, src_len, dst_data,
+						 &dlen);
 		break;
 
 	case TEE_ALG_DSA_SHA1:
 	case TEE_ALG_DSA_SHA224:
 	case TEE_ALG_DSA_SHA256:
-		if (!crypto_ops.acipher.dsa_sign) {
-			res = TEE_ERROR_NOT_IMPLEMENTED;
-			break;
-		}
-		res = crypto_ops.acipher.dsa_sign(cs->algo, o->attr, src_data,
-						  src_len, dst_data, &dlen);
+		res = crypto_acipher_dsa_sign(cs->algo, o->attr, src_data,
+					      src_len, dst_data, &dlen);
 		break;
 	case TEE_ALG_ECDSA_P192:
 	case TEE_ALG_ECDSA_P224:
 	case TEE_ALG_ECDSA_P256:
 	case TEE_ALG_ECDSA_P384:
 	case TEE_ALG_ECDSA_P521:
-		if (!crypto_ops.acipher.ecc_sign) {
-			res = TEE_ERROR_NOT_IMPLEMENTED;
-			break;
-		}
-		res = crypto_ops.acipher.ecc_sign(cs->algo, o->attr, src_data,
-						  src_len, dst_data, &dlen);
+		res = crypto_acipher_ecc_sign(cs->algo, o->attr, src_data,
+					      src_len, dst_data, &dlen);
 		break;
 
 	default:
@@ -3499,13 +3424,9 @@ TEE_Result syscall_asymm_verify(unsigned long state,
 			break;
 		}
 		salt_len = pkcs1_get_salt_len(params, num_params, hash_size);
-		if (!crypto_ops.acipher.rsassa_verify) {
-			res = TEE_ERROR_NOT_IMPLEMENTED;
-			break;
-		}
-		res = crypto_ops.acipher.rsassa_verify(cs->algo, o->attr,
-						       salt_len, data,
-						       data_len, sig, sig_len);
+		res = crypto_acipher_rsassa_verify(cs->algo, o->attr, salt_len,
+						   data, data_len, sig,
+						   sig_len);
 		break;
 
 	case TEE_MAIN_ALGO_DSA:
@@ -3523,21 +3444,13 @@ TEE_Result syscall_asymm_verify(unsigned long state,
 			res = TEE_ERROR_BAD_PARAMETERS;
 			break;
 		}
-		if (!crypto_ops.acipher.dsa_verify) {
-			res = TEE_ERROR_NOT_IMPLEMENTED;
-			break;
-		}
-		res = crypto_ops.acipher.dsa_verify(cs->algo, o->attr, data,
-						    data_len, sig, sig_len);
+		res = crypto_acipher_dsa_verify(cs->algo, o->attr, data,
+						data_len, sig, sig_len);
 		break;
 
 	case TEE_MAIN_ALGO_ECDSA:
-		if (!crypto_ops.acipher.ecc_verify) {
-			res = TEE_ERROR_NOT_IMPLEMENTED;
-			break;
-		}
-		res = crypto_ops.acipher.ecc_verify(cs->algo, o->attr, data,
-						    data_len, sig, sig_len);
+		res = crypto_acipher_ecc_verify(cs->algo, o->attr, data,
+						data_len, sig, sig_len);
 		break;
 
 	default:
@@ -3549,48 +3462,52 @@ out:
 	return res;
 }
 
-TEE_Result syscall_rcar_aes_unwrap(void *srcData, uint32_t srcLen, void *keyData,
-		uint32_t keySize, uint32_t isSecretKey, void *destData,
-		uint32_t *dstLen)
+TEE_Result syscall_rcar_aes_unwrap(void *srcData __maybe_unused,
+		uint32_t srcLen __maybe_unused,
+		const void *keyData __maybe_unused,
+		uint32_t keySize __maybe_unused,
+		uint32_t isSecretKey __maybe_unused,
+		void *destData __maybe_unused, uint32_t *dstLen __maybe_unused)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
 	TEE_Result ret;
-
-	if (NULL != (crypto_ops.cipher.unwrap)) {
-		ret = crypto_ops.cipher.unwrap(srcData, srcLen, keyData,
-				keySize, isSecretKey, destData, dstLen);
-	} else {
-		ret = TEE_ERROR_NOT_IMPLEMENTED;
-	}
+	ret = crypto_hw_cipher_unwrap(srcData, srcLen, keyData,
+			keySize, isSecretKey, destData, dstLen);
 	return ret;
+#else
+	return TEE_ERROR_NOT_IMPLEMENTED;
+#endif
 }
 
-TEE_Result syscall_rcar_gen_skey_package(RCAR_SkeyParams_t *skeyParams,
-		uint8_t *skeyPackageBuf, uint32_t skeyPackageSize)
+TEE_Result syscall_rcar_gen_skey_package(
+		RCAR_SkeyParams_t *skeyParams __maybe_unused,
+		uint8_t *skeyPackageBuf __maybe_unused,
+		uint32_t skeyPackageSize __maybe_unused)
 {
-	TEE_Result rcar_ret;
-
-	if (NULL != (crypto_ops.util.gen_skey_package)) {
-		rcar_ret = crypto_ops.util.gen_skey_package(skeyParams,
-				skeyPackageBuf, skeyPackageSize);
-	} else {
-		rcar_ret = TEE_ERROR_NOT_IMPLEMENTED;
-	}
-	return rcar_ret;
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	TEE_Result ret;
+	ret = crypto_hw_gen_skey_package(skeyParams, skeyPackageBuf,
+			skeyPackageSize);
+	return ret;
+#else
+	return TEE_ERROR_NOT_IMPLEMENTED;
+#endif
 }
 
-TEE_Result syscall_rcar_asset_unpack(uint32_t assetId, uint8_t *pAssetPackage,
-		uint32_t assetPackagLen, uint8_t *pAssetData,
-		uint32_t *pAssetDataLen, uint32_t *pUserData)
+TEE_Result syscall_rcar_asset_unpack(uint32_t assetId __maybe_unused,
+		uint8_t *pAssetPackage __maybe_unused,
+		uint32_t assetPackagLen __maybe_unused,
+		uint8_t *pAssetData __maybe_unused,
+		uint32_t *pAssetDataLen __maybe_unused,
+		uint32_t *pUserData __maybe_unused)
 {
-	TEE_Result rcar_ret;
-
-	if (NULL != (crypto_ops.util.asset_unpack)) {
-		rcar_ret = crypto_ops.util.asset_unpack(assetId, pAssetPackage,
-				assetPackagLen, pAssetData, pAssetDataLen,
-				pUserData);
-	} else {
-		rcar_ret = TEE_ERROR_NOT_IMPLEMENTED;
-	}
-	return rcar_ret;
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	TEE_Result ret;
+	ret = crypto_hw_asset_unpack(assetId, pAssetPackage, assetPackagLen,
+			pAssetData, pAssetDataLen, pUserData);
+	return ret;
+#else
+	return TEE_ERROR_NOT_IMPLEMENTED;
+#endif
 }
 

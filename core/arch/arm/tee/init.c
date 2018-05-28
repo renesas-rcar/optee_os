@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
  * All rights reserved.
@@ -33,7 +34,6 @@
 #include <mm/core_memprot.h>
 #include <mm/tee_mmu.h>
 #include <sm/tee_mon.h>
-#include <tee/tee_cryp_provider.h>
 #include <tee/tee_fs.h>
 #include <tee/tee_svc.h>
 #include <trace.h>

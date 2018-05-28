@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (C) 2017, Fuzhou Rockchip Electronics Co., Ltd.
  * All rights reserved.
@@ -261,7 +262,7 @@ int psci_features(uint32_t psci_fid)
 }
 
 int psci_cpu_on(uint32_t core_idx, uint32_t entry,
-		uint32_t context_id __unused)
+		uint32_t context_id)
 {
 	bool wfei;
 	vaddr_t cru_base = (vaddr_t)phys_to_virt_io(CRU_BASE);
@@ -274,7 +275,7 @@ int psci_cpu_on(uint32_t core_idx, uint32_t entry,
 	DMSG("core_id: %" PRIu32, core_idx);
 
 	/* set secondary cores' NS entry addresses */
-	ns_entry_addrs[core_idx] = entry;
+	generic_boot_set_core_ns_entry(core_idx, entry, context_id);
 
 	/* wait */
 	if (!core_held_in_reset(core_idx)) {
@@ -360,7 +361,8 @@ void psci_system_reset(void)
 }
 
 int psci_system_suspend(uintptr_t entry __unused,
-			uint32_t context_id __unused)
+			uint32_t context_id __unused,
+			struct sm_nsec_ctx *nsec __unused)
 {
 	DMSG("system suspend");
 

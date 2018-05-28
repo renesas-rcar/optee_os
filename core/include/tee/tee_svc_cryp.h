@@ -1,5 +1,7 @@
+/* SPDX-License-Identifier: BSD-2-Clause */
 /*
 * Copyright (c) 2014, STMicroelectronics International N.V.
+* Copyright (c) 2016-2017, Renesas Electronics Corporation
 * All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
@@ -115,7 +117,7 @@ TEE_Result tee_obj_attr_from_binary(struct tee_obj *o, const void *data,
 TEE_Result tee_obj_attr_copy_from(struct tee_obj *o, const struct tee_obj *src);
 
 TEE_Result syscall_rcar_aes_unwrap(void *srcData, uint32_t srcLen,
-		void *keyData, uint32_t keySize, uint32_t isSecretKey, void *destData,
+		const void *keyData, uint32_t keySize, uint32_t isSecretKey, void *destData,
 		uint32_t *dstLen);
 TEE_Result syscall_rcar_gen_skey_package(RCAR_SkeyParams_t *skeyParams,
 		uint8_t *skeyPackageBuf, uint32_t skeyPackageSize);

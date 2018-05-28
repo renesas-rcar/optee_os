@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
  * Copyright (c) 2015-2017 Linaro Limited
@@ -30,6 +31,7 @@
 #include <compiler.h>
 #include <keep.h>
 #include <kernel/panic.h>
+#include <kernel/tee_misc.h>
 #include <kernel/tee_ta_manager.h>
 #include <kernel/thread.h>
 #include <kernel/user_ta.h>
@@ -45,7 +47,6 @@
 #include <stdlib.h>
 #include <sys/queue.h>
 #include <ta_pub_key.h>
-#include <tee/tee_cryp_provider.h>
 #include <tee/tee_cryp_utl.h>
 #include <tee/tee_obj.h>
 #include <tee/tee_svc_cryp.h>
@@ -60,89 +61,39 @@
 #include "elf_load.h"
 #include "elf_common.h"
 
-static uint32_t elf_flags_to_mattr(uint32_t flags, bool init_attrs)
+static void set_ta_ctx_ops(struct tee_ta_ctx *ctx);
+
+static uint32_t elf_flags_to_mattr(uint32_t flags)
 {
 	uint32_t mattr = 0;
 
-	if (init_attrs)
-		mattr = TEE_MATTR_PRW;
-	else {
-		if (flags & PF_X)
-			mattr |= TEE_MATTR_UX;
-		if (flags & PF_W)
-			mattr |= TEE_MATTR_UW;
-		if (flags & PF_R)
-			mattr |= TEE_MATTR_UR;
-	}
+	if (flags & PF_X)
+		mattr |= TEE_MATTR_UX;
+	if (flags & PF_W)
+		mattr |= TEE_MATTR_UW;
+	if (flags & PF_R)
+		mattr |= TEE_MATTR_UR;
 
 	return mattr;
 }
 
-#ifdef CFG_PAGED_USER_TA
-static TEE_Result config_initial_paging(struct user_ta_ctx *utc)
-{
-	size_t n;
-
-	for (n = 0; n < ARRAY_SIZE(utc->mmu->regions); n++) {
-		if (!utc->mmu->regions[n].size)
-			continue;
-		if (!tee_pager_add_uta_area(utc, utc->mmu->regions[n].va,
-					    utc->mmu->regions[n].size))
-			return TEE_ERROR_GENERIC;
-	}
-	return TEE_SUCCESS;
-}
-
-static TEE_Result config_final_paging(struct user_ta_ctx *utc)
-{
-	size_t n;
+struct load_seg {
+	vaddr_t offs;
 	uint32_t flags;
+	vaddr_t oend;
+	vaddr_t va;
+	size_t size;
+};
 
-	tee_pager_assign_uta_tables(utc);
-
-	for (n = 0; n < ARRAY_SIZE(utc->mmu->regions); n++) {
-		if (!utc->mmu->regions[n].size)
-			continue;
-		flags = utc->mmu->regions[n].attr &
-			(TEE_MATTR_PRW | TEE_MATTR_URWX);
-		if (!tee_pager_set_uta_area_attr(utc, utc->mmu->regions[n].va,
-						 utc->mmu->regions[n].size,
-						 flags))
-			return TEE_ERROR_GENERIC;
-	}
-	return TEE_SUCCESS;
-}
-#else /*!CFG_PAGED_USER_TA*/
-static TEE_Result config_initial_paging(struct user_ta_ctx *utc __unused)
-{
-	return TEE_SUCCESS;
-}
-
-static TEE_Result config_final_paging(struct user_ta_ctx *utc)
-{
-	void *va = (void *)utc->mmu->ta_private_vmem_start;
-	size_t vasize = utc->mmu->ta_private_vmem_end -
-			utc->mmu->ta_private_vmem_start;
-
-	cache_op_inner(DCACHE_AREA_CLEAN, va, vasize);
-	cache_op_inner(ICACHE_AREA_INVALIDATE, va, vasize);
-	return TEE_SUCCESS;
-}
-#endif /*!CFG_PAGED_USER_TA*/
-
-static TEE_Result load_elf_segments(struct user_ta_ctx *utc,
-			struct elf_load_state *elf_state, bool init_attrs)
+static TEE_Result get_elf_segments(struct user_ta_ctx *utc,
+				   struct elf_load_state *elf_state,
+				   struct load_seg **segs_ret,
+				   size_t *num_segs_ret)
 {
 	TEE_Result res;
-	uint32_t mattr;
 	size_t idx = 0;
-
-	tee_mmu_map_clear(utc);
-
-	/*
-	 * Add stack segment
-	 */
-	tee_mmu_map_stack(utc, utc->mobj_stack);
+	size_t num_segs = 0;
+	struct load_seg *segs = NULL;
 
 	/*
 	 * Add code segment
@@ -161,21 +112,48 @@ static TEE_Result load_elf_segments(struct user_ta_ctx *utc,
 			return res;
 
 		if (type == PT_LOAD) {
-			mattr = elf_flags_to_mattr(flags, init_attrs);
-			res = tee_mmu_map_add_segment(utc, utc->mobj_code,
-						      offs, size, mattr);
-			if (res != TEE_SUCCESS)
-				return res;
+			void *p = realloc(segs, (num_segs + 1) * sizeof(*segs));
+
+			if (!p) {
+				free(segs);
+				return TEE_ERROR_OUT_OF_MEMORY;
+			}
+			segs = p;
+			segs[num_segs].offs = ROUNDDOWN(offs, SMALL_PAGE_SIZE);
+			segs[num_segs].oend = ROUNDUP(offs + size,
+						      SMALL_PAGE_SIZE);
+			segs[num_segs].flags = flags;
+			num_segs++;
 		} else if (type == PT_ARM_EXIDX) {
 			utc->exidx_start = offs;
 			utc->exidx_size = size;
 		}
 	}
 
-	if (init_attrs)
-		return config_initial_paging(utc);
-	else
-		return config_final_paging(utc);
+	idx = 1;
+	while (idx < num_segs) {
+		size_t this_size = segs[idx].oend - segs[idx].offs;
+		size_t prev_size = segs[idx - 1].oend - segs[idx - 1].offs;
+
+		if (core_is_buffer_intersect(segs[idx].offs, this_size,
+					     segs[idx - 1].offs, prev_size)) {
+			/* Merge the segments and their attributes */
+			segs[idx - 1].oend = MAX(segs[idx - 1].oend,
+						 segs[idx].oend);
+			segs[idx - 1].flags |= segs[idx].flags;
+
+			/* Remove this index */
+			memcpy(segs + idx, segs + idx + 1,
+			       (num_segs - idx - 1) * sizeof(*segs));
+			num_segs--;
+		} else {
+			idx++;
+		}
+	}
+
+	*segs_ret = segs;
+	*num_segs_ret = num_segs;
+	return TEE_SUCCESS;
 }
 
 static struct mobj *alloc_ta_mem(size_t size)
@@ -196,6 +174,9 @@ static TEE_Result load_elf(struct user_ta_ctx *utc,
 	struct ta_head *ta_head;
 	void *p;
 	size_t vasize;
+	size_t n;
+	size_t num_segs = 0;
+	struct load_seg *segs = NULL;
 
 	res = elf_load_init(ta_store, ta_handle, &elf_state);
 	if (res != TEE_SUCCESS)
@@ -213,14 +194,6 @@ static TEE_Result load_elf(struct user_ta_ctx *utc,
 		goto out;
 	}
 
-	/* Currently all TA must execute from DDR */
-	if (!(ta_head->flags & TA_FLAG_EXEC_DDR)) {
-		res = TEE_ERROR_BAD_FORMAT;
-		goto out;
-	}
-	/* Temporary assignment to setup memory mapping */
-	utc->ctx.flags = TA_FLAG_USER_MODE | TA_FLAG_EXEC_DDR;
-
 	/* Ensure proper aligment of stack */
 	utc->mobj_stack = alloc_ta_mem(ROUNDUP(ta_head->stack_size,
 					       STACK_ALIGNMENT));
@@ -233,17 +206,41 @@ static TEE_Result load_elf(struct user_ta_ctx *utc,
 	 * Map physical memory into TA virtual memory
 	 */
 
-	res = tee_mmu_init(utc);
+	res = vm_info_init(utc);
 	if (res != TEE_SUCCESS)
 		goto out;
 
-	res = load_elf_segments(utc, elf_state, true /* init attrs */);
+	/*
+	 * Add stack segment
+	 */
+	utc->stack_addr = 0;
+	res = vm_map(utc, &utc->stack_addr, utc->mobj_stack->size,
+		     TEE_MATTR_URW | TEE_MATTR_PRW, utc->mobj_stack, 0);
+	if (res)
+		goto out;
+
+	res = get_elf_segments(utc, elf_state, &segs, &num_segs);
 	if (res != TEE_SUCCESS)
 		goto out;
+
+	utc->load_addr = 0;
+	for (n = 0; n < num_segs; n++) {
+		uint32_t prot = elf_flags_to_mattr(segs[n].flags) |
+				TEE_MATTR_PRW;
+
+		segs[n].va = utc->load_addr - segs[0].offs + segs[n].offs;
+		segs[n].size = segs[n].oend - segs[n].offs;
+		res = vm_map(utc, &segs[n].va, segs[n].size, prot,
+			     utc->mobj_code, segs[n].offs);
+		if (res)
+			goto out;
+		if (!n)
+			utc->load_addr = segs[0].va;
+	}
 
 	tee_mmu_set_ctx(&utc->ctx);
 
-	res = elf_load_body(elf_state, tee_mmu_get_load_addr(&utc->ctx));
+	res = elf_load_body(elf_state, utc->load_addr);
 	if (res != TEE_SUCCESS)
 		goto out;
 
@@ -251,11 +248,15 @@ static TEE_Result load_elf(struct user_ta_ctx *utc,
 	 * Replace the init attributes with attributes used when the TA is
 	 * running.
 	 */
-	res = load_elf_segments(utc, elf_state, false /* final attrs */);
-	if (res != TEE_SUCCESS)
-		goto out;
+	for (n = 0; n < num_segs; n++) {
+		res = vm_set_prot(utc, segs[n].va, segs[n].size,
+				  elf_flags_to_mattr(segs[n].flags));
+		if (res)
+			goto out;
+	}
 
 out:
+	free(segs);
 	elf_load_final(elf_state);
 	return res;
 }
@@ -270,10 +271,6 @@ static TEE_Result ta_load(const TEE_UUID *uuid,
 			  struct tee_ta_ctx **ta_ctx)
 {
 	TEE_Result res;
-	uint32_t mandatory_flags = TA_FLAG_USER_MODE | TA_FLAG_EXEC_DDR;
-	uint32_t optional_flags = mandatory_flags | TA_FLAG_SINGLE_INSTANCE |
-	    TA_FLAG_MULTI_SESSION | TA_FLAG_SECURE_DATA_PATH |
-	    TA_FLAG_INSTANCE_KEEP_ALIVE | TA_FLAG_CACHE_MAINTENANCE;
 	struct user_ta_ctx *utc = NULL;
 	struct ta_head *ta_head;
 	struct user_ta_store_handle *ta_handle = NULL;
@@ -293,11 +290,16 @@ static TEE_Result ta_load(const TEE_UUID *uuid,
 	TAILQ_INIT(&utc->objects);
 	TAILQ_INIT(&utc->storage_enums);
 
+	/*
+	 * Set context TA operation structure. It is required by generic
+	 * implementation to identify userland TA versus pseudo TA contexts.
+	 */
+	set_ta_ctx_ops(&utc->ctx);
+
 	res = load_elf(utc, ta_store, ta_handle);
 	if (res != TEE_SUCCESS)
 		goto error_return;
 
-	utc->load_addr = tee_mmu_get_load_addr(&utc->ctx);
 	ta_head = (struct ta_head *)(vaddr_t)utc->load_addr;
 
 	if (memcmp(&ta_head->uuid, uuid, sizeof(TEE_UUID)) != 0) {
@@ -305,16 +307,14 @@ static TEE_Result ta_load(const TEE_UUID *uuid,
 		goto error_return;
 	}
 
-	/* check input flags bitmask consistency and save flags */
-	if ((ta_head->flags & optional_flags) != ta_head->flags ||
-	    (ta_head->flags & mandatory_flags) != mandatory_flags) {
-		EMSG("TA flag issue: flags=%x optional=%x mandatory=%x",
-		     ta_head->flags, optional_flags, mandatory_flags);
+	if (ta_head->flags & ~TA_FLAGS_MASK) {
+		EMSG("Invalid TA flag(s) 0x%" PRIx32,
+			ta_head->flags & ~TA_FLAGS_MASK);
 		res = TEE_ERROR_BAD_FORMAT;
 		goto error_return;
 	}
 
-	DMSG("ELF load address 0x%x", utc->load_addr);
+	DMSG("ELF load address %#" PRIxVA, utc->load_addr);
 	utc->ctx.flags = ta_head->flags;
 	utc->ctx.uuid = ta_head->uuid;
 	utc->entry_func = ta_head->entry.ptr64;
@@ -333,7 +333,7 @@ error_return:
 	if (utc) {
 		pgt_flush_ctx(&utc->ctx);
 		tee_pager_rem_uta_areas(utc);
-		tee_mmu_final(utc);
+		vm_info_final(utc);
 		mobj_free(utc->mobj_code);
 		mobj_free(utc->mobj_stack);
 		free(utc);
@@ -418,9 +418,6 @@ static TEE_Result user_ta_enter(TEE_ErrorOrigin *err,
 	struct tee_ta_session *s __maybe_unused;
 	void *param_va[TEE_NUM_PARAMS] = { NULL };
 
-	if (!(utc->ctx.flags & TA_FLAG_EXEC_DDR))
-		panic("TA does not exec in DDR");
-
 	/* Map user space memory */
 	res = tee_mmu_map_param(utc, param, param_va);
 	if (res != TEE_SUCCESS)
@@ -430,8 +427,7 @@ static TEE_Result user_ta_enter(TEE_ErrorOrigin *err,
 	tee_ta_push_current_session(session);
 
 	/* Make room for usr_params at top of stack */
-	usr_stack = (uaddr_t)utc->mmu->regions[TEE_MMU_UMAP_STACK_IDX].va +
-		utc->mobj_stack->size;
+	usr_stack = utc->stack_addr + utc->mobj_stack->size;
 	usr_stack -= ROUNDUP(sizeof(struct utee_params), STACK_ALIGNMENT);
 	usr_params = (struct utee_params *)usr_stack;
 	init_utee_param(usr_params, param, param_va);
@@ -502,63 +498,52 @@ static void user_ta_enter_close_session(struct tee_ta_session *s)
 static void user_ta_dump_state(struct tee_ta_ctx *ctx)
 {
 	struct user_ta_ctx *utc __maybe_unused = to_user_ta_ctx(ctx);
-	char flags[4] = { '\0', };
-	size_t n;
+	struct vm_region *r;
+	char flags[7] = { '\0', };
+	size_t n = 0;
 
-	EMSG_RAW(" arch: %s  load address: 0x%x  ctx-idr: %d",
+	EMSG_RAW(" arch: %s  load address: %#" PRIxVA " ctx-idr: %d",
 		 utc->is_32bit ? "arm" : "aarch64", utc->load_addr,
-		 utc->context);
+		 utc->vm_info->asid);
 	EMSG_RAW(" stack: 0x%" PRIxVA " %zu",
-		 utc->mmu->regions[TEE_MMU_UMAP_STACK_IDX].va,
-		 utc->mobj_stack->size);
-	for (n = 0; n < ARRAY_SIZE(utc->mmu->regions); n++) {
+		 utc->stack_addr, utc->mobj_stack->size);
+	TAILQ_FOREACH(r, &utc->vm_info->regions, link) {
 		paddr_t pa = 0;
 
-		if (utc->mmu->regions[n].mobj)
-			mobj_get_pa(utc->mmu->regions[n].mobj,
-				    utc->mmu->regions[n].offset, 0, &pa);
+		if (r->mobj)
+			mobj_get_pa(r->mobj, r->offset, 0, &pa);
 
-		mattr_uflags_to_str(flags, sizeof(flags),
-				    utc->mmu->regions[n].attr);
+		mattr_perm_to_str(flags, sizeof(flags), r->attr);
 		EMSG_RAW(" region %zu: va %#" PRIxVA " pa %#" PRIxPA
 			 " size %#zx flags %s",
-			 n, utc->mmu->regions[n].va, pa,
-			 utc->mmu->regions[n].size, flags);
+			 n, r->va, pa, r->size, flags);
+		n++;
 	}
 }
 KEEP_PAGER(user_ta_dump_state);
+
+static void release_ta_memory_by_mobj(struct mobj *mobj)
+{
+	void *va;
+
+	if (!mobj)
+		return;
+
+	va = mobj_get_va(mobj, 0);
+	if (!va)
+		return;
+
+	memset(va, 0, mobj->size);
+	cache_op_inner(DCACHE_AREA_CLEAN, va, mobj->size);
+}
 
 static void user_ta_ctx_destroy(struct tee_ta_ctx *ctx)
 {
 	struct user_ta_ctx *utc = to_user_ta_ctx(ctx);
 
 	tee_pager_rem_uta_areas(utc);
-
-	/*
-	 * Clean all traces of the TA, both RO and RW data.
-	 * No L2 cache maintenance to avoid sync problems
-	 */
-	if (ctx->flags & TA_FLAG_EXEC_DDR) {
-		void *va;
-
-		if (utc->mobj_code) {
-			va = mobj_get_va(utc->mobj_code, 0);
-			if (va) {
-				memset(va, 0, utc->mobj_code->size);
-				cache_op_inner(DCACHE_AREA_CLEAN, va,
-						utc->mobj_code->size);
-			}
-		}
-
-		if (utc->mobj_stack) {
-			va = mobj_get_va(utc->mobj_stack, 0);
-			if (va) {
-				memset(va, 0, utc->mobj_stack->size);
-				cache_op_inner(DCACHE_AREA_CLEAN, va,
-						utc->mobj_stack->size);
-			}
-		}
-	}
+	release_ta_memory_by_mobj(utc->mobj_code);
+	release_ta_memory_by_mobj(utc->mobj_stack);
 
 	/*
 	 * Close sessions opened by this TA
@@ -570,7 +555,7 @@ static void user_ta_ctx_destroy(struct tee_ta_ctx *ctx)
 				     &utc->open_sessions, KERN_IDENTITY);
 	}
 
-	tee_mmu_final(utc);
+	vm_info_final(utc);
 	mobj_free(utc->mobj_code);
 	mobj_free(utc->mobj_stack);
 
@@ -585,7 +570,7 @@ static void user_ta_ctx_destroy(struct tee_ta_ctx *ctx)
 
 static uint32_t user_ta_get_instance_id(struct tee_ta_ctx *ctx)
 {
-	return to_user_ta_ctx(ctx)->context;
+	return to_user_ta_ctx(ctx)->vm_info->asid;
 }
 
 static const struct tee_ta_ops user_ta_ops __rodata_unpaged = {
@@ -599,6 +584,16 @@ static const struct tee_ta_ops user_ta_ops __rodata_unpaged = {
 
 static SLIST_HEAD(uta_stores_head, user_ta_store_ops) uta_store_list =
 		SLIST_HEAD_INITIALIZER(uta_stores_head);
+
+static void set_ta_ctx_ops(struct tee_ta_ctx *ctx)
+{
+	ctx->ops = &user_ta_ops;
+}
+
+bool is_user_ta_ctx(struct tee_ta_ctx *ctx)
+{
+	return ctx->ops == &user_ta_ops;
+}
 
 TEE_Result tee_ta_register_ta_store(struct user_ta_store_ops *ops)
 {
@@ -638,9 +633,7 @@ TEE_Result tee_ta_init_user_ta_session(const TEE_UUID *uuid,
 		res = ta_load(uuid, store, &s->ctx);
 		if (res == TEE_ERROR_ITEM_NOT_FOUND)
 			continue;
-		if (res == TEE_SUCCESS)
-			s->ctx->ops = &user_ta_ops;
-		else
+		if (res != TEE_SUCCESS)
 			DMSG("res=0x%x", res);
 		return res;
 	}

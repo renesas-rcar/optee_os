@@ -1,29 +1,7 @@
+// SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
- * Copyright (c) 2015-2017, Renesas Electronics Corporation
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
+ * Copyright (c) 2015-2018, Renesas Electronics Corporation
  */
 
 #include <platform_config.h>
@@ -62,10 +40,13 @@ static uint32_t main_cpu_lock = (uint32_t)SPINLOCK_UNLOCK;
 
 static void main_tee_entry_fast(struct thread_smc_args *args)
 {
+	DMSG("IN args->a0=0x%lX", args->a0);
 	if (args->a0 == OPTEE_SMC_GET_SHM_CONFIG) {
 		is_normal_world_initialized = 1;
+		DMSG("Normal World was initialized");
 	}
 	tee_entry_fast(args);
+	DMSG("OUT Received SMC from Normal World");
 }
 
 static unsigned long main_cpu_suspend(unsigned long a0,
@@ -74,7 +55,7 @@ static unsigned long main_cpu_suspend(unsigned long a0,
 	uint32_t exceptions;
 
 	exceptions = cpu_spin_lock_xsave(&main_cpu_lock);
-	DMSG("a0=0x%lX, a1=0x%lX", a0, a1);
+	TMSG("a0=0x%lX, a1=0x%lX", a0, a1);
 
 	if (a0 == TFW_ARG_SYSTEM_SUSPEND) {
 		if (suspend_to_ram_save_flag == 0U) {
@@ -98,7 +79,7 @@ static unsigned long main_cpu_resume(unsigned long a0 __unused,
 	uint32_t exceptions;
 
 	exceptions = cpu_spin_lock_xsave(&main_cpu_lock);
-	DMSG("a0=0x%lX, a1=0x%lX", a0, a1);
+	TMSG("a0=0x%lX, a1=0x%lX", a0, a1);
 
 	if (suspend_to_ram_save_flag == 1U) {
 		suspend_to_ram_restore();

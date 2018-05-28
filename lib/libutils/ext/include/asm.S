@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
  * All rights reserved.
@@ -26,6 +27,7 @@
  */
 
 	.macro FUNC name colon
+	.section .text.\name
 	.global \name
 	.func \name
 	.type \name , %function
@@ -39,6 +41,7 @@
 	.endm
 
 	.macro LOCAL_FUNC name colon
+	.section .text.\name
 	.func \name
 	.type \name , %function
 	\name \colon

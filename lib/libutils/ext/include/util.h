@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
  * All rights reserved.
@@ -71,6 +72,9 @@
 
 #define TO_STR(x) _TO_STR(x)
 #define _TO_STR(x) #x
+
+#define CONCAT(x, y) _CONCAT(x, y)
+#define _CONCAT(x, y) x##y
 
 #define container_of(ptr, type, member) \
 	(__extension__({ \

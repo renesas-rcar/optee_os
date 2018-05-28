@@ -1,5 +1,7 @@
+// SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
+ * Copyright (c) 2017, Renesas Electronics Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -55,11 +57,28 @@
 
 /* This mutex protects the critical section in tee_ta_init_session */
 struct mutex tee_ta_mutex = MUTEX_INITIALIZER;
+struct tee_ta_ctx_head tee_ctxes = TAILQ_HEAD_INITIALIZER(tee_ctxes);
+
+#ifndef CFG_CONCURRENT_SINGLE_INSTANCE_TA
 static struct condvar tee_ta_cv = CONDVAR_INITIALIZER;
 static int tee_ta_single_instance_thread = THREAD_ID_INVALID;
 static size_t tee_ta_single_instance_count;
-struct tee_ta_ctx_head tee_ctxes = TAILQ_HEAD_INITIALIZER(tee_ctxes);
+#endif
 
+#ifdef CFG_CONCURRENT_SINGLE_INSTANCE_TA
+static void lock_single_instance(void)
+{
+}
+
+static void unlock_single_instance(void)
+{
+}
+
+static bool has_single_instance_lock(void)
+{
+	return false;
+}
+#else
 static void lock_single_instance(void)
 {
 	/* Requires tee_ta_mutex to be held */
@@ -93,10 +112,14 @@ static bool has_single_instance_lock(void)
 	/* Requires tee_ta_mutex to be held */
 	return tee_ta_single_instance_thread == thread_get_id();
 }
+#endif
 
 static bool tee_ta_try_set_busy(struct tee_ta_ctx *ctx)
 {
 	bool rc = true;
+
+	if (ctx->flags & TA_FLAG_CONCURRENT)
+		return true;
 
 	mutex_lock(&tee_ta_mutex);
 
@@ -138,6 +161,9 @@ static void tee_ta_set_busy(struct tee_ta_ctx *ctx)
 
 static void tee_ta_clear_busy(struct tee_ta_ctx *ctx)
 {
+	if (ctx->flags & TA_FLAG_CONCURRENT)
+		return;
+
 	mutex_lock(&tee_ta_mutex);
 
 	assert(ctx->busy);
@@ -449,13 +475,9 @@ static TEE_Result tee_ta_init_session_with_context(struct tee_ta_ctx *ctx,
 
 	/*
 	 * The TA is single instance, if it isn't multi session we
-	 * can't create another session unless it's the first
-	 * new session towards a keepAlive TA.
+	 * can't create another session unless its reference is zero
 	 */
-
-	if (((ctx->flags & TA_FLAG_MULTI_SESSION) == 0) &&
-	    !(((ctx->flags & TA_FLAG_INSTANCE_KEEP_ALIVE) != 0) &&
-	      (ctx->ref_count == 0)))
+	if (!(ctx->flags & TA_FLAG_MULTI_SESSION) && ctx->ref_count)
 		return TEE_ERROR_BUSY;
 
 	DMSG("Re-open TA %pUl", (void *)&ctx->uuid);
@@ -504,7 +526,7 @@ static TEE_Result tee_ta_init_session(TEE_ErrorOrigin *err,
 			goto out;
 	}
 
-	/* Look for static TA */
+	/* Look for pseudo TA */
 	res = tee_ta_init_pseudo_ta_session(uuid, s);
 	if (res == TEE_SUCCESS || res != TEE_ERROR_ITEM_NOT_FOUND)
 		goto out;
@@ -621,8 +643,11 @@ TEE_Result tee_ta_invoke_command(TEE_ErrorOrigin *err,
 	}
 
 	tee_ta_clear_busy(sess->ctx);
-	if (res != TEE_SUCCESS)
+
+	/* Short buffer is not an effective error case */
+	if (res != TEE_SUCCESS && res != TEE_ERROR_SHORT_BUFFER)
 		DMSG("Error: %x of %d\n", res, *err);
+
 	return res;
 }
 
@@ -687,7 +712,7 @@ static void update_current_ctx(struct thread_specific_data *tsd)
 	 * if ctx->mmu != NULL we must have user mapping active.
 	 */
 	if (((ctx && is_user_ta_ctx(ctx) ?
-			to_user_ta_ctx(ctx)->mmu : NULL) == NULL) ==
+			to_user_ta_ctx(ctx)->vm_info : NULL) == NULL) ==
 					core_mmu_user_mapping_is_active())
 		panic("unexpected active mapping");
 

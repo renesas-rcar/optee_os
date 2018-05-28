@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: (BSD-2-Clause AND BSD-3-Clause) */
 /*
  * Copyright (c) 2016, Linaro Limited
  * All rights reserved.
@@ -64,6 +65,7 @@
 #define GMON_H
 
 #include <stdint.h>
+#include <util.h>
 
 /* Exported by the TA linker script */
 extern uint8_t __text_start[];
@@ -161,12 +163,6 @@ struct rawarc {
 	unsigned long	raw_selfpc;
 	long		raw_count;
 };
-
-/*
- * General rounding functions.
- */
-#define ROUNDDOWN(x, y)	(((x)/(y))*(y))
-#define ROUNDUP(x, y)	((((x)+(y)-1)/(y))*(y))
 
 /*
  * The profiling data structures are housed in this structure.

@@ -1,31 +1,10 @@
+// SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (C) 2016 Freescale Semiconductor, Inc.
- * All rights reserved.
  *
  * Peng Fan <peng.fan@nxp.com>
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
  */
+
 #include <console.h>
 #include <drivers/imx_uart.h>
 #include <drivers/imx_wdog.h>
@@ -46,9 +25,22 @@
 #include <tee/entry_std.h>
 #include <tee/entry_fast.h>
 
+int psci_features(uint32_t psci_fid)
+{
+	switch (psci_fid) {
+#ifdef CFG_BOOT_SECONDARY_REQUEST
+	case PSCI_CPU_ON:
+		return 0;
+#endif
+
+	default:
+		return PSCI_RET_NOT_SUPPORTED;
+	}
+}
+
 #ifdef CFG_BOOT_SECONDARY_REQUEST
 int psci_cpu_on(uint32_t core_idx, uint32_t entry,
-		uint32_t context_id __attribute__((unused)))
+		uint32_t context_id)
 {
 	uint32_t val;
 	vaddr_t va = core_mmu_get_va(SRC_BASE, MEM_AREA_IO_SEC);
@@ -60,7 +52,7 @@ int psci_cpu_on(uint32_t core_idx, uint32_t entry,
 		return PSCI_RET_INVALID_PARAMETERS;
 
 	/* set secondary cores' NS entry addresses */
-	ns_entry_addrs[core_idx] = entry;
+	generic_boot_set_core_ns_entry(core_idx, entry, context_id);
 
 	val = virt_to_phys((void *)TEE_TEXT_VA_START);
 	if (soc_is_imx7ds()) {
@@ -160,6 +152,27 @@ int psci_affinity_info(uint32_t affinity,
 }
 #endif
 
+void __noreturn psci_system_off(void)
+{
+	vaddr_t snvs_base = core_mmu_get_va(SNVS_BASE, MEM_AREA_IO_SEC);
+
+	write32(SNVS_LPCR_TOP_MASK |
+		SNVS_LPCR_DP_EN_MASK |
+		SNVS_LPCR_SRTC_ENV_MASK, snvs_base + SNVS_LPCR_OFF);
+	dsb();
+
+	while (1)
+		;
+}
+
+__weak int imx7d_lowpower_idle(uint32_t power_state __unused,
+			uintptr_t entry __unused,
+			uint32_t context_id __unused,
+			struct sm_nsec_ctx *nsec __unused)
+{
+	return 0;
+}
+
 __weak int imx7_cpu_suspend(uint32_t power_state __unused,
 			    uintptr_t entry __unused,
 			    uint32_t context_id __unused,
@@ -192,7 +205,9 @@ int psci_cpu_suspend(uint32_t power_state,
 	 */
 	DMSG("ID = %d\n", id);
 	if (id == 1) {
-		/* Not supported now */
+		if (soc_is_imx7ds())
+			return imx7d_lowpower_idle(power_state, entry,
+						   context_id, nsec);
 		return ret;
 	} else if (id == 0) {
 		if (soc_is_imx7ds()) {

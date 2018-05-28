@@ -1,28 +1,6 @@
+// SPDX-License-Identifier: BSD-2-Clause
 /*
- * Copyright (c) 2015-2016, Renesas Electronics Corporation
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
+ * Copyright (c) 2015-2018, Renesas Electronics Corporation
  */
 
 #include <stdint.h>
@@ -88,7 +66,7 @@ static uint32_t qspi_onboard_set_ext_addr_read_mode(uint32_t read_ext_top_addr,
 	uint32_t ret = FL_DRV_OK;
 
 	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80030260U;
-	*((volatile uint32_t *)RPC_CMNCR)	=	0x01FFF300U;
+	*((volatile uint32_t *)RPC_CMNCR)	=	0x01FF7300U;
 	*((volatile uint32_t *)RPC_DRCR)	=	0x001F0100U;
 	/*
 	 * bit20-16 RBURST[4:0] = 11111 : 32 continuous data unit
@@ -273,7 +251,7 @@ static uint32_t qspi_onboard_read_register_data(uint32_t manual_set_addr,
 	 * bit1-0 PHYMEM[1:0] = 00 : QSPI-SDR
 	 */
 
-	*((volatile uint32_t *)RPC_CMNCR)	=	0x81FFF300U;
+	*((volatile uint32_t *)RPC_CMNCR)	=	0x81FF7300U;
 	/*
 	 * bit31  MD       =  1 : Manual mode
 	 * bit1-0 BSZ[1:0] = 00 : QSPI Flash x 1
@@ -336,7 +314,7 @@ static uint32_t qspi_onboard_read_flash_data4Byte(uint32_t readFlAddr,
 	 * bit31  CAL         =  1 : PHY calibration
 	 * bit1-0 PHYMEM[1:0] = 00 : QSPI-SDR
 	 */
-	*((volatile uint32_t *)RPC_CMNCR)      = 0x81FFF300U;
+	*((volatile uint32_t *)RPC_CMNCR)      = 0x81FF7300U;
 	/*
 	 * bit31  MD       =  1 : Manual mode
 	 * bit1-0 BSZ[1:0] = 00 : QSPI Flash x 1
@@ -410,7 +388,7 @@ static uint32_t qspi_onboard_write_buffer(uint32_t manual_set_addr,
 	uint32_t ret;
 	uint32_t status = 0U;
 
-	*((volatile uint32_t *)RPC_DRCR)	=	0x01FF0301U;
+	*((volatile uint32_t *)RPC_DRCR)	=	0x011F0301U;
 	/*
 	 * bit9   RCF         =  1 : Read Cache Clear
 	 */
@@ -428,7 +406,7 @@ static uint32_t qspi_onboard_write_buffer(uint32_t manual_set_addr,
 			(*(volatile uint32_t *)(write_data_addr+offset));
 	}
 
-	*((volatile uint32_t *)RPC_CMNCR)	=	0x81FFF300U;
+	*((volatile uint32_t *)RPC_CMNCR)	=	0x81FF7300U;
 	/*
 	 * bit31  MD       =  1 : Manual mode
 	 * bit1-0 BSZ[1:0] = 00 : QSPI Flash x 1
@@ -476,7 +454,7 @@ static uint32_t qspi_onboard_write_buffer(uint32_t manual_set_addr,
 		 * bit1-0 PHYMEM[1:0] = 11 : HyperFlash
 		 */
 
-		*((volatile uint32_t *)RPC_DRCR)	=	0x01FF0301U;
+		*((volatile uint32_t *)RPC_DRCR)	=	0x011F0301U;
 		/*
 		 * bit9   RCF         =  1 : Read Cache Clear
 		 */
@@ -497,7 +475,7 @@ static uint32_t qspi_onboard_write_register_data(uint32_t manual_set_addr,
 	 * bit1-0 PHYMEM[1:0] = 00 : QSPI-SDR
 	 */
 
-	*((volatile uint32_t *)RPC_CMNCR)	=	0x81FFF300U;
+	*((volatile uint32_t *)RPC_CMNCR)	=	0x81FF7300U;
 	/*
 	 * bit31  MD       =  1 : Manual mode
 	 * bit1-0 BSZ[1:0] = 00 : QSPI Flash x 1
@@ -545,7 +523,7 @@ static uint32_t qspi_onboard_write_register_data(uint32_t manual_set_addr,
 		 * bit1-0 PHYMEM[1:0] = 11 : HyperFlash
 		 */
 
-		*((volatile uint32_t *)RPC_DRCR)	=	0x01FF0301U;
+		*((volatile uint32_t *)RPC_DRCR)	=	0x011F0301U;
 		/*
 		 * bit9   RCF         =  1 : Read Cache Clear
 		 */

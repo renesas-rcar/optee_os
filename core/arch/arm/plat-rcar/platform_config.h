@@ -1,29 +1,7 @@
+/* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2014, Linaro Limited
- * Copyright (c) 2015-2017, Renesas Electronics Corporation
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
+ * Copyright (c) 2015-2018, Renesas Electronics Corporation
  */
 
 #ifndef PLATFORM_CONFIG_H
@@ -70,7 +48,8 @@
 #define CFG_TA_RAM_SIZE		(0x01E00000U)	/* TA RAM size		*/
 
 #define CFG_SHMEM_START		(0x47E00000U)	/* Share Memory address	*/
-#define CFG_SHMEM_SIZE		(0x00100000U)	/* Share Memory size	*/
+#define CFG_SHMEM_SIZE		(0x00200000U)	/* Share Memory size	*/
+					/* plus OP-TEE Log Area NS size(1MB) */
 
 #define OPTEE_LOG_BASE		(0x46400000U)	/* OP-TEE Log Area address */
 #define OPTEE_LOG_NS_BASE	(0x47FEC000U)	/* OP-TEE Log Area NS address */
@@ -142,7 +121,9 @@
 #define MEMORY1_EXEC		false
 
 /* LOG Area for Normal World */
+/* Map with CFG_SHMEM_START
 #define MEMORY2_BASE		ROUNDDOWN(OPTEE_LOG_NS_BASE, MEM_SECTION_SIZE)
+*/
 #define MEMORY2_SIZE		(MEM_SECTION_SIZE)
 #define MEMORY2_TYPE		MEM_AREA_IO_NSEC
 #define MEMORY2_SECURE		false

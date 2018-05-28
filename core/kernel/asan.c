@@ -1,38 +1,17 @@
+// SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2016, Linaro Limited
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include <assert.h>
 #include <compiler.h>
-#include <kernel/panic.h>
+#include <keep.h>
 #include <kernel/asan.h>
+#include <kernel/panic.h>
 #include <string.h>
+#include <trace.h>
 #include <types_ext.h>
 #include <util.h>
-#include <trace.h>
 
 struct asan_source_location {
 	const char *file_name;
@@ -122,7 +101,7 @@ void asan_tag_no_access(const void *begin, const void *end)
 
 void asan_tag_access(const void *begin, const void *end)
 {
-	if (!asan_va_base)
+	if (!asan_va_base || (begin == end))
 		return;
 
 	assert(va_range_inside_shadow(begin, end));
@@ -156,6 +135,19 @@ void *asan_memset_unchecked(void *s, int c, size_t n)
 		b[m] = c;
 
 	return s;
+}
+
+void *asan_memcpy_unchecked(void *__restrict dst, const void *__restrict src,
+			    size_t len)
+{
+	uint8_t *__restrict d = dst;
+	const uint8_t *__restrict s = src;
+	size_t n;
+
+	for (n = 0; n < len; n++)
+		d[n] = s[n];
+
+	return dst;
 }
 
 void asan_start(void)
@@ -261,9 +253,8 @@ void __noreturn __asan_report_store_n_noabort(vaddr_t addr, size_t size)
 }
 
 void __asan_handle_no_return(void);
-void __noreturn __asan_handle_no_return(void)
+void __asan_handle_no_return(void)
 {
-	panic();
 }
 
 void __asan_register_globals(struct asan_global *globals, size_t size);
@@ -275,6 +266,7 @@ void __asan_register_globals(struct asan_global *globals, size_t size)
 		asan_tag_access((void *)globals[n].beg,
 				(void *)(globals[n].beg + globals[n].size));
 }
+KEEP_INIT(__asan_register_globals);
 
 void __asan_unregister_globals(struct asan_global *globals, size_t size);
 void __asan_unregister_globals(struct asan_global *globals __unused,

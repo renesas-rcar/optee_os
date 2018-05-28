@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2016-2017, Linaro Limited
  * Copyright (c) 2014, STMicroelectronics International N.V.
@@ -28,19 +29,26 @@
 
 #include <arm32_macros.S>
 #include <arm.h>
-#include <asm-defines.h>
 #include <asm.S>
+#include <generated/asm-defines.h>
 #include <keep.h>
 #include <kernel/abort.h>
 #include <kernel/thread_defs.h>
 #include <kernel/unwind.h>
+#include <mm/core_mmu.h>
 #include <sm/optee_smc.h>
 #include <sm/teesmc_opteed.h>
 #include <sm/teesmc_opteed_macros.h>
 
 #include "thread_private.h"
 
-	.section .text.thread_asm
+	.macro cmp_spsr_user_mode reg:req
+		/*
+		 * We're only testing the lower 4 bits as bit 5 (0x10)
+		 * always is set.
+		 */
+		tst	\reg, #0x0f
+	.endm
 
 LOCAL_FUNC vector_std_smc_entry , :
 UNWIND(	.fnstart)
@@ -189,6 +197,7 @@ UNWIND(	.cantunwind)
 	b	vector_system_reset_entry
 UNWIND(	.fnend)
 END_FUNC thread_vector_table
+KEEP_PAGER thread_vector_table
 
 FUNC thread_set_abt_sp , :
 UNWIND(	.fnstart)
@@ -210,7 +219,7 @@ UNWIND(	.cantunwind)
 	msr	cpsr, r1
 	bx	lr
 UNWIND(	.fnend)
-END_FUNC thread_set_abt_sp
+END_FUNC thread_set_und_sp
 
 FUNC thread_set_irq_sp , :
 UNWIND(	.fnstart)
@@ -247,14 +256,20 @@ UNWIND(	.cantunwind)
 	ldm	r12!, {r1, sp, lr}
 	msr	spsr_fsxc, r1
 
-	cps	#CPSR_MODE_SVC
 	ldm	r12, {r1, r2}
-	push	{r1, r2}
 
+	/*
+	 * Switching to some other mode than SVC as we need to set spsr in
+	 * order to return into the old state properly and it may be SVC
+	 * mode we're returning to.
+	 */
+	cps	#CPSR_MODE_ABT
+	cmp_spsr_user_mode r2
+	mov	lr, r1
+	msr	spsr_fsxc, r2
 	ldm	r0, {r0-r12}
-
-	/* Restore CPSR and jump to the instruction to resume at */
-	rfefd	sp!
+	movnes	pc, lr
+	b	eret_to_user_mode
 UNWIND(	.fnend)
 END_FUNC thread_resume
 
@@ -440,122 +455,22 @@ UNWIND(	.save	{r0})
 	pop	{r4-r5, pc}
 UNWIND(	.fnend)
 END_FUNC thread_rpc
+KEEP_PAGER thread_rpc
 
-/* The handler of native interrupt. */
-.macro	native_intr_handler mode:req
-	.ifc	\mode\(),irq
-	/*
-	 * Foreign interrupts should be masked.
-	 * For GICv2, IRQ is for foreign interrupt and already masked by
-	 * hardware in FIQ mode which is used for native interrupt.
-	 * For GICv3, FIQ is for foreign interrupt. It's not masked by hardware
-	 * in IRQ mode which is used for natvie interrupt.
-	 */
-	cpsid	f
-	.endif
-	/*
-	 * FIQ and IRQ have a +4 offset for lr compared to preferred return
-	 * address
-	 */
-	sub     lr, lr, #4
-
-	/*
-	 * We're always saving {r0-r3}. In IRQ mode we're saving r12 also.
-	 * In FIQ mode we're saving the banked fiq registers {r8-r12} FIQ
-	 * because the secure monitor doesn't save those. The treatment of
-	 * the banked fiq registers is somewhat analogous to the lazy save
-	 * of VFP registers.
-	 */
-	.ifc	\mode\(),fiq
-	push	{r0-r3, r8-r12, lr}
-	.else
-	push	{r0-r3, r12, lr}
-	.endif
-	bl	thread_check_canaries
-	ldr	lr, =thread_nintr_handler_ptr
-	ldr	lr, [lr]
-	blx	lr
-	.ifc	\mode\(),fiq
-	pop	{r0-r3, r8-r12, lr}
-	.else
-	pop	{r0-r3, r12, lr}
-	.endif
-	movs	pc, lr
-.endm
-
-/* The handler of foreign interrupt. */
-.macro foreign_intr_handler mode:req
-	.ifc	\mode\(),irq
-	/*
-	 * Disable FIQ if the foreign interrupt is sent as IRQ.
-	 * IRQ mode is set up to use tmp stack so FIQ has to be
-	 * disabled before touching the stack. We can also assign
-	 * SVC sp from IRQ sp to get SVC mode into the state we
-	 * need when doing the SMC below.
-	 * If it is sent as FIQ, the IRQ has already been masked by hardware
-	 */
-	cpsid	f
-	.endif
-	sub	lr, lr, #4
-	push	{lr}
-	push	{r12}
-
-	.ifc	\mode\(),fiq
-	bl	thread_save_state_fiq
-	.else
-	bl	thread_save_state
-	.endif
-
-	mov	r0, #THREAD_FLAGS_EXIT_ON_FOREIGN_INTR
-	mrs	r1, spsr
-	pop	{r12}
-	pop	{r2}
-	blx	thread_state_suspend
-	mov	r4, r0		/* Supply thread index */
-
-	/*
-	 * Switch to SVC mode and copy current stack pointer as it already
-	 * is the tmp stack.
-	 */
-	mov	r0, sp
-	cps	#CPSR_MODE_SVC
-	mov	sp, r0
-
-	ldr	r0, =TEESMC_OPTEED_RETURN_CALL_DONE
-	ldr	r1, =OPTEE_SMC_RETURN_RPC_FOREIGN_INTR
-	mov	r2, #0
-	mov	r3, #0
-	/* r4 is already filled in above */
+/*
+ * unsigned long thread_smc(unsigned long func_id, unsigned long a1,
+ *			    unsigned long a2, unsigned long a3)
+ */
+FUNC thread_smc , :
+UNWIND(	.fnstart)
 	smc	#0
-	b	.	/* SMC should not return */
-.endm
-
-LOCAL_FUNC thread_fiq_handler , :
-UNWIND(	.fnstart)
-UNWIND(	.cantunwind)
-#if defined(CFG_ARM_GICV3)
-	foreign_intr_handler	fiq
-#else
-	native_intr_handler	fiq
-#endif
+	bx	lr
 UNWIND(	.fnend)
-END_FUNC thread_fiq_handler
-
-LOCAL_FUNC thread_irq_handler , :
-UNWIND(	.fnstart)
-UNWIND(	.cantunwind)
-#if defined(CFG_ARM_GICV3)
-	native_intr_handler	irq
-#else
-	foreign_intr_handler	irq
-#endif
-UNWIND(	.fnend)
-END_FUNC thread_irq_handler
+END_FUNC thread_smc
 
 FUNC thread_init_vbar , :
 UNWIND(	.fnstart)
 	/* Set vector (VBAR) */
-	ldr	r0, =thread_vect_table
 	write_vbar r0
 	bx	lr
 UNWIND(	.fnend)
@@ -621,27 +536,20 @@ UNWIND(	.cantunwind)
 	ldr     r6, [sp, #(12 * 0x4)]   /* spsr */
 
 	/*
-	 * Set the saved Processors Status Register to user mode to allow
-	 * entry of user mode through movs below.
-	 */
-	msr     spsr_cxsf, r6
-	
-	/*
 	 * Save old user sp and set new user sp.
 	 */
 	cps	#CPSR_MODE_SYS
-	mov	r6, sp
+	mov	r7, sp
 	mov     sp, r4
 	cps	#CPSR_MODE_SVC
-	push	{r6,r7}
+	push	{r7,r8}
 
-	/*
-	* Don't allow return from this function, return is done through
-	* thread_unwind_user_mode() below.
-	*/
-	mov     lr, #0
-	/* Call the user function with its arguments */
-	movs    pc, r5
+	/* Prepare user mode entry via eret_to_user_mode */
+	cpsid	aif
+	msr     spsr_fsxc, r6
+	mov	lr, r5
+
+	b	eret_to_user_mode
 UNWIND(	.fnend)
 END_FUNC __thread_enter_user_mode
 
@@ -668,48 +576,291 @@ UNWIND(	.cantunwind)
 UNWIND(	.fnend)
 END_FUNC thread_unwind_user_mode
 
-LOCAL_FUNC thread_abort_handler , :
-thread_und_handler:
+	.macro maybe_restore_mapping
+		/*
+		 * This macro is a bit hard to read due to all the ifdefs,
+		 * we're testing for two different configs which makes four
+		 * different combinations.
+		 *
+		 * - With LPAE, and then some extra code if with
+		 *   CFG_CORE_UNMAP_CORE_AT_EL0
+		 * - Without LPAE, and then some extra code if with
+		 *   CFG_CORE_UNMAP_CORE_AT_EL0
+		 */
+
+		/*
+		 * At this point we can't rely on any memory being writable
+		 * yet, so we're using TPIDRPRW to store r0, and if with
+		 * LPAE TPIDRURO to store r1 too.
+		 */
+		write_tpidrprw r0
+#if defined(CFG_CORE_UNMAP_CORE_AT_EL0) || defined(CFG_WITH_LPAE)
+		write_tpidruro r1
+#endif
+
+#ifdef CFG_WITH_LPAE
+		read_ttbr0_64bit r0, r1
+		tst	r1, #BIT(TTBR_ASID_SHIFT - 32)
+		beq	11f
+
+#ifdef CFG_CORE_UNMAP_CORE_AT_EL0
+		/*
+		 * Update the mapping to use the full kernel mode mapping.
+		 * Since the translation table could reside above 4GB we'll
+		 * have to use 64-bit arithmetics.
+		 */
+		subs	r0, r0, #CORE_MMU_L1_TBL_OFFSET
+		sbc	r1, r1, #0
+#endif
+		bic	r1, r1, #BIT(TTBR_ASID_SHIFT - 32)
+		write_ttbr0_64bit r0, r1
+		isb
+
+#else /*!CFG_WITH_LPAE*/
+		read_contextidr r0
+		tst	r0, #1
+		beq	11f
+
+		/* Update the mapping to use the full kernel mode mapping. */
+		bic	r0, r0, #1
+		write_contextidr r0
+		isb
+#ifdef CFG_CORE_UNMAP_CORE_AT_EL0
+		read_ttbr1 r0
+		sub	r0, r0, #CORE_MMU_L1_TBL_OFFSET
+		write_ttbr1 r0
+		isb
+#endif
+
+#endif /*!CFG_WITH_LPAE*/
+
+#ifdef CFG_CORE_UNMAP_CORE_AT_EL0
+		ldr	r0, =thread_user_kcode_offset
+		ldr	r0, [r0]
+		read_vbar r1
+		add	r1, r1, r0
+		write_vbar r1
+		isb
+
+	11:	/*
+		 * The PC is adjusted unconditionally to guard against the
+		 * case there was an FIQ just before we did the "cpsid aif".
+		 */
+		ldr	r0, =22f
+		bx	r0
+	22:
+#else
+	11:
+#endif
+		read_tpidrprw r0
+#if defined(CFG_CORE_UNMAP_CORE_AT_EL0) || defined(CFG_WITH_LPAE)
+		read_tpidruro r1
+#endif
+	.endm
+
+/* The handler of native interrupt. */
+.macro	native_intr_handler mode:req
+	cpsid	aif
+	maybe_restore_mapping
+
+	/*
+	 * FIQ and IRQ have a +4 offset for lr compared to preferred return
+	 * address
+	 */
+	sub     lr, lr, #4
+
+	/*
+	 * We're always saving {r0-r3}. In IRQ mode we're saving r12 also.
+	 * In FIQ mode we're saving the banked fiq registers {r8-r12} FIQ
+	 * because the secure monitor doesn't save those. The treatment of
+	 * the banked fiq registers is somewhat analogous to the lazy save
+	 * of VFP registers.
+	 */
+	.ifc	\mode\(),fiq
+	push	{r0-r3, r8-r12, lr}
+	.else
+	push	{r0-r3, r12, lr}
+	.endif
+
+	bl	thread_check_canaries
+	ldr	lr, =thread_nintr_handler_ptr
+	ldr	lr, [lr]
+	blx	lr
+
+	mrs	r0, spsr
+	cmp_spsr_user_mode r0
+
+	.ifc	\mode\(),fiq
+	pop	{r0-r3, r8-r12, lr}
+	.else
+	pop	{r0-r3, r12, lr}
+	.endif
+
+	movnes	pc, lr
+	b	eret_to_user_mode
+.endm
+
+/* The handler of foreign interrupt. */
+.macro foreign_intr_handler mode:req
+	cpsid	aif
+	maybe_restore_mapping
+
+	sub	lr, lr, #4
+	push	{lr}
+	push	{r12}
+
+	.ifc	\mode\(),fiq
+	bl	thread_save_state_fiq
+	.else
+	bl	thread_save_state
+	.endif
+
+	mov	r0, #THREAD_FLAGS_EXIT_ON_FOREIGN_INTR
+	mrs	r1, spsr
+	pop	{r12}
+	pop	{r2}
+	blx	thread_state_suspend
+	mov	r4, r0		/* Supply thread index */
+
+	/*
+	 * Switch to SVC mode and copy current stack pointer as it already
+	 * is the tmp stack.
+	 */
+	mov	r0, sp
+	cps	#CPSR_MODE_SVC
+	mov	sp, r0
+
+	ldr	r0, =TEESMC_OPTEED_RETURN_CALL_DONE
+	ldr	r1, =OPTEE_SMC_RETURN_RPC_FOREIGN_INTR
+	mov	r2, #0
+	mov	r3, #0
+	/* r4 is already filled in above */
+	smc	#0
+	b	.	/* SMC should not return */
+.endm
+
+	.section .text.thread_excp_vect
+        .align	5
+FUNC thread_excp_vect , :
 UNWIND(	.fnstart)
 UNWIND(	.cantunwind)
+	b	.			/* Reset			*/
+	b	thread_und_handler	/* Undefined instruction	*/
+	b	thread_svc_handler	/* System call			*/
+	b	thread_pabort_handler	/* Prefetch abort		*/
+	b	thread_dabort_handler	/* Data abort			*/
+	b	.			/* Reserved			*/
+	b	thread_irq_handler	/* IRQ				*/
+	b	thread_fiq_handler	/* FIQ				*/
+#ifdef CFG_CORE_WORKAROUND_SPECTRE_BP_SEC
+	.macro vector_prologue_spectre
+		/*
+		 * This depends on SP being 8 byte aligned, that is, the
+		 * lowest three bits in SP are zero.
+		 *
+		 * To avoid unexpected speculation we need to invalidate
+		 * the branch predictor before we do the first branch. It
+		 * doesn't matter if it's a conditional or an unconditional
+		 * branch speculation can still occur.
+		 *
+		 * The idea is to form a specific bit pattern in the lowest
+		 * three bits of SP depending on which entry in the vector
+		 * we enter via.  This is done by adding 1 to SP in each
+		 * entry but the last.
+		 */
+		add	sp, sp, #1	/* 7:111 Reset			*/
+		add	sp, sp, #1	/* 6:110 Undefined instruction	*/
+		add	sp, sp, #1	/* 5:101 Secure monitor call	*/
+		add	sp, sp, #1	/* 4:100 Prefetch abort		*/
+		add	sp, sp, #1	/* 3:011 Data abort		*/
+		add	sp, sp, #1	/* 2:010 Reserved		*/
+		add	sp, sp, #1	/* 1:001 IRQ			*/
+		write_tpidrprw r0	/* 0:000 FIQ			*/
+	.endm
+
+        .align	5
+	.global thread_excp_vect_workaround_a15
+thread_excp_vect_workaround_a15:
+	vector_prologue_spectre
+	mrs	r0, spsr
+	cmp_spsr_user_mode r0
+	bne	1f
 	/*
-	 * Disable both foreign and native interrupts in the thread handlers.
-	 * The tee handlers can decide when the native interrupts should
-	 * be enabled.
+	 * Invalidate the branch predictor for the current processor.
+	 * For Cortex-A8 ACTLR[6] has to be set to 1 for BPIALL to be
+	 * effective.
+	 * Note that the BPIALL instruction is not effective in
+	 * invalidating the branch predictor on Cortex-A15. For that CPU,
+	 * set ACTLR[0] to 1 during early processor initialisation, and
+	 * invalidate the branch predictor by performing an ICIALLU
+	 * instruction. See also:
+	 * https://github.com/ARM-software/arm-trusted-firmware/wiki/Arm-Trusted-Firmware-Security-Advisory-TFV-6#variant-2-cve-2017-5715
 	 */
-	cpsid	f	/* IRQ is already masked by the hardware */
+	write_iciallu
+	isb
+	b	1f
+
+        .align	5
+	.global thread_excp_vect_workaround
+thread_excp_vect_workaround:
+	vector_prologue_spectre
+	mrs	r0, spsr
+	cmp_spsr_user_mode r0
+	bne	1f
+	/* Invalidate the branch predictor for the current processor. */
+	write_bpiall
+	isb
+
+1:	and	r0, sp, #(BIT(0) | BIT(1) | BIT(2))
+	bic	sp, sp, #(BIT(0) | BIT(1) | BIT(2))
+	add	pc, pc, r0, LSL #3
+	nop
+
+	read_tpidrprw r0
+	b	thread_fiq_handler	/* FIQ				*/
+	read_tpidrprw r0
+	b	thread_irq_handler	/* IRQ				*/
+	read_tpidrprw r0
+	b	.			/* Reserved			*/
+	read_tpidrprw r0
+	b	thread_dabort_handler	/* Data abort			*/
+	read_tpidrprw r0
+	b	thread_pabort_handler	/* Prefetch abort		*/
+	read_tpidrprw r0
+	b	thread_svc_handler	/* System call			*/
+	read_tpidrprw r0
+	b	thread_und_handler	/* Undefined instruction	*/
+	read_tpidrprw r0
+	b	.			/* Reset			*/
+#endif /*CFG_CORE_WORKAROUND_SPECTRE_BP_SEC*/
+
+thread_und_handler:
+	cpsid	aif
+	maybe_restore_mapping
 	strd	r0, r1, [sp, #THREAD_CORE_LOCAL_R0]
 	mrs	r1, spsr
 	tst	r1, #CPSR_T
 	subne	lr, lr, #2
 	subeq	lr, lr, #4
 	mov	r0, #ABORT_TYPE_UNDEF
-	b	.thread_abort_generic
+	b	thread_abort_common
 
 thread_dabort_handler:
-	/*
-	 * Disable both foreign and native interrupts in the thread handlers.
-	 * The tee handlers can decide when the native interrupts should
-	 * be enabled.
-	 */
-	cpsid	f	/* IRQ is already masked by the hardware */
+	cpsid	aif
+	maybe_restore_mapping
 	strd	r0, r1, [sp, #THREAD_CORE_LOCAL_R0]
 	sub	lr, lr, #8
 	mov	r0, #ABORT_TYPE_DATA
-	b	.thread_abort_generic
+	b	thread_abort_common
 
 thread_pabort_handler:
-	/*
-	 * Disable both foreign and native interrupts in the thread handlers.
-	 * The tee handlers can decide when the native interrupts should
-	 * be enabled.
-	 */
-	cpsid	f	/* IRQ is already masked by the hardware */
+	cpsid	aif
+	maybe_restore_mapping
 	strd	r0, r1, [sp, #THREAD_CORE_LOCAL_R0]
 	sub	lr, lr, #4
 	mov	r0, #ABORT_TYPE_PREFETCH
 
-.thread_abort_generic:
+thread_abort_common:
 	/*
 	 * At this label:
 	 * cpsr is in mode undef or abort
@@ -790,44 +941,103 @@ thread_pabort_handler:
 	lsr	r0, r0, #THREAD_CLF_SAVED_SHIFT
 	str	r0, [sp, #THREAD_CORE_LOCAL_FLAGS]
 
+	cmp_spsr_user_mode r1
 	ldm	ip, {r0-r11, ip}
+	movnes	pc, lr
+	b	eret_to_user_mode
+	/* end thread_abort_common */
 
-	movs	pc, lr
-UNWIND(	.fnend)
-END_FUNC thread_abort_handler
+thread_svc_handler:
+	cpsid	aif
 
-LOCAL_FUNC thread_svc_handler , :
-UNWIND(	.fnstart)
-UNWIND(	.cantunwind)
-	/*
-	 * Disable both foreign and native interrupts in the thread handlers.
-	 * The tee handlers can decide when the native interrupts should
-	 * be enabled.
-	 */
-	cpsid	f	/* IRQ is already masked by the hardware */
+	maybe_restore_mapping
+
 	push	{r0-r7, lr}
 	mrs	r0, spsr
 	push	{r0}
 	mov	r0, sp
 	bl	tee_svc_handler
+	cpsid	aif	/* In case something was unmasked */
 	pop	{r0}
 	msr	spsr_fsxc, r0
+	cmp_spsr_user_mode r0
 	pop	{r0-r7, lr}
+	movnes	pc, lr
+	b	eret_to_user_mode
+	/* end thread_svc_handler */
+
+thread_fiq_handler:
+#if defined(CFG_ARM_GICV3)
+	foreign_intr_handler	fiq
+#else
+	native_intr_handler	fiq
+#endif
+	/* end thread_fiq_handler */
+
+thread_irq_handler:
+#if defined(CFG_ARM_GICV3)
+	native_intr_handler	irq
+#else
+	foreign_intr_handler	irq
+#endif
+	/* end thread_irq_handler */
+
+	/*
+	 * Returns to user mode.
+	 * Expects to be jumped to with lr pointing to the user space
+	 * address to jump to and spsr holding the desired cpsr. Async
+	 * abort, irq and fiq should be masked.
+	 */
+eret_to_user_mode:
+	write_tpidrprw r0
+#if defined(CFG_CORE_UNMAP_CORE_AT_EL0) || defined(CFG_WITH_LPAE)
+	write_tpidruro r1
+#endif
+
+#ifdef CFG_CORE_UNMAP_CORE_AT_EL0
+	ldr	r0, =thread_user_kcode_offset
+	ldr	r0, [r0]
+	read_vbar r1
+	sub	r1, r1, r0
+	write_vbar r1
+	isb
+
+	/* Jump into the reduced mapping before the full mapping is removed */
+	ldr	r1, =1f
+	sub	r1, r1, r0
+	bx	r1
+1:
+#endif /*CFG_CORE_UNMAP_CORE_AT_EL0*/
+
+#ifdef CFG_WITH_LPAE
+	read_ttbr0_64bit r0, r1
+#ifdef CFG_CORE_UNMAP_CORE_AT_EL0
+	add	r0, r0, #CORE_MMU_L1_TBL_OFFSET
+#endif
+	/* switch to user ASID */
+	orr	r1, r1, #BIT(TTBR_ASID_SHIFT - 32)
+	write_ttbr0_64bit r0, r1
+	isb
+#else /*!CFG_WITH_LPAE*/
+#ifdef CFG_CORE_UNMAP_CORE_AT_EL0
+	read_ttbr1 r0
+	add	r0, r0, #CORE_MMU_L1_TBL_OFFSET
+	write_ttbr1 r0
+	isb
+#endif
+	read_contextidr r0
+	orr	r0, r0, #BIT(0)
+	write_contextidr r0
+	isb
+#endif /*!CFG_WITH_LPAE*/
+
+	read_tpidrprw r0
+#if defined(CFG_CORE_UNMAP_CORE_AT_EL0) || defined(CFG_WITH_LPAE)
+	read_tpidruro r1
+#endif
+
 	movs	pc, lr
 UNWIND(	.fnend)
-END_FUNC thread_svc_handler
-
-        .align	5
-LOCAL_FUNC thread_vect_table , :
-UNWIND(	.fnstart)
-UNWIND(	.cantunwind)
-	b	.			/* Reset			*/
-	b	thread_und_handler	/* Undefined instruction	*/
-	b	thread_svc_handler	/* System call			*/
-	b	thread_pabort_handler	/* Prefetch abort		*/
-	b	thread_dabort_handler	/* Data abort			*/
-	b	.			/* Reserved			*/
-	b	thread_irq_handler	/* IRQ				*/
-	b	thread_fiq_handler	/* FIQ				*/
-UNWIND(	.fnend)
-END_FUNC thread_vect_table
+	.global thread_excp_vect_end
+thread_excp_vect_end:
+END_FUNC thread_excp_vect

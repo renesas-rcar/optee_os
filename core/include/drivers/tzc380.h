@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright 2017 NXP
  * All rights reserved.
@@ -125,6 +126,7 @@ enum tzc_action {
 #define TZC_SP_S_R		BIT(3)
 
 #define TZC_ATTR_SP_SHIFT	28
+#define TZC_ATTR_SP_MASK	GENMASK_32(31, 28)
 #define TZC_ATTR_SP_ALL		((TZC_SP_S_W | TZC_SP_S_R | TZC_SP_NS_W | \
 				TZC_SP_NS_R) << TZC_ATTR_SP_SHIFT)
 #define TZC_ATTR_SP_S_RW	((TZC_SP_S_W | TZC_SP_S_R) << \
@@ -196,7 +198,11 @@ enum tzc_action {
 
 void tzc_init(vaddr_t base);
 void tzc_configure_region(uint8_t region, vaddr_t region_base, size_t size);
+void tzc_region_enable(uint8_t region);
+void tzc_security_inversion_en(vaddr_t base);
 void tzc_set_action(enum tzc_action action);
+void tzc_fail_dump(void);
+void tzc_int_clear(void);
 
 #if TRACE_LEVEL >= TRACE_DEBUG
 void tzc_dump_state(void);

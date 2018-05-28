@@ -1,29 +1,8 @@
+// SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2015-2018, Renesas Electronics Corporation
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY
  */
+
 #include "include_pka/crys_error.h"
 #include "include_pka/sa_pkadrvlib.h"
 #include "tee_provider_common.h"
@@ -33,6 +12,8 @@
 /* Static Function Prototypes                                                 */
 /******************************************************************************/
 static SSError_t pka_translate_error_pka2ss_ecc(SA_PkadrvlibRetCode_t err);
+static SSError_t pka_get_ecc_digest(uint32_t msg_len,
+		CRYS_ECPKI_HASH_OpMode_t *hash);
 static SSError_t pka_get_ecc_keysize(uint32_t curve,
 		CRYS_ECPKI_DomainID_t *domain_id,
 		uint32_t *key_size_bytes);
@@ -71,6 +52,49 @@ static SSError_t pka_translate_error_pka2ss_ecc(SA_PkadrvlibRetCode_t err)
 	}
 
 	PROV_OUTMSG("return res=0x%08x\n", res);
+	return res;
+}
+
+/*
+ * brief:	Get a digest algorithm used in ECDSA.
+ *
+ * param[in]	msg_len			- Input message size.
+ * param[out]	*hash			- Digest algorithm.
+ * return	SSError_t		- SS provider error code.
+ */
+static SSError_t pka_get_ecc_digest(uint32_t msg_len,
+		CRYS_ECPKI_HASH_OpMode_t *hash)
+{
+	SSError_t res = SS_SUCCESS;
+
+	switch ((int32_t)msg_len) {
+	case CRYS_HASH_SHA1_DIGEST_SIZE_IN_BYTES:
+		PROV_DMSG("TEE_ALG_ECDSA_WITH_SHA1\n");
+		*hash = CRYS_ECPKI_AFTER_HASH_SHA1_mode;
+		break;
+	case CRYS_HASH_SHA224_DIGEST_SIZE_IN_BYTES:
+		PROV_DMSG("TEE_ALG_ECDSA_WITH_SHA224\n");
+		*hash = CRYS_ECPKI_AFTER_HASH_SHA224_mode;
+		break;
+	case CRYS_HASH_SHA256_DIGEST_SIZE_IN_BYTES:
+		PROV_DMSG("TEE_ALG_ECDSA_WITH_SHA256\n");
+		*hash = CRYS_ECPKI_AFTER_HASH_SHA256_mode;
+		break;
+	case CRYS_HASH_SHA384_DIGEST_SIZE_IN_BYTES:
+		PROV_DMSG("TEE_ALG_ECDSA_WITH_SHA384\n");
+		*hash = CRYS_ECPKI_AFTER_HASH_SHA384_mode;
+		break;
+	case CRYS_HASH_SHA512_DIGEST_SIZE_IN_BYTES:
+		PROV_DMSG("TEE_ALG_ECDSA_WITH_SHA512\n");
+		*hash = CRYS_ECPKI_AFTER_HASH_SHA512_mode;
+		break;
+	default:
+		PROV_EMSG("NOT SUPPORTED\n");
+		res = SS_ERROR_NOT_SUPPORTED;
+		break;
+	}
+
+	PROV_OUTMSG("return res=0x%08x", res);
 	return res;
 }
 
@@ -155,7 +179,7 @@ TEE_Result ss_ecc_verify_pka(struct ecc_public_key *key, const uint8_t *msg,
 	SSError_t res = SS_SUCCESS;
 	SA_PkadrvlibRetCode_t pka_res;
 	CRYS_ECPKI_UserPublKey_t *pUserPublKey = NULL;
-	CRYS_ECPKI_HASH_OpMode_t eccHash = CRYS_ECPKI_AFTER_HASH_SHA1_mode;
+	CRYS_ECPKI_HASH_OpMode_t eccHash;
 	uint8_t *pSignatureIn;
 	uint32_t signatureSizeBytes;
 	uint8_t *pMessageDataIn;
@@ -209,6 +233,10 @@ TEE_Result ss_ecc_verify_pka(struct ecc_public_key *key, const uint8_t *msg,
 	if (res == SS_SUCCESS) {
 		publKeySizeInBytes = (sizeof(uint8_t) + (modulusbytes * 2U));
 		publKeyIn_ptr = (uint8_t *)ss_calloc(1U, publKeySizeInBytes, &res);
+	}
+
+	if (res == SS_SUCCESS) {
+		res = pka_get_ecc_digest(messageSizeInBytes, &eccHash);
 	}
 
 	if (res == SS_SUCCESS) {

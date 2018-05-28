@@ -1,4 +1,6 @@
+/* SPDX-License-Identifier: BSD-2-Clause */
 /*
+ * Copyright (c) 2016-2018, Renesas Electronics Corporation
  * Copyright (c) 2014, STMicroelectronics International N.V.
  * All rights reserved.
  *
@@ -149,6 +151,8 @@
 #define TEE_ALG_AES_CMAC                        0x30000610
 #define TEE_ALG_AES_CCM                         0x40000710
 #define TEE_ALG_AES_GCM                         0x40000810
+#define TEE_ALG_AES_OFB                         0x10000910
+#define TEE_ALG_AES_XCBC_MAC                    0x30000A10
 #define TEE_ALG_DES_ECB_NOPAD                   0x10000011
 #define TEE_ALG_DES_CBC_NOPAD                   0x10000111
 #define TEE_ALG_DES_CBC_MAC_NOPAD               0x30000111

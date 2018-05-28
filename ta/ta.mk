@@ -19,6 +19,8 @@ cppflags$(sm)	+= -include $(conf-file)
 # Config flags from mk/config.mk
 cppflags$(sm) += -DTRACE_LEVEL=$(CFG_TEE_TA_LOG_LEVEL)
 ifeq ($(CFG_TEE_TA_MALLOC_DEBUG),y)
+# Build malloc debug code into libutils: (mdbg_malloc(), mdbg_free(),
+# mdbg_check(), etc.).
 cppflags$(sm) += -DENABLE_MDBG=1
 endif
 
@@ -44,6 +46,7 @@ incfiles-extra-host += lib/libutils/ext/include/util.h
 incfiles-extra-host += lib/libutils/ext/include/types_ext.h
 incfiles-extra-host += $(conf-file)
 incfiles-extra-host += $(conf-mk-file)
+incfiles-extra-host += $(conf-cmake-file)
 incfiles-extra-host += core/include/tee/tee_fs_key_manager.h
 incfiles-extra-host += core/include/tee/fs_htree.h
 incfiles-extra-host += core/include/signed_hdr.h

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
  * All rights reserved.
@@ -37,6 +38,10 @@
 
 	.macro read_mpidr reg
 	mrc	p15, 0, \reg, c0, c0, 5
+	.endm
+
+	.macro read_idpfr1 reg
+	mrc	p15, 0, \reg, c0, c1, 1
 	.endm
 
 	.macro read_sctlr reg
@@ -83,8 +88,16 @@
 	mcr	p15, 0, \reg, c2, c0, 0
 	.endm
 
+	.macro write_ttbr0_64bit reg0, reg1
+	mcrr	p15, 0, \reg0, \reg1, cr2
+	.endm
+
 	.macro read_ttbr0 reg
 	mrc	p15, 0, \reg, c2, c0, 0
+	.endm
+
+	.macro read_ttbr0_64bit reg0, reg1
+	mrrc	p15, 0, \reg0, \reg1, cr2
 	.endm
 
 	.macro write_ttbr1 reg
@@ -251,6 +264,18 @@
 
 	.macro read_tpidruro reg
 	mrc	p15, 0, \reg, c13, c0, 3
+	.endm
+
+	.macro write_tpidrprw reg
+	mcr	p15, 0, \reg, c13, c0, 4
+	.endm
+
+	.macro read_tpidrprw reg
+	mrc	p15, 0, \reg, c13, c0, 4
+	.endm
+
+	.macro write_cntvoff reg0, reg1
+	mcrr  p15, 4, \reg0, \reg1, c14
 	.endm
 
 	.macro read_clidr reg

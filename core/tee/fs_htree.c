@@ -1,32 +1,11 @@
+// SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2017, Linaro Limited
  * Copyright (c) 2018, Renesas Electronics Corporation
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include <assert.h>
+#include <crypto/crypto.h>
 #include <initcall.h>
 #include <kernel/tee_common_otp.h>
 #include <optee_msg_supplicant.h>
@@ -34,7 +13,6 @@
 #include <string_ext.h>
 #include <string.h>
 #include <tee/fs_htree.h>
-#include <tee/tee_cryp_provider.h>
 #include <tee/tee_fs_key_manager.h>
 #include <tee/tee_fs_rpc.h>
 #include <utee_defines.h>
@@ -424,7 +402,8 @@ static TEE_Result init_tree_from_data(struct tee_fs_htree *ht)
 	return TEE_SUCCESS;
 }
 
-static TEE_Result calc_node_hash(struct htree_node *node, void *ctx,
+static TEE_Result calc_node_hash(struct htree_node *node,
+				 struct tee_fs_htree_meta *meta, void *ctx,
 				 uint8_t *digest)
 {
 	TEE_Result res;
@@ -432,31 +411,35 @@ static TEE_Result calc_node_hash(struct htree_node *node, void *ctx,
 	uint8_t *ndata = (uint8_t *)&node->node + sizeof(node->node.hash);
 	size_t nsize = sizeof(node->node) - sizeof(node->node.hash);
 
-	res = crypto_ops.hash.init(ctx, alg);
+	res = crypto_hash_init(ctx, alg);
 	if (res != TEE_SUCCESS)
 		return res;
 
-	res = crypto_ops.hash.update(ctx, alg, ndata, nsize);
+	res = crypto_hash_update(ctx, alg, ndata, nsize);
 	if (res != TEE_SUCCESS)
 		return res;
+
+	if (meta) {
+		res = crypto_hash_update(ctx, alg, (void *)meta, sizeof(meta));
+		if (res != TEE_SUCCESS)
+			return res;
+	}
 
 	if (node->child[0]) {
-		res = crypto_ops.hash.update(ctx, alg,
-					     node->child[0]->node.hash,
-					     sizeof(node->child[0]->node.hash));
+		res = crypto_hash_update(ctx, alg, node->child[0]->node.hash,
+					 sizeof(node->child[0]->node.hash));
 		if (res != TEE_SUCCESS)
 			return res;
 	}
 
 	if (node->child[1]) {
-		res = crypto_ops.hash.update(ctx, alg,
-					     node->child[1]->node.hash,
-					     sizeof(node->child[1]->node.hash));
+		res = crypto_hash_update(ctx, alg, node->child[1]->node.hash,
+					 sizeof(node->child[1]->node.hash));
 		if (res != TEE_SUCCESS)
 			return res;
 	}
 
-	return crypto_ops.hash.final(ctx, alg, digest, TEE_FS_HTREE_HASH_SIZE);
+	return crypto_hash_final(ctx, alg, digest, TEE_FS_HTREE_HASH_SIZE);
 }
 
 static TEE_Result authenc_init(void **ctx_ret, TEE_OperationMode mode,
@@ -466,8 +449,7 @@ static TEE_Result authenc_init(void **ctx_ret, TEE_OperationMode mode,
 {
 	TEE_Result res = TEE_SUCCESS;
 	const uint32_t alg = TEE_FS_HTREE_AUTH_ENC_ALG;
-	uint8_t *ctx;
-	size_t ctx_size;
+	void *ctx;
 	size_t aad_len = TEE_FS_HTREE_FEK_SIZE + TEE_FS_HTREE_IV_SIZE;
 	uint8_t *iv;
 #ifdef CFG_CRYPT_HW_CRYPTOENGINE
@@ -483,28 +465,21 @@ static TEE_Result authenc_init(void **ctx_ret, TEE_OperationMode mode,
 	}
 
 	if (mode == TEE_MODE_ENCRYPT) {
-		res = crypto_ops.prng.read(iv, TEE_FS_HTREE_IV_SIZE);
+		res = crypto_rng_read(iv, TEE_FS_HTREE_IV_SIZE);
 		if (res != TEE_SUCCESS)
 			return res;
 	}
 
-	res = crypto_ops.authenc.get_ctx_size(alg, &ctx_size);
+	res = crypto_authenc_alloc_ctx(&ctx, alg);
 	if (res != TEE_SUCCESS)
 		return res;
 
-	ctx = malloc(ctx_size);
-	if (!ctx) {
-		EMSG("request memory size %zu failed", ctx_size);
-		return TEE_ERROR_OUT_OF_MEMORY;
-	}
-
-	res = crypto_ops.authenc.init(ctx, alg, mode,
-				      ht->fek, TEE_FS_HTREE_FEK_SIZE,
-				      iv, TEE_FS_HTREE_IV_SIZE,
-				      TEE_FS_HTREE_TAG_SIZE, aad_len,
-				      payload_len);
+	res = crypto_authenc_init(ctx, alg, mode, ht->fek,
+				  TEE_FS_HTREE_FEK_SIZE, iv,
+				  TEE_FS_HTREE_IV_SIZE, TEE_FS_HTREE_TAG_SIZE,
+				  aad_len, payload_len);
 	if (res != TEE_SUCCESS)
-		goto exit;
+		goto err_free;
 
 #ifdef CFG_CRYPT_HW_CRYPTOENGINE
 	aad_data = malloc(aad_len);
@@ -525,40 +500,44 @@ static TEE_Result authenc_init(void **ctx_ret, TEE_OperationMode mode,
 		copy_dst += TEE_FS_HTREE_FEK_SIZE;
 		(void)memcpy(copy_dst, iv, TEE_FS_HTREE_IV_SIZE);
 
-		res = crypto_ops.authenc.update_aad(ctx, alg, mode, aad_data,
+		res = crypto_authenc_update_aad(ctx, alg, mode, aad_data,
 				aad_len);
 		free(aad_data);
 	}
 #else
 	if (!ni) {
-		res = crypto_ops.authenc.update_aad(ctx, alg, mode,
-						    ht->root.node.hash,
-						    TEE_FS_HTREE_FEK_SIZE);
+		res = crypto_authenc_update_aad(ctx, alg, mode,
+						ht->root.node.hash,
+						TEE_FS_HTREE_FEK_SIZE);
 		if (res != TEE_SUCCESS)
-			goto exit;
+			goto err;
 
-		res = crypto_ops.authenc.update_aad(ctx, alg, mode,
-						    (void *)&ht->head.counter,
-						    sizeof(ht->head.counter));
+		res = crypto_authenc_update_aad(ctx, alg, mode,
+						(void *)&ht->head.counter,
+						sizeof(ht->head.counter));
 		if (res != TEE_SUCCESS)
-			goto exit;
+			goto err;
 	}
 
-	res = crypto_ops.authenc.update_aad(ctx, alg, mode, ht->head.enc_fek,
-					    TEE_FS_HTREE_FEK_SIZE);
+	res = crypto_authenc_update_aad(ctx, alg, mode, ht->head.enc_fek,
+					TEE_FS_HTREE_FEK_SIZE);
 	if (res != TEE_SUCCESS)
-		goto exit;
+		goto err;
 
-	res = crypto_ops.authenc.update_aad(ctx, alg, mode, iv,
-					    TEE_FS_HTREE_IV_SIZE);
+	res = crypto_authenc_update_aad(ctx, alg, mode, iv,
+					TEE_FS_HTREE_IV_SIZE);
+	if (res != TEE_SUCCESS)
+		goto err;
 #endif
+	*ctx_ret = ctx;
 
-exit:
-	if (res == TEE_SUCCESS)
-		*ctx_ret = ctx;
-	else
-		free(ctx);
-
+	return TEE_SUCCESS;
+#if !defined(CFG_CRYPT_HW_CRYPTOENGINE)
+err:
+#endif
+	crypto_authenc_final(ctx, alg);
+err_free:
+	crypto_authenc_free_ctx(ctx, alg);
 	return res;
 }
 
@@ -569,11 +548,11 @@ static TEE_Result authenc_decrypt_final(void *ctx, const uint8_t *tag,
 	TEE_Result res;
 	size_t out_size = len;
 
-	res = crypto_ops.authenc.dec_final(ctx, TEE_FS_HTREE_AUTH_ENC_ALG,
-					   crypt, len, plain, &out_size,
-					   tag, TEE_FS_HTREE_TAG_SIZE);
-	crypto_ops.authenc.final(ctx, TEE_FS_HTREE_AUTH_ENC_ALG);
-	free(ctx);
+	res = crypto_authenc_dec_final(ctx, TEE_FS_HTREE_AUTH_ENC_ALG, crypt,
+				       len, plain, &out_size, tag,
+				       TEE_FS_HTREE_TAG_SIZE);
+	crypto_authenc_final(ctx, TEE_FS_HTREE_AUTH_ENC_ALG);
+	crypto_authenc_free_ctx(ctx, TEE_FS_HTREE_AUTH_ENC_ALG);
 
 	if (res == TEE_SUCCESS && out_size != len)
 		return TEE_ERROR_GENERIC;
@@ -591,11 +570,11 @@ static TEE_Result authenc_encrypt_final(void *ctx, uint8_t *tag,
 	size_t out_size = len;
 	size_t out_tag_size = TEE_FS_HTREE_TAG_SIZE;
 
-	res = crypto_ops.authenc.enc_final(ctx, TEE_FS_HTREE_AUTH_ENC_ALG,
-					   plain, len, crypt, &out_size,
-					   tag, &out_tag_size);
-	crypto_ops.authenc.final(ctx, TEE_FS_HTREE_AUTH_ENC_ALG);
-	free(ctx);
+	res = crypto_authenc_enc_final(ctx, TEE_FS_HTREE_AUTH_ENC_ALG, plain,
+				       len, crypt, &out_size, tag,
+				       &out_tag_size);
+	crypto_authenc_final(ctx, TEE_FS_HTREE_AUTH_ENC_ALG);
+	crypto_authenc_free_ctx(ctx, TEE_FS_HTREE_AUTH_ENC_ALG);
 
 	if (res == TEE_SUCCESS &&
 	    (out_size != len || out_tag_size != TEE_FS_HTREE_TAG_SIZE))
@@ -629,7 +608,10 @@ static TEE_Result verify_node(struct traverse_arg *targ,
 	TEE_Result res;
 	uint8_t digest[TEE_FS_HTREE_HASH_SIZE];
 
-	res = calc_node_hash(node, ctx, digest);
+	if (node->parent)
+		res = calc_node_hash(node, NULL, ctx, digest);
+	else
+		res = calc_node_hash(node, &targ->ht->imeta.meta, ctx, digest);
 	if (res == TEE_SUCCESS &&
 	    buf_compare_ct(digest, node->node.hash, sizeof(digest)))
 		return TEE_ERROR_CORRUPT_OBJECT;
@@ -640,23 +622,14 @@ static TEE_Result verify_node(struct traverse_arg *targ,
 static TEE_Result verify_tree(struct tee_fs_htree *ht)
 {
 	TEE_Result res;
-	size_t size;
 	void *ctx;
 
-	if (!crypto_ops.hash.get_ctx_size || !crypto_ops.hash.init ||
-	    !crypto_ops.hash.update || !crypto_ops.hash.final)
-		return TEE_ERROR_NOT_SUPPORTED;
-
-	res = crypto_ops.hash.get_ctx_size(TEE_FS_HTREE_HASH_ALG, &size);
+	res = crypto_hash_alloc_ctx(&ctx, TEE_FS_HTREE_HASH_ALG);
 	if (res != TEE_SUCCESS)
 		return res;
 
-	ctx = malloc(size);
-	if (!ctx)
-		return TEE_ERROR_OUT_OF_MEMORY;
-
 	res = htree_traverse_post_order(ht, verify_node, ctx);
-	free(ctx);
+	crypto_hash_free_ctx(ctx, TEE_FS_HTREE_HASH_ALG);
 
 	return res;
 }
@@ -664,20 +637,18 @@ static TEE_Result verify_tree(struct tee_fs_htree *ht)
 static TEE_Result init_root_node(struct tee_fs_htree *ht)
 {
 	TEE_Result res;
-	size_t size;
 	void *ctx;
 
-	res = crypto_ops.hash.get_ctx_size(TEE_FS_HTREE_HASH_ALG, &size);
+	res = crypto_hash_alloc_ctx(&ctx, TEE_FS_HTREE_HASH_ALG);
 	if (res != TEE_SUCCESS)
 		return res;
-	ctx = malloc(size);
-	if (!ctx)
-		return TEE_ERROR_OUT_OF_MEMORY;
 
 	ht->root.id = 1;
+	ht->root.dirty = true;
 
-	res = calc_node_hash(&ht->root, ctx, ht->root.node.hash);
-	free(ctx);
+	res = calc_node_hash(&ht->root, &ht->imeta.meta, ctx,
+			     ht->root.node.hash);
+	crypto_hash_free_ctx(ctx, TEE_FS_HTREE_HASH_ALG);
 
 	return res;
 }
@@ -699,7 +670,7 @@ TEE_Result tee_fs_htree_open(bool create, uint8_t *hash, const TEE_UUID *uuid,
 	if (create) {
 		const struct tee_fs_htree_image dummy_head = { .counter = 0 };
 
-		res = crypto_ops.prng.read(ht->fek, sizeof(ht->fek));
+		res = crypto_rng_read(ht->fek, sizeof(ht->fek));
 		if (res != TEE_SUCCESS)
 			goto out;
 
@@ -745,6 +716,12 @@ struct tee_fs_htree_meta *tee_fs_htree_get_meta(struct tee_fs_htree *ht)
 	return &ht->imeta.meta;
 }
 
+void tee_fs_htree_meta_set_dirty(struct tee_fs_htree *ht)
+{
+	ht->dirty = true;
+	ht->root.dirty = true;
+}
+
 static TEE_Result free_node(struct traverse_arg *targ __unused,
 			    struct htree_node *node)
 {
@@ -767,6 +744,7 @@ static TEE_Result htree_sync_node_to_storage(struct traverse_arg *targ,
 {
 	TEE_Result res;
 	uint8_t vers;
+	struct tee_fs_htree_meta *meta = NULL;
 
 	/*
 	 * The node can be dirty while the block isn't updated due to
@@ -790,9 +768,10 @@ static TEE_Result htree_sync_node_to_storage(struct traverse_arg *targ,
 		 * writing the header.
 		 */
 		vers = !(targ->ht->head.counter & 1);
+		meta = &targ->ht->imeta.meta;
 	}
 
-	res = calc_node_hash(node, targ->arg, node->node.hash);
+	res = calc_node_hash(node, meta, targ->arg, node->node.hash);
 	if (res != TEE_SUCCESS)
 		return res;
 
@@ -822,7 +801,6 @@ TEE_Result tee_fs_htree_sync_to_storage(struct tee_fs_htree **ht_arg,
 {
 	TEE_Result res;
 	struct tee_fs_htree *ht = *ht_arg;
-	size_t size;
 	void *ctx;
 
 	if (!ht)
@@ -831,12 +809,9 @@ TEE_Result tee_fs_htree_sync_to_storage(struct tee_fs_htree **ht_arg,
 	if (!ht->dirty)
 		return TEE_SUCCESS;
 
-	res = crypto_ops.hash.get_ctx_size(TEE_FS_HTREE_HASH_ALG, &size);
+	res = crypto_hash_alloc_ctx(&ctx, TEE_FS_HTREE_HASH_ALG);
 	if (res != TEE_SUCCESS)
 		return res;
-	ctx = malloc(size);
-	if (!ctx)
-		return TEE_ERROR_OUT_OF_MEMORY;
 
 	res = htree_traverse_post_order(ht, htree_sync_node_to_storage, ctx);
 	if (res != TEE_SUCCESS)
@@ -855,7 +830,7 @@ TEE_Result tee_fs_htree_sync_to_storage(struct tee_fs_htree **ht_arg,
 	if (hash)
 		memcpy(hash, ht->root.node.hash, sizeof(ht->root.node.hash));
 out:
-	free(ctx);
+	crypto_hash_free_ctx(ctx, TEE_FS_HTREE_HASH_ALG);
 	if (res != TEE_SUCCESS)
 		tee_fs_htree_close(ht_arg);
 	return res;

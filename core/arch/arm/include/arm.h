@@ -1,38 +1,36 @@
+/* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2015, Linaro Limited
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
  */
 #ifndef ARM_H
 #define ARM_H
 
 #include <util.h>
 
+/* MIDR definitions */
+#define MIDR_PRIMARY_PART_NUM_SHIFT	4
+#define MIDR_PRIMARY_PART_NUM_WIDTH	12
+#define MIDR_PRIMARY_PART_NUM_MASK	(BIT(MIDR_PRIMARY_PART_NUM_WIDTH) - 1)
+
+#define MIDR_IMPLEMENTER_SHIFT		24
+#define MIDR_IMPLEMENTER_WIDTH		8
+#define MIDR_IMPLEMENTER_MASK		(BIT(MIDR_IMPLEMENTER_WIDTH) - 1)
+#define MIDR_IMPLEMENTER_ARM		0x41
+
+#define CORTEX_A7_PART_NUM		0xC07
+#define CORTEX_A8_PART_NUM		0xC08
+#define CORTEX_A9_PART_NUM		0xC09
+#define CORTEX_A15_PART_NUM		0xC0F
+#define CORTEX_A17_PART_NUM		0xC0E
+#define CORTEX_A57_PART_NUM		0xD07
+#define CORTEX_A72_PART_NUM		0xD08
+#define CORTEX_A73_PART_NUM		0xD09
+#define CORTEX_A75_PART_NUM		0xD0A
+
+/* MPIDR definitions */
 #define MPIDR_CPU_MASK		0xff
 #define MPIDR_CLUSTER_SHIFT	8
 #define MPIDR_CLUSTER_MASK	(0xff << MPIDR_CLUSTER_SHIFT)
-
 
 /* CLIDR definitions */
 #define CLIDR_LOUIS_SHIFT	21

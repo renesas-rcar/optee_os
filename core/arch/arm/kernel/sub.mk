@@ -2,6 +2,7 @@ ifeq ($(CFG_WITH_USER_TA),y)
 srcs-y += user_ta.c
 srcs-$(CFG_REE_FS_TA) += ree_fs_ta.c
 srcs-$(CFG_EARLY_TA) += early_ta.c
+srcs-$(CFG_SECSTOR_TA) += secstor_ta.c
 endif
 srcs-y += pseudo_ta.c
 srcs-y += elf_load.c
@@ -54,3 +55,5 @@ srcs-$(CFG_ARM64_core) += unwind_arm64.c
 endif
 
 srcs-y += link_dummies.c
+
+asm-defines-y += asm-defines.c

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
  * Copyright (c) 2016-2017, Linaro Limited
@@ -53,21 +54,21 @@
  */
 #define THREAD_CORE_LOCAL_ALIGNED __aligned(16)
 #else
-#define THREAD_CORE_LOCAL_ALIGNED
+#define THREAD_CORE_LOCAL_ALIGNED __aligned(8)
 #endif
 
 struct thread_core_local {
-	vaddr_t tmp_stack_va_end;
-	int curr_thread;
-	uint32_t flags;
-	vaddr_t abt_stack_va_end;
 #ifdef ARM32
-	paddr_t sm_pm_ctx_phys;
 	uint32_t r[2];
+	paddr_t sm_pm_ctx_phys;
 #endif
 #ifdef ARM64
 	uint64_t x[4];
 #endif
+	vaddr_t tmp_stack_va_end;
+	int curr_thread;
+	uint32_t flags;
+	vaddr_t abt_stack_va_end;
 #ifdef CFG_TEE_CORE_DEBUG
 	unsigned int locked_count; /* Number of spinlocks held */
 #endif
@@ -518,6 +519,43 @@ vaddr_t thread_get_saved_thread_sp(void);
 #endif /*ARM64*/
 
 /*
+ * Provides addresses and size of kernel code that must be mapped while in
+ * user mode.
+ */
+#ifdef CFG_CORE_UNMAP_CORE_AT_EL0
+void thread_get_user_kcode(struct mobj **mobj, size_t *offset,
+			  vaddr_t *va, size_t *sz);
+#else
+static inline void thread_get_user_kcode(struct mobj **mobj, size_t *offset,
+					 vaddr_t *va, size_t *sz)
+{
+	*mobj = NULL;
+	*offset = 0;
+	*va = 0;
+	*sz = 0;
+}
+#endif
+
+/*
+ * Provides addresses and size of kernel (rw) data that must be mapped
+ * while in user mode.
+ */
+#if defined(CFG_CORE_UNMAP_CORE_AT_EL0) && \
+	defined(CFG_CORE_WORKAROUND_SPECTRE_BP_SEC) && defined(ARM64)
+void thread_get_user_kdata(struct mobj **mobj, size_t *offset,
+			  vaddr_t *va, size_t *sz);
+#else
+static inline void thread_get_user_kdata(struct mobj **mobj, size_t *offset,
+					 vaddr_t *va, size_t *sz)
+{
+	*mobj = NULL;
+	*offset = 0;
+	*va = 0;
+	*sz = 0;
+}
+#endif
+
+/*
  * Returns the start address (bottom) of the stack for the current thread,
  * zero if there is no current thread.
  */
@@ -609,6 +647,9 @@ void thread_rpc_free_payload(uint64_t cookie, struct mobj *mobj);
  */
 uint32_t thread_rpc_cmd(uint32_t cmd, size_t num_params,
 		struct optee_msg_param *params);
+
+unsigned long thread_smc(unsigned long func_id, unsigned long a1,
+			 unsigned long a2, unsigned long a3);
 
 #endif /*ASM*/
 

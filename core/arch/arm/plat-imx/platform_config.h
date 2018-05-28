@@ -1,6 +1,6 @@
+/* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (C) 2015 Freescale Semiconductor, Inc.
- * All rights reserved.
  * Copyright (c) 2016, Wind River Systems.
  * All rights reserved.
  *
@@ -37,6 +37,9 @@
 /* For i.MX7D/S platforms */
 #if defined(CFG_MX7)
 #include <config/config_imx7.h>
+
+#elif defined(CFG_MX6SX)
+#include <config/config_imx6sx.h>
 
 /* For i.MX 6UltraLite and 6ULL EVK board */
 #elif defined(CFG_MX6UL) || defined(CFG_MX6ULL)

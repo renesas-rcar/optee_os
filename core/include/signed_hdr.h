@@ -1,36 +1,17 @@
+/* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2015, Linaro Limited
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
  */
 #ifndef SIGNED_HDR_H
 #define SIGNED_HDR_H
 
 #include <inttypes.h>
+#include <tee_api_types.h>
+#include <stdlib.h>
 
 enum shdr_img_type {
 	SHDR_TA = 0,
+	SHDR_BOOTSTRAP_TA = 1,
 };
 
 #define SHDR_MAGIC	0x4f545348
@@ -71,5 +52,31 @@ struct shdr {
 #define SHDR_GET_HASH(x)	(uint8_t *)(((struct shdr *)(x)) + 1)
 #define SHDR_GET_SIG(x)		(SHDR_GET_HASH(x) + (x)->hash_size)
 
-#endif /*SIGNED_HDR_H*/
+struct shdr_bootstrap_ta {
+	uint8_t uuid[sizeof(TEE_UUID)];
+	uint32_t version;
+};
 
+/*
+ * Allocates a struct shdr large enough to hold the entire header,
+ * excluding a subheader like struct shdr_bootstrap_ta.
+ */
+struct shdr *shdr_alloc_and_copy(const struct shdr *img, size_t img_size);
+
+/* Frees a previously allocated struct shdr */
+static inline void shdr_free(struct shdr *shdr)
+{
+	free(shdr);
+}
+
+/*
+ * Verifies the signature in the @shdr.
+ *
+ * Note that the static part of struct shdr and payload still need to be
+ * checked against the hash contained in the header.
+ *
+ * Returns TEE_SUCCESS on success or TEE_ERROR_SECURITY on failure
+ */
+TEE_Result shdr_verify_signature(const struct shdr *shdr);
+
+#endif /*SIGNED_HDR_H*/

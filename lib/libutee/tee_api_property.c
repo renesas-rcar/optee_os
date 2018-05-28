@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
  * Copyright (c) 2017, Linaro Limited
@@ -55,7 +56,7 @@ const struct user_ta_property tee_props[] = {
 	{
 		"gpd.tee.arith.maxBigIntSize",
 		USER_TA_PROP_TYPE_U32,
-		&(const uint32_t){TEE_MAX_NUMBER_OF_SUPPORTED_BITS}
+		&(const uint32_t){CFG_TA_BIGNUM_MAX_BITS}
 	},
 	{
 		"gpd.tee.sockets.version",
@@ -98,7 +99,7 @@ static TEE_Result propget_get_ext_prop(const struct user_ta_property *ep,
 	*type = ep->type;
 	switch (*type) {
 	case USER_TA_PROP_TYPE_BOOL:
-		l = sizeof(uint32_t);
+		l = sizeof(bool);
 		break;
 	case USER_TA_PROP_TYPE_U32:
 		l = sizeof(uint32_t);
@@ -211,6 +212,7 @@ TEE_Result TEE_GetPropertyAsString(TEE_PropSetHandle propsetOrEnumerator,
 	void *tmp_buf = 0;
 	uint32_t tmp_len;
 	uint32_t uint32_val;
+	bool bool_val;
 	TEE_Identity *p_identity_val;
 
 	if (!value || !value_len) {
@@ -246,9 +248,8 @@ TEE_Result TEE_GetPropertyAsString(TEE_PropSetHandle propsetOrEnumerator,
 
 	switch (type) {
 	case USER_TA_PROP_TYPE_BOOL:
-		uint32_val = *((uint32_t *)tmp_buf);
-		l = strlcpy(value, (uint32_val ? "true" : "false"),
-			    *value_len);
+		bool_val = *((bool *)tmp_buf);
+		l = strlcpy(value, (bool_val ? "true" : "false"), *value_len);
 		break;
 
 	case USER_TA_PROP_TYPE_U32:
@@ -308,8 +309,7 @@ TEE_Result TEE_GetPropertyAsBool(TEE_PropSetHandle propsetOrEnumerator,
 {
 	TEE_Result res;
 	enum user_ta_prop_type type;
-	uint32_t uint32_val;
-	uint32_t uint32_len = sizeof(uint32_val);
+	uint32_t bool_len = sizeof(bool);
 	if (value == NULL) {
 		res = TEE_ERROR_BAD_PARAMETERS;
 		goto out;
@@ -317,13 +317,11 @@ TEE_Result TEE_GetPropertyAsBool(TEE_PropSetHandle propsetOrEnumerator,
 
 	type = USER_TA_PROP_TYPE_BOOL;
 	res = propget_get_property(propsetOrEnumerator, name, &type,
-				   &uint32_val, &uint32_len);
+				   value, &bool_len);
 	if (type != USER_TA_PROP_TYPE_BOOL)
 		res = TEE_ERROR_BAD_FORMAT;
 	if (res != TEE_SUCCESS)
 		goto out;
-
-	*value = !!uint32_val;
 
 out:
 	if (res != TEE_SUCCESS &&

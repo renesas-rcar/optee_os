@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
  * Copyright (c) 2015, Linaro Limited
@@ -69,7 +70,7 @@ static bool validate_in_param(struct tee_ta_session *s __unused,
 }
 #endif
 
-/* Maps static TA params */
+/* Maps pseudo TA params */
 static TEE_Result copy_in_param(struct tee_ta_session *s __maybe_unused,
 				struct tee_ta_param *param,
 				TEE_Param tee_param[TEE_NUM_PARAMS],
@@ -248,6 +249,10 @@ static const struct tee_ta_ops pseudo_ta_ops = {
 	.destroy = pseudo_ta_destroy,
 };
 
+bool is_pseudo_ta_ctx(struct tee_ta_ctx *ctx)
+{
+	return ctx->ops == &pseudo_ta_ops;
+}
 
 /* Insures declared pseudo TAs conforms with core expectations */
 static TEE_Result verify_pseudo_tas_conformance(void)

@@ -5,6 +5,7 @@ CFG_CORE_TZSRAM_EMUL_SIZE ?= 458752
 CFG_LPAE_ADDR_SPACE_SIZE ?= (1ull << 32)
 
 CFG_MMAP_REGIONS ?= 13
+CFG_RESERVED_VASPACE_SIZE ?= (1024 * 1024 * 10)
 
 ifeq ($(CFG_ARM64_core),y)
 CFG_KERN_LINKER_FORMAT ?= elf64-littleaarch64
@@ -31,6 +32,15 @@ platform-hard-float-enabled := y
 endif
 endif
 
+# Adds protection against CVE-2017-5715 also know as Spectre
+# (https://spectreattack.com)
+# See also https://developer.arm.com/-/media/Files/pdf/Cache_Speculation_Side-channels.pdf
+# Variant 2
+CFG_CORE_WORKAROUND_SPECTRE_BP ?= y
+# Same as CFG_CORE_WORKAROUND_SPECTRE_BP but targeting exceptions from
+# secure EL0 instead of non-secure world.
+CFG_CORE_WORKAROUND_SPECTRE_BP_SEC ?= $(CFG_CORE_WORKAROUND_SPECTRE_BP)
+
 CFG_CORE_RWDATA_NOEXEC ?= y
 CFG_CORE_RODATA_NOEXEC ?= n
 ifeq ($(CFG_CORE_RODATA_NOEXEC),y)
@@ -39,15 +49,15 @@ endif
 # 'y' to set the Alignment Check Enable bit in SCTLR/SCTLR_EL1, 'n' to clear it
 CFG_SCTLR_ALIGNMENT_CHECK ?= y
 
-ifeq ($(CFG_WITH_PAGER),y)
-ifeq ($(CFG_CORE_SANITIZE_KADDRESS),y)
-$(error Error: CFG_CORE_SANITIZE_KADDRESS not compatible with CFG_WITH_PAGER)
-endif
-endif
-
 ifeq ($(CFG_CORE_LARGE_PHYS_ADDR),y)
 $(call force,CFG_WITH_LPAE,y)
 endif
+
+# Unmaps all kernel mode code except the code needed to take exceptions
+# from user space and restore kernel mode mapping again. This gives more
+# strict control over what is accessible while in user mode.
+# Addresses CVE-2017-5715 (aka Meltdown) known to affect Arm Cortex-A75
+CFG_CORE_UNMAP_CORE_AT_EL0 ?= y
 
 ifeq ($(CFG_ARM32_core),y)
 # Configration directive related to ARMv7 optee boot arguments.
@@ -58,7 +68,7 @@ endif
 
 core-platform-cppflags	+= -I$(arch-dir)/include
 core-platform-subdirs += \
-	$(addprefix $(arch-dir)/, kernel mm tee pta) $(platform-dir)
+	$(addprefix $(arch-dir)/, kernel crypto mm tee pta) $(platform-dir)
 
 ifneq ($(CFG_WITH_ARM_TRUSTED_FW),y)
 core-platform-subdirs += $(arch-dir)/sm

@@ -1,4 +1,6 @@
+/* SPDX-License-Identifier: BSD-2-Clause */
 /*
+ * Copyright (c) 2016-2017, Renesas Electronics Corporation
  * Copyright (c) 2015, Linaro Limited
  * Copyright (c) 2014, STMicroelectronics International N.V.
  * All rights reserved.

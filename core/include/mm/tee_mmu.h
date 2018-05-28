@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
  * All rights reserved.
@@ -34,34 +35,41 @@
 /*-----------------------------------------------------------------------------
  * Allocate context resources like ASID and MMU table information
  *---------------------------------------------------------------------------*/
-TEE_Result tee_mmu_init(struct user_ta_ctx *utc);
+TEE_Result vm_info_init(struct user_ta_ctx *utc);
 
 /*-----------------------------------------------------------------------------
- * tee_mmu_final - Release context resources like ASID
+ * Release context resources like ASID
  *---------------------------------------------------------------------------*/
-void tee_mmu_final(struct user_ta_ctx *utc);
+void vm_info_final(struct user_ta_ctx *utc);
+
+/*
+ * Creates a memory map of a mobj.
+ * Desired virtual address can be specified in @va otherwise @va must be
+ * initialized to 0 if the next available can be chosen.
+ */
+TEE_Result vm_map(struct user_ta_ctx *utc, vaddr_t *va, size_t len,
+		  uint32_t prot, struct mobj *mobj, size_t offs);
+
+TEE_Result vm_set_prot(struct user_ta_ctx *utc, vaddr_t va, size_t len,
+		       uint32_t prot);
 
 /* Map stack of a user TA.  */
-void tee_mmu_map_stack(struct user_ta_ctx *utc, struct mobj *mobj);
+TEE_Result tee_mmu_map_stack(struct user_ta_ctx *utc, struct mobj *mobj);
+
 /*
  * Map a code segment of a user TA, this function may be called multiple
  * times if there's several segments.
  */
 TEE_Result tee_mmu_map_add_segment(struct user_ta_ctx *utc, struct mobj *mobj,
-				   size_t offs, size_t size, uint32_t prot);
-
-void tee_mmu_map_clear(struct user_ta_ctx *utc);
+				   size_t offs, size_t size, uint32_t prot,
+				   vaddr_t *va);
 
 /* Map parameters for a user TA */
 TEE_Result tee_mmu_map_param(struct user_ta_ctx *utc,
 		struct tee_ta_param *param, void *param_va[TEE_NUM_PARAMS]);
 
-/*
- * If the rwmem area covers more than one page directory @pgdir_offset has
- * to be honoured unless it's -1.
- */
 TEE_Result tee_mmu_add_rwmem(struct user_ta_ctx *utc, struct mobj *mobj,
-			     int pgdir_offset, vaddr_t *va);
+			     vaddr_t *va);
 void tee_mmu_rem_rwmem(struct user_ta_ctx *utc, struct mobj *mobj, vaddr_t va);
 
 /*

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2016, Linaro Limited
  * Copyright (c) 2014, STMicroelectronics International N.V.
@@ -28,13 +29,14 @@
 
 #include <arm32_macros.S>
 #include <arm.h>
-#include <asm-defines.h>
 #include <asm.S>
+#include <generated/asm-defines.h>
 #include <keep.h>
 #include <kernel/unwind.h>
 #include <sm/optee_smc.h>
 #include <sm/teesmc_opteed.h>
 #include <sm/teesmc_opteed_macros.h>
+#include <util.h>
 
 	.section .text.sm_asm
 
@@ -161,6 +163,10 @@ UNWIND(	.cantunwind)
 	read_scr r0
 	orr	r0, r0, #(SCR_NS | SCR_FIQ) /* Set NS and FIQ bit in SCR */
 	write_scr r0
+	/*
+	 * isb not needed since we're doing an exception return below
+	 * without dependency to the changes in SCR before that.
+	 */
 
 	add	sp, sp, #(SM_CTX_NSEC + SM_NSEC_CTX_R0)
 	b	.sm_exit
@@ -175,6 +181,7 @@ UNWIND(	.cantunwind)
 
 	bic	r1, r1, #(SCR_NS | SCR_FIQ) /* Clear NS and FIQ bit in SCR */
 	write_scr r1
+	isb
 
 	add	r0, sp, #(SM_CTX_NSEC + SM_NSEC_CTX_R8)
 	stm	r0, {r8-r12}
@@ -224,6 +231,7 @@ UNWIND(	.cantunwind)
 	read_scr r1
 	bic	r1, r1, #(SCR_NS | SCR_FIQ) /* Clear NS and FIQ bit in SCR */
 	write_scr r1
+	isb
 
 	/* Save non-secure context */
 	add	r0, sp, #SM_CTX_NSEC
@@ -244,6 +252,7 @@ UNWIND(	.cantunwind)
 UNWIND(	.fnend)
 END_FUNC sm_fiq_entry
 
+	.section .text.sm_vect_table
         .align	5
 LOCAL_FUNC sm_vect_table , :
 UNWIND(	.fnstart)
@@ -256,6 +265,73 @@ UNWIND(	.cantunwind)
 	b	.		/* Reserved			*/
 	b	.		/* IRQ				*/
 	b	sm_fiq_entry	/* FIQ				*/
+
+#ifdef CFG_CORE_WORKAROUND_SPECTRE_BP
+	.macro vector_prologue_spectre
+		/*
+		 * This depends on SP being 8 byte aligned, that is, the
+		 * lowest three bits in SP are zero.
+		 *
+		 * The idea is to form a specific bit pattern in the lowest
+		 * three bits of SP depending on which entry in the vector
+		 * we enter via.  This is done by adding 1 to SP in each
+		 * entry but the last.
+		 */
+		add	sp, sp, #1	/* 7:111 Reset			*/
+		add	sp, sp, #1	/* 6:110 Undefined instruction	*/
+		add	sp, sp, #1	/* 5:101 Secure monitor call	*/
+		add	sp, sp, #1	/* 4:100 Prefetch abort		*/
+		add	sp, sp, #1	/* 3:011 Data abort		*/
+		add	sp, sp, #1	/* 2:010 Reserved		*/
+		add	sp, sp, #1	/* 1:001 IRQ			*/
+		nop			/* 0:000 FIQ			*/
+	.endm
+
+	.align 5
+sm_vect_table_a15:
+	vector_prologue_spectre
+	/*
+	 * Invalidate the branch predictor for the current processor.
+	 * For Cortex-A8 ACTLR[6] has to be set to 1 for BPIALL to be
+	 * effective.
+	 * Note that the BPIALL instruction is not effective in
+	 * invalidating the branch predictor on Cortex-A15. For that CPU,
+	 * set ACTLR[0] to 1 during early processor initialisation, and
+	 * invalidate the branch predictor by performing an ICIALLU
+	 * instruction. See also:
+	 * https://github.com/ARM-software/arm-trusted-firmware/wiki/Arm-Trusted-Firmware-Security-Advisory-TFV-6#variant-2-cve-2017-5715
+	 */
+	write_iciallu
+	isb
+	b	1f
+
+	.align 5
+sm_vect_table_bpiall:
+	vector_prologue_spectre
+	/* Invalidate the branch predictor for the current processor. */
+	write_bpiall
+	isb
+
+1:
+	/*
+	 * Only two exception does normally occur, smc and fiq. With all
+	 * other exceptions it's good enough to just spinn, the lowest bits
+	 * still tells which exception we're stuck with when attaching a
+	 * debugger.
+	 */
+
+	/* Test for FIQ, all the lowest bits of SP are supposed to be 0 */
+	tst	sp, #(BIT(0) | BIT(1) | BIT(2))
+	beq	sm_fiq_entry
+
+	/* Test for SMC, xor the lowest bits of SP to be 0 */
+	eor	sp, sp, #(BIT(0) | BIT(2))
+	tst	sp, #(BIT(0) | BIT(1) | BIT(2))
+	beq	sm_smc_entry
+
+	/* unhandled exception */
+	b	.
+#endif /*!CFG_CORE_WORKAROUND_SPECTRE_BP*/
 UNWIND(	.fnend)
 END_FUNC sm_vect_table
 
@@ -267,11 +343,71 @@ UNWIND(	.fnstart)
 	cps	#CPSR_MODE_MON
 	/* Point just beyond sm_ctx.sec */
 	sub	sp, r0, #(SM_CTX_SIZE - SM_CTX_NSEC)
+
+#ifdef CFG_INIT_CNTVOFF
+	read_scr r0
+	orr	r0, r0, #SCR_NS /* Set NS bit in SCR */
+	write_scr r0
+	isb
+
+	/*
+	 * Accessing CNTVOFF:
+	 * If the implementation includes the Virtualization Extensions
+	 * this is a RW register, accessible from Hyp mode, and
+	 * from Monitor mode when SCR.NS is set to 1.
+	 * If the implementation includes the Security Extensions
+	 * but not the Virtualization Extensions, an MCRR or MRRC to
+	 * the CNTVOFF encoding is UNPREDICTABLE if executed in Monitor
+	 * mode, regardless of the value of SCR.NS.
+	 */
+	read_idpfr1 r2
+	mov	r3, r2
+	ands    r3, r3, #IDPFR1_GENTIMER_MASK
+	beq	.no_gentimer
+	ands    r2, r2, #IDPFR1_VIRT_MASK
+	beq	.no_gentimer
+	mov	r2, #0
+	write_cntvoff r2, r2
+
+.no_gentimer:
+	bic	r0, r0, #SCR_NS /* Clr NS bit in SCR */
+	write_scr r0
+	isb
+#endif
+
 	msr	cpsr, r1
 
+#ifdef CFG_CORE_WORKAROUND_SPECTRE_BP
+	/*
+	 * For unrecognized CPUs we fall back to the vector used for
+	 * unaffected CPUs. Cortex A-15 has special treatment compared to
+	 * the other affected Cortex CPUs.
+	 */
+	read_midr r1
+	ubfx	r2, r1, #MIDR_IMPLEMENTER_SHIFT, #MIDR_IMPLEMENTER_WIDTH
+	cmp	r2, #MIDR_IMPLEMENTER_ARM
+	bne	1f
+
+	ubfx	r2, r1, #MIDR_PRIMARY_PART_NUM_SHIFT, \
+			#MIDR_PRIMARY_PART_NUM_WIDTH
+
+	movw	r3, #CORTEX_A8_PART_NUM
+	cmp	r2, r3
+	movwne	r3, #CORTEX_A9_PART_NUM
+	cmpne	r2, r3
+	movwne	r3, #CORTEX_A17_PART_NUM
+	cmpne	r2, r3
+	ldreq	r0, =sm_vect_table_bpiall
+	beq	2f
+
+	movw	r3, #CORTEX_A15_PART_NUM
+	cmp	r2, r3
+	ldreq	r0, =sm_vect_table_a15
+	beq	2f
+#endif
 	/* Set monitor vector (MVBAR) */
-	ldr	r0, =sm_vect_table
-	write_mvbar r0
+1:	ldr	r0, =sm_vect_table
+2:	write_mvbar r0
 
 	bx	lr
 END_FUNC sm_init

@@ -1,28 +1,6 @@
+// SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2015, Linaro Limited
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
  */
 
 
@@ -37,16 +15,16 @@
  * RNG - Random Number Generator
  */
 
+#include <compiler.h>
+#include <crypto/crypto.h>
 #include <initcall.h>
-#include <stdlib.h>
-#include <string.h>
 #include <kernel/panic.h>
 #include <kernel/tee_common_otp.h>
 #include <kernel/tee_ta_manager.h>
+#include <stdlib.h>
+#include <string.h>
 #include <tee/tee_cryp_utl.h>
-#include <tee/tee_cryp_provider.h>
 #include <tee/tee_fs_key_manager.h>
-#include <compiler.h>
 #include <trace.h>
 #include <util.h>
 
@@ -63,39 +41,32 @@ static TEE_Result do_hmac(void *out_key, size_t out_key_size,
 			  const void *in_key, size_t in_key_size,
 			  const void *message, size_t message_size)
 {
-	TEE_Result res = TEE_ERROR_GENERIC;
-	uint8_t *ctx = NULL;
-	size_t hash_ctx_size = 0;
+	TEE_Result res;
+	void *ctx = NULL;
 
 	if (!out_key || !in_key || !message)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	res = crypto_ops.mac.get_ctx_size(TEE_FS_KM_HMAC_ALG, &hash_ctx_size);
+	res = crypto_mac_alloc_ctx(&ctx, TEE_FS_KM_HMAC_ALG);
 	if (res != TEE_SUCCESS)
 		return res;
 
-	ctx = malloc(hash_ctx_size);
-	if (!ctx)
-		return TEE_ERROR_OUT_OF_MEMORY;
-
-	res = crypto_ops.mac.init(ctx, TEE_FS_KM_HMAC_ALG, in_key, in_key_size);
+	res = crypto_mac_init(ctx, TEE_FS_KM_HMAC_ALG, in_key, in_key_size);
 	if (res != TEE_SUCCESS)
 		goto exit;
 
-	res = crypto_ops.mac.update(ctx, TEE_FS_KM_HMAC_ALG,
-			message, message_size);
+	res = crypto_mac_update(ctx, TEE_FS_KM_HMAC_ALG, message, message_size);
 	if (res != TEE_SUCCESS)
 		goto exit;
 
-	res = crypto_ops.mac.final(ctx, TEE_FS_KM_HMAC_ALG, out_key,
-				   out_key_size);
+	res = crypto_mac_final(ctx, TEE_FS_KM_HMAC_ALG, out_key, out_key_size);
 	if (res != TEE_SUCCESS)
 		goto exit;
 
 	res = TEE_SUCCESS;
 
 exit:
-	free(ctx);
+	crypto_mac_free_ctx(ctx, TEE_FS_KM_HMAC_ALG);
 	return res;
 }
 
@@ -104,8 +75,7 @@ TEE_Result tee_fs_fek_crypt(const TEE_UUID *uuid, TEE_OperationMode mode,
 			    uint8_t *out_key)
 {
 	TEE_Result res;
-	uint8_t *ctx = NULL;
-	size_t ctx_size;
+	void *ctx = NULL;
 	uint8_t tsk[TEE_FS_KM_TSK_SIZE];
 	uint8_t dst_key[size];
 
@@ -136,37 +106,33 @@ TEE_Result tee_fs_fek_crypt(const TEE_UUID *uuid, TEE_OperationMode mode,
 			return res;
 	}
 
-	res = crypto_ops.cipher.get_ctx_size(TEE_FS_KM_ENC_FEK_ALG, &ctx_size);
+	res = crypto_cipher_alloc_ctx(&ctx, TEE_FS_KM_ENC_FEK_ALG);
 	if (res != TEE_SUCCESS)
 		return res;
 
-	ctx = malloc(ctx_size);
-	if (!ctx)
-		return TEE_ERROR_OUT_OF_MEMORY;
-
-	res = crypto_ops.cipher.init(ctx, TEE_FS_KM_ENC_FEK_ALG, mode, tsk,
-				     sizeof(tsk), NULL, 0, NULL, 0);
+	res = crypto_cipher_init(ctx, TEE_FS_KM_ENC_FEK_ALG, mode, tsk,
+				 sizeof(tsk), NULL, 0, NULL, 0);
 	if (res != TEE_SUCCESS)
 		goto exit;
 
-	res = crypto_ops.cipher.update(ctx, TEE_FS_KM_ENC_FEK_ALG,
-			mode, true, in_key, size, dst_key);
+	res = crypto_cipher_update(ctx, TEE_FS_KM_ENC_FEK_ALG,
+				   mode, true, in_key, size, dst_key);
 	if (res != TEE_SUCCESS)
 		goto exit;
 
-	crypto_ops.cipher.final(ctx, TEE_FS_KM_ENC_FEK_ALG);
+	crypto_cipher_final(ctx, TEE_FS_KM_ENC_FEK_ALG);
 
 	memcpy(out_key, dst_key, sizeof(dst_key));
 
 exit:
-	free(ctx);
+	crypto_cipher_free_ctx(ctx, TEE_FS_KM_ENC_FEK_ALG);
 
 	return res;
 }
 
 static TEE_Result generate_fek(uint8_t *key, uint8_t len)
 {
-	return crypto_ops.prng.read(key, len);
+	return crypto_rng_read(key, len);
 }
 
 static TEE_Result tee_fs_init_key_manager(void)
@@ -216,32 +182,8 @@ TEE_Result tee_fs_generate_fek(const TEE_UUID *uuid, void *buf, size_t buf_size)
 static TEE_Result sha256(uint8_t *out, size_t out_size, const uint8_t *in,
 			 size_t in_size)
 {
-	TEE_Result res;
-	uint8_t *ctx = NULL;
-	size_t ctx_size;
-	uint32_t algo = TEE_ALG_SHA256;
-
-	res = crypto_ops.hash.get_ctx_size(algo, &ctx_size);
-	if (res != TEE_SUCCESS)
-		return res;
-
-	ctx = malloc(ctx_size);
-	if (!ctx)
-		return TEE_ERROR_OUT_OF_MEMORY;
-
-	res = crypto_ops.hash.init(ctx, algo);
-	if (res != TEE_SUCCESS)
-		goto out;
-
-	res = crypto_ops.hash.update(ctx, algo, in, in_size);
-	if (res != TEE_SUCCESS)
-		goto out;
-
-	res = crypto_ops.hash.final(ctx, algo, out, out_size);
-
-out:
-	free(ctx);
-	return res;
+	return tee_hash_createdigest(TEE_ALG_SHA256, in, in_size,
+				     out, out_size);
 }
 
 static TEE_Result aes_ecb(uint8_t out[TEE_AES_BLOCK_SIZE],
@@ -249,33 +191,28 @@ static TEE_Result aes_ecb(uint8_t out[TEE_AES_BLOCK_SIZE],
 			  const uint8_t *key, size_t key_size)
 {
 	TEE_Result res;
-	uint8_t *ctx = NULL;
-	size_t ctx_size;
-	uint32_t algo = TEE_ALG_AES_ECB_NOPAD;
+	void *ctx = NULL;
+	const uint32_t algo = TEE_ALG_AES_ECB_NOPAD;
 
-	res = crypto_ops.cipher.get_ctx_size(algo, &ctx_size);
+	res = crypto_cipher_alloc_ctx(&ctx, algo);
 	if (res != TEE_SUCCESS)
 		return res;
 
-	ctx = malloc(ctx_size);
-	if (!ctx)
-		return TEE_ERROR_OUT_OF_MEMORY;
-
-	res = crypto_ops.cipher.init(ctx, algo, TEE_MODE_ENCRYPT, key,
-				     key_size, NULL, 0, NULL, 0);
+	res = crypto_cipher_init(ctx, algo, TEE_MODE_ENCRYPT, key,
+				 key_size, NULL, 0, NULL, 0);
 	if (res != TEE_SUCCESS)
 		goto out;
 
-	res = crypto_ops.cipher.update(ctx, algo, TEE_MODE_ENCRYPT, true, in,
-				       TEE_AES_BLOCK_SIZE, out);
+	res = crypto_cipher_update(ctx, algo, TEE_MODE_ENCRYPT, true, in,
+				   TEE_AES_BLOCK_SIZE, out);
 	if (res != TEE_SUCCESS)
 		goto out;
 
-	crypto_ops.cipher.final(ctx, algo);
+	crypto_cipher_final(ctx, algo);
 	res = TEE_SUCCESS;
 
 out:
-	free(ctx);
+	crypto_cipher_free_ctx(ctx, algo);
 	return res;
 }
 
@@ -308,9 +245,8 @@ TEE_Result tee_fs_crypt_block(const TEE_UUID *uuid, uint8_t *out,
 	TEE_Result res;
 	uint8_t fek[TEE_FS_KM_FEK_SIZE];
 	uint8_t iv[TEE_AES_BLOCK_SIZE];
-	uint8_t *ctx;
-	size_t ctx_size;
-	uint32_t algo = TEE_ALG_AES_CBC_NOPAD;
+	void *ctx;
+	const uint32_t algo = TEE_ALG_AES_CBC_NOPAD;
 
 	DMSG("%scrypt block #%u", (mode == TEE_MODE_ENCRYPT) ? "En" : "De",
 	     blk_idx);
@@ -325,25 +261,22 @@ TEE_Result tee_fs_crypt_block(const TEE_UUID *uuid, uint8_t *out,
 	res = essiv(iv, fek, blk_idx);
 
 	/* Run AES CBC */
-	res = crypto_ops.cipher.get_ctx_size(algo, &ctx_size);
+	res = crypto_cipher_alloc_ctx(&ctx, algo);
 	if (res != TEE_SUCCESS)
 		return res;
-	ctx = malloc(ctx_size);
-	if (!ctx)
-		return TEE_ERROR_OUT_OF_MEMORY;
 
-	res = crypto_ops.cipher.init(ctx, algo, mode, fek, sizeof(fek), NULL,
-				     0, iv, TEE_AES_BLOCK_SIZE);
+	res = crypto_cipher_init(ctx, algo, mode, fek, sizeof(fek), NULL,
+				 0, iv, TEE_AES_BLOCK_SIZE);
 	if (res != TEE_SUCCESS)
 		goto exit;
-	res = crypto_ops.cipher.update(ctx, algo, mode, true, in, size, out);
+	res = crypto_cipher_update(ctx, algo, mode, true, in, size, out);
 	if (res != TEE_SUCCESS)
 		goto exit;
 
-	crypto_ops.cipher.final(ctx, algo);
+	crypto_cipher_final(ctx, algo);
 
 exit:
-	free(ctx);
+	crypto_cipher_free_ctx(ctx, algo);
 	return res;
 }
 

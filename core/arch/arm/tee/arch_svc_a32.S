@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
  * All rights reserved.
@@ -26,12 +27,12 @@
  */
 #include "tee_syscall_numbers.h"
 #include "trace_levels.h"
-#include <asm.S>
 #include <arm.h>
-#include <tee_api_defines.h>
+#include <asm.S>
+#include <generated/asm-defines.h>
 #include <kernel/thread.h>
 #include <kernel/unwind.h>
-#include <asm-defines.h>
+#include <tee_api_defines.h>
 
 	.section .text.arch_svc_asm
 

@@ -1,28 +1,6 @@
+// SPDX-License-Identifier: BSD-2-Clause
 /*
- * Copyright (c) 2015-2017, Renesas Electronics Corporation
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY
+ * Copyright (c) 2015-2018, Renesas Electronics Corporation
  */
 
 #include "tee_provider_common.h"
@@ -189,10 +167,6 @@ void *ss_malloc_and_copy(size_t malloc_size, const void *src, size_t src_len,
 	return res;
 }
 
-#define SS_MAX_BITS_PER_VARIABLE   (4096)
-#define SS_VARIABLE_NUMBER         (50)
-
-
 /*
  * brief:	Calculate the bignum size (byte).
  *
@@ -201,190 +175,10 @@ void *ss_malloc_and_copy(size_t malloc_size, const void *src, size_t src_len,
  */
 size_t bn_num_bytes(struct bignum *a)
 {
+	size_t ret;
 	PROV_INMSG("a=%p\n", (void *)a);
-	return mp_unsigned_bin_size(a);
-}
-
-/*
- * brief:	Calculate the bignum size (bit).
- *
- * param[in]	*a		- Pointer to bignum data.
- * return	size_t		- Size of bignum represented in bit.
- */
-size_t bn_num_bits(struct bignum *a)
-{
-	PROV_INMSG("a=%p\n",(void *)a);
-	return (size_t)mp_count_bits(a);
-}
-
-/*
- * brief:	Compare two bignum date.
- *
- * param[in]	*a		- The bignum data(op1).
- * param[in]	*b		- The bignum data(op2).
- * return	size_t		- 0 op1 == op2
- *          			  1 op1 >  op2
- *          			 -1 op1 <  op2
- */
-int32_t bn_compare(struct bignum *a, struct bignum *b)
-{
-	PROV_INMSG("a=%p b=%p\n",(void *)a,(void *)b);
-	return mp_cmp(a, b);
-}
-
-/*
- * brief:	Convert bignum into binary.
- *
- * param[in]	*from		- Bignum data.
- * param[out]	*to		- Binary data.
- * return	void
- */
-void bn_bn2bin(const struct bignum *from, uint8_t *to)
-{
-	void *from_tmp;
-	from_tmp = (void *)from;
-
-	PROV_INMSG("from=%p to=%p\n",(void *)from, to);
-
-	mp_to_unsigned_bin(from_tmp, to);
-
-	PROV_OUTMSG("return (void)");
-}
-
-/*
- * brief:	Convert binary into bignum.
- *
- * param[in]	*from		- Pointer to the binary data buffer.
- * param[in]	fromsize	- Size of the binary data buffer.
- * param[out]	*to		- Pointer to the output data of bignum.
- * return	TEE_Result	- TEE internal API error code.
- */
-TEE_Result bn_bin2bn(const uint8_t *from, size_t fromsize,
-		struct bignum *to)
-{
-	TEE_Result res = (TEE_Result)TEE_SUCCESS;
-	void *to_tmp;
-	uint8_t *from_tmp;
-
-	PROV_INMSG("from=%p fromsize=%ld to=%p\n",from, fromsize, (void *)to);
-
-	to_tmp = to;
-	from_tmp = (uint8_t *)from;
-	if (mp_read_unsigned_bin(to_tmp, from_tmp, fromsize)
-			!= (int)CRYPT_OK) {
-		res = TEE_ERROR_BAD_PARAMETERS;
-		PROV_EMSG("ERROR TEE_ERROR_BAD_PARAMETERS");
-	}
-
-	PROV_OUTMSG("return res=0x%08x\n",res);
-	return res;
-}
-
-/*
- * brief:	Copy the bignum data.
- *
- * param[out]	*to		- Pointer to the output bignum data.
- * param[in]	*from		- Pointer to the input bignum data.
- * return	void
- */
-void bn_copy(struct bignum *to, const struct bignum *from)
-{
-	void *from_tmp;
-	from_tmp = (void *)from;
-
-	PROV_INMSG("to=%p from=%p\n",(void *)to, (void *)from);
-	mp_copy(from_tmp, (void * )to);
-	PROV_OUTMSG("return (void)");
-}
-
-/*
- * brief:	Allocate memory block of the bignum.
- *
- * param[in]	*size_bits	- Size of memory block (bit).
- * return	TEE_Result	- Pointer to the memory block allocated.
- */
-struct bignum *bn_allocate(size_t size_bits)
-{
-	struct bignum *res;
-	struct mpa_numbase_struct *bn;
-	size_t mpaSize;
-	size_t sz;
-
-	PROV_INMSG("size_bits=%ld\n",size_bits);
-	mpaSize = (size_t)mpa_StaticVarSizeInU32(size_bits);
-	sz = mpaSize * sizeof(uint32_t);
-	bn = (struct mpa_numbase_struct *)calloc(1U, sz);
-	if (bn == NULL) {
-		PROV_EMSG("Error: bn=%p\n",(void *)bn);
-		res = NULL;
-	} else {
-		PROV_DMSG("success memory allocate\n");
-		bn->alloc = sz - ((size_t)MPA_NUMBASE_METADATA_SIZE_IN_U32
-				* sizeof(uint32_t));
-		res = (struct bignum *)bn;
-	}
-
-	PROV_OUTMSG("return res=%p\n",(void *)res);
-	return res;
-}
-
-/*
- * brief:	Free memory block of bignum.
- *
- * param[in]	*s		- Pointer to the bignum data.
- * return	void
- */
-void bn_free(struct bignum *s)
-{
-	PROV_INMSG("s=%p\n",(void *)s);
-	ss_free((void *)s);
-	PROV_OUTMSG("return (void)");
-}
-
-/*
- * brief:	Fill the bignum data 0.
- *
- * param[in]	*s		- Pointer to the bignum data.
- * return	void
- */
-void bn_clear(struct bignum *s)
-{
-	struct mpa_numbase_struct *bn;
-	PROV_INMSG("s=%p\n",(void *)s);
-	bn = (struct mpa_numbase_struct *)s;
-	/* despite mpa_numbase_struct description, 'alloc' field a byte size */
-	(void)memset(bn->d, 0, bn->alloc);
-	PROV_OUTMSG("return (void)");
-}
-
-/*
- * brief:	Allocate memory block of the bignum max size.
- *
- * param[in]	**s		- Double pointer to the bignum data.
- * return	SSError_t	- SS provider error code.
- */
-SSError_t bn_alloc_max(struct bignum **s)
-{
-	size_t sz;
-	SSError_t res;
-
-	PROV_INMSG("s=%p\n",(void *)s);
-	sz = (size_t)mpa_StaticVarSizeInU32(SS_MAX_BITS_PER_VARIABLE*2)
-			* sizeof(uint32_t) * 8U;
-
-	PROV_DMSG("Call: bn_allocate(%ld)",sz);
-	*s = bn_allocate(sz);
-
-	if (*s == 0) {
-		PROV_EMSG("Error: bn_allocate");
-		res = SS_ERROR_OUT_OF_MEMORY;
-	} else {
-		PROV_DMSG("Success: bn_allocate");
-		res = SS_SUCCESS;
-	}
-
-	PROV_OUTMSG("return res=0x%08x",res);
-	return res;
+	ret = crypto_bignum_num_bytes(a);
+	return ret;
 }
 
 /*
@@ -426,7 +220,7 @@ SSError_t ss_copy_bn2bin(struct bignum *src_bn, uint8_t **dest_ptr,
 	} else {
 		*dest_size = (size_t)bn_num_bytes(src_bn);
 		*dest_ptr = (uint8_t *)ss_malloc(*dest_size, &res);
-		bn_bn2bin(src_bn, *dest_ptr);
+		crypto_bignum_bn2bin(src_bn, *dest_ptr);
 	}
 
 	PROV_OUTMSG("dest_ptr=%p, dest_size=%ld\n",*dest_ptr,*dest_size);
@@ -462,31 +256,6 @@ SSError_t ss_copy_bn2bin_uint16(struct bignum *src_bn, uint8_t **dest_ptr,
 
 	PROV_OUTMSG("dest_ptr=%p, dest_size=%d\n",*dest_ptr,*dest_size);
 	PROV_OUTMSG("return res=0x%08x\n",res);
-	return res;
-}
-
-
-/*
- * brief:	Translate SS provider error into TEE internal API error.
- *
- * param[in]	err		- TEE Internal API error code
- * return	TEE_Result
- */
-SSError_t ss_translate_error_tee2ss(TEE_Result err)
-{
-	uint8_t i;
-	SSError_t res = SS_ERROR_GENERIC;
-
-	PROV_INMSG("TEE_Result err= 0x%08x\n", err);
-
-	for (i = 0U; i < (SS_ERROR_LAST_NUM - 1U); i++) {
-		if (err == error_tbl[i].tee_result) {
-			res = error_tbl[i].ss_error;
-			break;
-		}
-	}
-
-	PROV_OUTMSG("SSError_t res = 0x%08x\n", res);
 	return res;
 }
 

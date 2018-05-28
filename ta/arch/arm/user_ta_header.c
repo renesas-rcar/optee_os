@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
  * All rights reserved.
@@ -33,11 +34,7 @@
 
 int trace_level = TRACE_LEVEL;
 
-#ifdef TA_LOG_PREFIX
-const char trace_ext_prefix[]  = TA_LOG_PREFIX;
-#else
-const char trace_ext_prefix[]  = "USER-TA";
-#endif
+const char trace_ext_prefix[]  = "TA";
 
 #ifndef TA_VERSION
 #define TA_VERSION "Undefined version"
@@ -75,7 +72,7 @@ const struct ta_head ta_head __section(".ta_head") = {
 	 * must be enlarged
 	 */
 	.stack_size = TA_STACK_SIZE + TA_FRAMEWORK_STACK_SIZE,
-	.flags = TA_FLAG_USER_MODE | TA_FLAGS,
+	.flags = TA_FLAGS,
 #ifdef __ILP32__
 	/*
 	 * This workaround is neded on 32-bit because it seems we can't

@@ -6,7 +6,6 @@ sm-$(sm) := y
 
 arch-dir	:= core/arch/$(ARCH)
 platform-dir	:= $(arch-dir)/plat-$(PLATFORM)
-include mk/checkconf.mk
 include $(platform-dir)/conf.mk
 include mk/config.mk
 include core/arch/$(ARCH)/$(ARCH).mk
@@ -15,6 +14,7 @@ PLATFORM_$(PLATFORM) := y
 PLATFORM_FLAVOR_$(PLATFORM_FLAVOR) := y
 
 $(call cfg-depends-all,CFG_PAGED_USER_TA,CFG_WITH_PAGER CFG_WITH_USER_TA)
+include core/crypto.mk
 
 # Setup compiler for this sub module
 COMPILER_$(sm)		?= $(COMPILER)
@@ -24,7 +24,7 @@ cppflags$(sm)	+= -D__KERNEL__
 
 cppflags$(sm)	+= -Icore/include
 cppflags$(sm)	+= -include $(conf-file)
-cppflags$(sm)	+= -I$(out-dir)/core/include/generated
+cppflags$(sm)	+= -I$(out-dir)/core/include
 cppflags$(sm)	+= $(core-platform-cppflags)
 cflags$(sm)	+= $(core-platform-cflags)
 ifeq ($(CFG_CORE_SANITIZE_UNDEFINED),y)
@@ -57,6 +57,7 @@ cppflags$(sm)	+= -Ilib/libutee/include
 
 conf-file := $(out-dir)/include/generated/conf.h
 conf-mk-file := $(out-dir)/conf.mk
+conf-cmake-file := $(out-dir)/conf.cmake
 $(conf-file): $(conf-mk-file)
 
 cleanfiles += $(conf-file)
@@ -67,6 +68,9 @@ $(conf-file): FORCE
 
 $(conf-mk-file):  FORCE
 	$(call check-conf-mk)
+
+$(conf-cmake-file):  FORCE
+	$(call check-conf-cmake)
 
 #
 # Do libraries
@@ -100,12 +104,11 @@ include core/lib/libcryptoengine/libcc.mk
 libname = crypto_engine
 libdir = core/lib/libcryptoengine
 include mk/lib.mk
+endif
 
-else
 libname = tomcrypt
 libdir = core/lib/libtomcrypt
 include mk/lib.mk
-endif
 
 ifeq ($(CFG_DT),y)
 libname = fdt
@@ -126,7 +129,6 @@ endif
 subdirs = $(core-platform-subdirs) core
 include mk/subdir.mk
 
-asm-defines-file := core/arch/$(ARCH)/kernel/asm-defines.c
 include mk/compile.mk
 
 include $(if $(wildcard $(platform-dir)/link.mk), \

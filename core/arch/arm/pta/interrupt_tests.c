@@ -1,29 +1,8 @@
+// SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2016, Linaro Limited
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
  */
+#include <crypto/crypto.h>
 #include <keep.h>
 #include <kernel/interrupt.h>
 #include <kernel/misc.h>
@@ -32,7 +11,6 @@
 #include <kernel/thread.h>
 #include <platform_config.h>
 #include <string.h>
-#include <tee/tee_cryp_provider.h>
 #include <trace.h>
 
 #define TA_NAME		"interrupt_tests.ta"
@@ -122,7 +100,7 @@ static TEE_Result test_sgi(void)
 		return TEE_ERROR_GENERIC;
 
 	for (i = 0; i < TEST_TIMES; i++) {
-		res = crypto_ops.prng.read(&num, 1);
+		res = crypto_rng_read(&num, 1);
 		if (res != TEE_SUCCESS)
 			return TEE_ERROR_GENERIC;
 		num = num % CFG_TEE_CORE_NB_CORE;
@@ -151,7 +129,7 @@ static TEE_Result test_spi(void)
 	itr_enable(TEST_SPI_ID);
 
 	for (i = 0; i < TEST_TIMES; i++) {
-		res = crypto_ops.prng.read(&num, 1);
+		res = crypto_rng_read(&num, 1);
 		if (res != TEE_SUCCESS)
 			return TEE_ERROR_GENERIC;
 		num = num % CFG_TEE_CORE_NB_CORE;
@@ -189,8 +167,6 @@ static TEE_Result interrupt_tests(uint32_t nParamTypes __unused,
 			TEE_Param pParams[TEE_NUM_PARAMS]__unused)
 {
 	TEE_Result res;
-
-	assert(crypto_ops.prng.read);
 
 	res = test_sgi();
 	if (res != TEE_SUCCESS)

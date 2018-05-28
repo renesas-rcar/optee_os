@@ -2,9 +2,6 @@ PLATFORM_FLAVOR ?= salvator
 
 include core/arch/arm/cpu/cortex-armv8-0.mk
 
-# 32-bit flags
-arm32-platform-aflags	+= -mfpu=neon
-
 # ARM debugger needs this
 platform-cflags-debug-info = -gdwarf-2
 platform-aflags-debug-info = -gdwarf-2
@@ -37,6 +34,7 @@ CFG_TEE_CORE_DEBUG ?= n
 CFG_TEE_CORE_EMBED_INTERNAL_TESTS ?= y
 CFG_WITH_STACK_CANARIES ?= y
 CFG_WITH_STATS ?= y
+CFG_CRYPTO_WITH_CE ?= y
 
 ifeq ($(CFG_EARLY_TA),y)
 core-platform-cflags += -Wimplicit-fallthrough=0
@@ -80,6 +78,12 @@ WITH_TRACE_EXT := n
 RCAR_DEBUG_LOG ?= 0
 ifneq ($(RCAR_DEBUG_LOG),0)
 core-platform-cflags += -DRCAR_DEBUG_LOG
+endif
+
+# Compiler switch - Test Debug log(Test verification log)
+RCAR_TEST_LOG ?= n
+ifeq ($(RCAR_TEST_LOG),y)
+core-platform-cflags += -DRCAR_TEST_LOG
 endif
 
 VERSION_OF_RENESAS ?= $(shell awk '/VERSION_OF_RENESAS/{ \

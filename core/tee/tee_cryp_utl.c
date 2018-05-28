@@ -1,39 +1,18 @@
+// SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2014, Linaro Limited
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
+ * Copyright (c) 2018, Renesas Electronics Corporation
  */
 
-#include <stdlib.h>
-#include <string.h>
-#include <string_ext.h>
-#include <utee_defines.h>
-#include <tee/tee_cryp_utl.h>
-#include <tee/tee_cryp_provider.h>
+#include <crypto/crypto.h>
+#include <initcall.h>
 #include <kernel/tee_time.h>
 #include <rng_support.h>
-#include <initcall.h>
+#include <stdlib.h>
+#include <string_ext.h>
+#include <string.h>
+#include <tee/tee_cryp_utl.h>
+#include <utee_defines.h>
 
 #if !defined(CFG_WITH_SOFTWARE_PRNG)
 TEE_Result get_rng_array(void *buffer, int len)
@@ -93,44 +72,26 @@ TEE_Result tee_hash_createdigest(uint32_t algo, const uint8_t *data,
 				 size_t datalen, uint8_t *digest,
 				 size_t digestlen)
 {
-	TEE_Result res = TEE_ERROR_BAD_STATE;
+	TEE_Result res;
 	void *ctx = NULL;
-	size_t ctxsize;
 
-	if (crypto_ops.hash.get_ctx_size == NULL ||
-	    crypto_ops.hash.init == NULL ||
-	    crypto_ops.hash.update == NULL ||
-	    crypto_ops.hash.final == NULL)
-		return TEE_ERROR_NOT_IMPLEMENTED;
+	res = crypto_hash_alloc_ctx(&ctx, algo);
+	if (res)
+		return res;
 
-	if (crypto_ops.hash.get_ctx_size(algo, &ctxsize) != TEE_SUCCESS) {
-		res = TEE_ERROR_NOT_SUPPORTED;
-		goto out;
-	}
-
-	ctx = malloc(ctxsize);
-	if (ctx == NULL) {
-		res = TEE_ERROR_OUT_OF_MEMORY;
-		goto out;
-	}
-
-	if (crypto_ops.hash.init(ctx, algo) != TEE_SUCCESS)
+	res = crypto_hash_init(ctx, algo);
+	if (res)
 		goto out;
 
 	if (datalen != 0) {
-		if (crypto_ops.hash.update(ctx, algo, data, datalen)
-		    != TEE_SUCCESS)
+		res = crypto_hash_update(ctx, algo, data, datalen);
+		if (res)
 			goto out;
 	}
 
-	if (crypto_ops.hash.final(ctx, algo, digest, digestlen) != TEE_SUCCESS)
-		goto out;
-
-	res = TEE_SUCCESS;
-
+	res = crypto_hash_final(ctx, algo, digest, digestlen);
 out:
-	if (ctx)
-		free(ctx);
+	crypto_hash_free_ctx(ctx, algo);
 
 	return res;
 }
@@ -148,6 +109,7 @@ TEE_Result tee_mac_get_digest_size(uint32_t algo, size_t *size)
 	case TEE_ALG_AES_CBC_MAC_NOPAD:
 	case TEE_ALG_AES_CBC_MAC_PKCS5:
 	case TEE_ALG_AES_CMAC:
+	case TEE_ALG_AES_XCBC_MAC:
 		*size = TEE_AES_BLOCK_SIZE;
 		return TEE_SUCCESS;
 	case TEE_ALG_DES_CBC_MAC_NOPAD:
@@ -167,6 +129,7 @@ TEE_Result tee_cipher_get_block_size(uint32_t algo, size_t *size)
 	case TEE_ALG_AES_CBC_MAC_NOPAD:
 	case TEE_ALG_AES_CBC_MAC_PKCS5:
 	case TEE_ALG_AES_CMAC:
+	case TEE_ALG_AES_XCBC_MAC:
 	case TEE_ALG_AES_ECB_NOPAD:
 	case TEE_ALG_AES_CBC_NOPAD:
 	case TEE_ALG_AES_CTR:
@@ -174,6 +137,7 @@ TEE_Result tee_cipher_get_block_size(uint32_t algo, size_t *size)
 	case TEE_ALG_AES_XTS:
 	case TEE_ALG_AES_CCM:
 	case TEE_ALG_AES_GCM:
+	case TEE_ALG_AES_OFB:
 		*size = 16;
 		break;
 
@@ -205,8 +169,6 @@ TEE_Result tee_do_cipher_update(void *ctx, uint32_t algo,
 	if (mode != TEE_MODE_ENCRYPT && mode != TEE_MODE_DECRYPT)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	if (crypto_ops.cipher.update == NULL)
-		return TEE_ERROR_NOT_IMPLEMENTED;
 	/*
 	 * Check that the block contains the correct number of data, apart
 	 * for the last block in some XTS / CTR / XTS mode
@@ -234,6 +196,7 @@ TEE_Result tee_do_cipher_update(void *ctx, uint32_t algo,
 		case TEE_ALG_AES_CTR:
 		case TEE_ALG_AES_XTS:
 		case TEE_ALG_AES_CTS:
+		case TEE_ALG_AES_OFB:
 			/*
 			 * These modes doesn't require padding for the last
 			 * block.
@@ -252,8 +215,8 @@ TEE_Result tee_do_cipher_update(void *ctx, uint32_t algo,
 		}
 	}
 
-	return crypto_ops.cipher.update(ctx, algo, mode, last_block, data, len,
-					dst);
+	return crypto_cipher_update(ctx, algo, mode, last_block, data, len,
+				    dst);
 }
 
 /*
@@ -377,10 +340,7 @@ TEE_Result tee_aes_cbc_cts_update(void *cbc_ctx, void *ecb_ctx,
 
 TEE_Result tee_prng_add_entropy(const uint8_t *in, size_t len)
 {
-	if (crypto_ops.prng.add_entropy)
-		return crypto_ops.prng.add_entropy(in, len);
-
-	return TEE_SUCCESS;
+	return crypto_rng_add_entropy(in, len);
 }
 
 /*
@@ -405,10 +365,7 @@ __weak void plat_prng_add_jitter_entropy_norpc(void)
 
 static TEE_Result tee_cryp_init(void)
 {
-	if (crypto_ops.init)
-		return crypto_ops.init();
-
-	return TEE_SUCCESS;
+	return crypto_init();
 }
 
 service_init(tee_cryp_init);

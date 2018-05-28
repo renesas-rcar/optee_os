@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
  * All rights reserved.
@@ -66,13 +67,6 @@
  *  MEMORY ALLOCATION AND SIZE
  *
  *************************************************************/
-
-/*
- * THIS IS THE MAXIMUM NUMBER OF BITS THAT THE LIBRARY SUPPORTS.
- * It defines the size of the scratch memory pool for the underlying
- * mpa library.
- */
-#define TEE_MAX_NUMBER_OF_SUPPORTED_BITS 2048
 
 /*************************************************************
  *

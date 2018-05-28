@@ -1,6 +1,7 @@
+/* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
- * All rights reserved.
+ * Copyright (c) 2018, Linaro Limited.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,16 +30,25 @@
 #define USER_TA_HEADER_H
 
 #include <tee_api_types.h>
+#include <util.h>
 
-
-#define TA_FLAG_USER_MODE		(1 << 0)
-#define TA_FLAG_EXEC_DDR		(1 << 1)
 #define TA_FLAG_SINGLE_INSTANCE		(1 << 2)
 #define TA_FLAG_MULTI_SESSION		(1 << 3)
 #define TA_FLAG_INSTANCE_KEEP_ALIVE	(1 << 4) /* remains after last close */
 #define TA_FLAG_SECURE_DATA_PATH	(1 << 5) /* accesses SDP memory */
 #define TA_FLAG_REMAP_SUPPORT		(1 << 6) /* use map/unmap syscalls */
 #define TA_FLAG_CACHE_MAINTENANCE	(1 << 7) /* use cache flush syscall */
+	/*
+	 * TA instance can execute multiple sessions concurrently
+	 * (pseudo-TAs only).
+	 */
+#define TA_FLAG_CONCURRENT		(1 << 8)
+
+#define TA_FLAGS_MASK			GENMASK_32(8, 2)
+
+/* Deprecated macros that will be removed in the 3.2 release */
+#define TA_FLAG_USER_MODE		0
+#define TA_FLAG_EXEC_DDR		0
 
 union ta_head_func_ptr {
 	uint64_t ptr64;

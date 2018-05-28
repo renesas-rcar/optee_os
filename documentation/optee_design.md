@@ -150,6 +150,15 @@ table when the TA context is activated.
 
 ![Select xlation table](images/xlat_table.png "Select xlation table")
 
+## Translation tables and switching to user mode
+This section only applies with `CFG_WITH_LPAE=n` and
+`CFG_CORE_UNMAP_CORE_AT_EL0=y`.
+
+When switching to user mode only a minimal kernel mode mapping is kept.
+This is achieved by selecting a zeroed out big L1 translation in TTBR1 when
+transitioning to user mode. When returning back to kernel mode the original
+L1 translation table is restored in TTBR1.
+
 ## Translation tables and switching to normal world
 When switching to normal world either via a foreign interrupt or RPC there
 is a chance that secure world will resume execution on a different CPU.
@@ -600,68 +609,95 @@ system calls.
 
 # 12. Trusted Applications
 
-## Pseudo TAs and Dynamically Loaded TAs
+## Pseudo TAs and User Mode TAs
 
 There are two ways to implement Trusted Applications (TAs), pseudo TAs and
-dynamically loaded TAs. As dynamically loaded TAs are full featured Trusted
-Applications as specified by the GlobalPlatform TEE specifications, these are
-simply referred to as 'Trusted Applications'. For most cases, dynamically
-loaded TAs are preferred.
+user mode TAs. User mode TAs are full featured Trusted Applications as
+specified by the GlobalPlatform TEE specifications, these are simply referred
+to as 'Trusted Applications'. For most cases, user mode TAs are preferred.
 
 ### Pseudo Trusted Applications
 
-These are added directly to the OP-TEE core tree in, eg, `core/arch/arm/pta`,
-and are built along with and statically built into the OP-TEE core blob.
+These are implemented directly to the OP-TEE core tree in, eg,
+`core/arch/arm/pta`, and are built along with and statically built into the
+OP-TEE core blob.
 
 The pseudo Trusted Applications included in OP-TEE already are OP-TEE
 secure privileged level services hidden behind a "GlobalPlatform TA Client" API.
-These pseudo-TAs are used for various purpose as specific secure services or
-embedded tests services.
+These pseudo-TAs are used for various purposes such as specific secure services
+or embedded tests services.
 
 Pseudo TAs do not benefit from the GlobalPlatform Core Internal API support
 specified by the GlobalPlatform TEE specs. These APIs are provided to TAs as a
 static library each TA shall link against (the "libutee") and that calls OP-TEE
-core service through system calls. As OP-TEE core does link with the
-libutee, Pseudo TAs can only use the OP-TEE core internal APIs and
-routines.
+core service through system calls. As OP-TEE core does not link with libutee,
+Pseudo TAs can only use the OP-TEE core internal APIs and routines.
 
 As pseudo TAs have the same privileged execution level as the OP-TEE core code
 itself, such situation may not be desirable for complex TAs.
 
-In most cases a real, dynamically loaded TA is the best choice instead of adding
+In most cases an unprivileged (user mode) TA is the best choice instead of adding
 your code directly to the OP-TEE core.  However if you decide your application
 is best handled directly in OP-TEE core like this, you can look at
 `core/arch/arm/pta/stats.c` as a template and just add your pseudo TA based on
 that to the `sub.mk` in the same directory.
 
-### Trusted Applications
+### User Mode Trusted Applications
 
-Trusted Applications (TAs) are applications dynamically loaded by OP-TEE
+User Mode Trusted Applications are loaded (mapped into memory) by OP-TEE
 core in the Secure World when something in the REE wants to talk to that
-particular application UUID.  It is similar to the way the Linux
-kernel can dynamically load kernel modules, although unlike with Linux, in
-OP-TEE TAs actually run at a lower CPU privileged level than OP-TEE core code.
-
-Because the TAs are signed by the same key that built the OP-TEE core, they
-are able to be stored in the untrusted REE filesystem, and tee-supplicant will
-take care of passing them to be checked and loaded by the Secure World OP-TEE
-core.  Again this is simular to Linux kernel module signature checking.
+particular application UUID. They run at a lower CPU privilege level
+than OP-TEE core code. In that respect, they are quite similar to regular
+applications running in the Rich Execution Environment (REE), except that
+they execute in Secure World.
 
 Trusted Application benefit from the GlobalPlatform Core Internal API as
 specified by the GlobalPlatform TEE specifications.
 
-Trusted Application consist of a cleartext signed ELF file, named from the UUID
+There are several types of user mode TAs, which differ by the way they are
+stored.
+
+#### "Normal" or Secure Storage Trusted Applications
+
+These are stored in secure storage. The meta data is stored in a database
+of all installed TAs and the actual binary is stored encrypted as a
+separate file in the untrusted REE filesystem.
+
+Before these TAs can be loaded they have to be installed first, this is
+something that can be done during initial deployment or at a later stage.
+
+For test purposes the test program xtest can install a TA into secure
+storage with the command:
+```
+xtest --install-ta
+```
+
+#### "Legacy" or REE FS Trusted Applications
+
+They consist of a cleartext signed ELF file, named from the UUID
 of the TA and the suffix ".ta".
 
 They are built separately from the OP-TEE core boot-time blob, although when
 they are built they use the same build system, and are signed with the key
 from the build of the original OP-TEE core blob.
 
+Because the TAs are signed, they are able to be stored in the untrusted REE
+filesystem, and `tee-supplicant` will take care of passing them to be checked
+and loaded by the Secure World OP-TEE core.
+
+#### Early Trusted Applications
+
+The so-called early TAs are virtually identical to the normal (REE FS) TAs,
+but insted of being loaded from the Normal World file system, they are linked
+into a special data section in the TEE core blob. Therefore, they are available
+even before `tee-supplicant` and the Normal World filesystems have come up.
+More details in commit [early_tas].
+
 ## Special treatment of Trusted Applications
 
 ### Syscalls
 
-Dynamically loaded TAs are not directly bound to function exports in the OP-TEE
+User mode TAs are not directly bound to function exports in the OP-TEE
 core blob, both because the TA code is kept at arm's length by executing at a
 different privileged level, and because TAs direct binding to addresses in the
 core would require upgrades of all TAs synchronusly with upgrades of the
@@ -742,6 +778,7 @@ consists of:
 | `uint8_t[sig_size]` | signature | Signature of hash |
 
 [crypto.md]: crypto.md
+[early_tas]: https://github.com/OP-TEE/optee_os/commit/d0c636148b3a
 [LibTomCrypt]: https://github.com/libtom/libtomcrypt
 [OP-TEE Client]: https://github.com/OP-TEE/optee_client
 [OP-TEE Linux Kernel driver]: https://github.com/linaro-swg/linux
