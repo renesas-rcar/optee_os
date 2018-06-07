@@ -176,15 +176,28 @@ uint32_t crypto_hw_acipher_check_support(uint32_t algo, uint32_t modSize);
 uint32_t crypto_hw_acipher_check_support_key(uint32_t keySize);
 
 /*
- * brief: Check if SS6.3-Secure Driver supports a ECDSA key size.
+ * brief: Check if SS6.3-Secure Driver supports ECC.
  *
- * param[in]	algo     - Cryptographic algorithm.
+ * param[in]	curve    - Elliptic Curve Cryptography
  * return	uint32_t - Return SS_NOT_SUPPORT_ALG in case of unsupporting
  *                         algorithm.
  *                         Return SS_SUPPORT_ALG in case of supporting
  *                         algorithm.
  */
-uint32_t crypto_hw_acipher_ecc_check_support(uint32_t curve);
+uint32_t crypto_hw_acipher_ecc_check_support_key(uint32_t curve);
+
+/*
+ * brief: Check if SS6.3-Secure Driver supports a ECDSA key size.
+ *
+ * param[in]	algo     - Cryptographic algorithm.
+ * param[in]	msg_len  - Input Hash size
+ * return	uint32_t - Return SS_NOT_SUPPORT_ALG in case of unsupporting
+ *                         algorithm.
+ *                         Return SS_SUPPORT_ALG in case of supporting
+ *                         algorithm.
+ */
+uint32_t crypto_hw_acipher_ecc_check_support(uint32_t curve,
+		size_t __maybe_unused msg_len);
 
 /*
  * brief: Check if SS6.3-Secure Driver supports a DH key size.
@@ -238,8 +251,6 @@ TEE_Result crypto_hw_hash_final(void *ctx, uint32_t algo, uint8_t *digest,
  * param[in]	mode		- Cipher Mode.
  * param[in]	*key1		- Pinter to the AES key.
  * param[in]	key1_len	- AES key size.
- * param[in]	*key2		- Pinter to the AES key(only AES-XST).
- * param[in]	key2_len	- AES key size(only AES-XST).
  * param[in]	*iv		- Pointer to the Initialize vector.
  * param[in]	iv_len		- Initialize vector size.
  * return	SSError_t	- SS provider error code.

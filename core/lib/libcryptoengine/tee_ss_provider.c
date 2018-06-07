@@ -1186,7 +1186,7 @@ uint32_t crypto_hw_acipher_check_support_key(uint32_t keySize)
  *                         Return SS_SUPPORT_ALG in case of supporting
  *                         algorithm.
  */
-uint32_t crypto_hw_acipher_ecc_check_support(uint32_t curve)
+uint32_t crypto_hw_acipher_ecc_check_support_key(uint32_t curve)
 {
 	uint32_t ret;
 
@@ -1202,6 +1202,57 @@ uint32_t crypto_hw_acipher_ecc_check_support(uint32_t curve)
 		ret = SS_HW_NOT_SUPPORT_ALG;
 		break;
 	}
+
+	PROV_DMSG("ret=%d\n", ret);
+	return ret;
+}
+
+/*
+ * brief: Check if SS6.3-Secure Driver supports ECC.
+ *
+ * param[in]	curve    - Elliptic Curve Cryptography
+ * param[in]	msg_len  - Input Hash size
+ * return	uint32_t - Return SS_NOT_SUPPORT_ALG in case of unsupporting
+ *                         algorithm.
+ *                         Return SS_SUPPORT_ALG in case of supporting
+ *                         algorithm.
+ */
+uint32_t crypto_hw_acipher_ecc_check_support(uint32_t curve,
+		size_t __maybe_unused msg_len)
+{
+	uint32_t ret = SS_HW_SUPPORT_ALG;
+
+	switch ((int32_t)curve) {
+	case TEE_ECC_CURVE_NIST_P192:
+		if (msg_len > (size_t)TEE_SHA1_HASH_SIZE) {
+			ret = SS_HW_NOT_SUPPORT_ALG;
+		}
+		break;
+	case TEE_ECC_CURVE_NIST_P224:
+		if (msg_len > (size_t)TEE_SHA224_HASH_SIZE) {
+			ret = SS_HW_NOT_SUPPORT_ALG;
+		}
+		break;
+	case TEE_ECC_CURVE_NIST_P256:
+		if (msg_len > (size_t)TEE_SHA256_HASH_SIZE) {
+			ret = SS_HW_NOT_SUPPORT_ALG;
+		}
+		break;
+	case TEE_ECC_CURVE_NIST_P384:
+		if (msg_len > (size_t)TEE_SHA384_HASH_SIZE) {
+			ret = SS_HW_NOT_SUPPORT_ALG;
+		}
+		break;
+	case TEE_ECC_CURVE_NIST_P521:
+		if (msg_len > (size_t)TEE_SHA512_HASH_SIZE) {
+			ret = SS_HW_NOT_SUPPORT_ALG;
+		}
+		break;
+	default:
+		ret = SS_HW_NOT_SUPPORT_ALG;
+		break;
+	}
+
 	PROV_DMSG("ret=%d\n", ret);
 	return ret;
 }
@@ -3406,8 +3457,6 @@ TEE_Result crypto_hw_cipher_get_ctx_size(uint32_t algo, size_t *size)
  * param[in]	mode		- Cipher Mode.
  * param[in]	*key1		- Pinter to the AES key.
  * param[in]	key1_len	- AES key size.
- * param[in]	*key2		- Pinter to the AES key(only AES-XST).
- * param[in]	key2_len	- AES key size(only AES-XST).
  * param[in]	*iv		- Pointer to the Initialize vector.
  * param[in]	iv_len		- Initialize vector size.
  * return	SSError_t	- SS provider error code.
@@ -3558,8 +3607,6 @@ static SSError_t ss_aes_init(void *ctx, uint32_t algo, TEE_OperationMode mode,
  * param[in]	mode		- Cipher Mode.
  * param[in]	*key1		- Pinter to the AES key.
  * param[in]	key1_len	- AES key size.
- * param[in]	*key2		- Pinter to the AES key(only AES-XST).
- * param[in]	key2_len	- AES key size(only AES-XST).
  * param[in]	*iv		- Pointer to the Initialize vector.
  * param[in]	iv_len		- Initialize vector size.
  * return	SSError_t	- SS provider error code.
@@ -3730,8 +3777,6 @@ static SSError_t ss_des_init(void *ctx, uint32_t algo, TEE_OperationMode mode,
  * param[in]	mode		- Cipher Mode.
  * param[in]	*key1		- Pinter to the AES key.
  * param[in]	key1_len	- AES key size.
- * param[in]	*key2		- Pinter to the AES key(only AES-XST).
- * param[in]	key2_len	- AES key size(only AES-XST).
  * param[in]	*iv		- Pointer to the Initialize vector.
  * param[in]	iv_len		- Initialize vector size.
  * return	SSError_t	- SS provider error code.
@@ -3743,12 +3788,10 @@ TEE_Result crypto_hw_cipher_init(void *ctx, uint32_t algo,
 {
 	SSError_t res;
 	PROV_INMSG("*ctx=%p, algo=%d, mode=%d, *key1=%p, key1_len=%ld\n",ctx,algo,mode,key1,key1_len);
-	PROV_INMSG("*key2=%p, key2_len=%ld, *iv=%p, *iv_len=%ld\n",key2,key2_len,iv,iv_len);
+	PROV_INMSG("*iv=%p, *iv_len=%ld\n", iv, iv_len);
 
 	PROV_DMSG("Input key1\n");
 	PROV_DHEXDUMP(key1,key1_len);
-	PROV_DMSG("Input key2\n");
-	PROV_DHEXDUMP(key2,key2_len);
 	PROV_DMSG("Input iv\n");
 	PROV_DHEXDUMP(iv,iv_len);
 

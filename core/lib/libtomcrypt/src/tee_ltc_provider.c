@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2014, Linaro Limited
+ * Copyright (c) 2018, Renesas Electronics Corporation
  */
 
 #include <assert.h>
@@ -351,6 +352,17 @@ static TEE_Result tee_algo_to_ltc_cipherindex(uint32_t algo,
 
 static TEE_Result hash_get_ctx_size(uint32_t algo, size_t *size)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	TEE_Result res;
+	size_t ctx_size;
+	if (crypto_hw_hash_check_support(algo) == SS_HW_SUPPORT_ALG) {
+		res = crypto_hw_hash_get_ctx_size(algo, &ctx_size);
+		if (res == TEE_SUCCESS) {
+			*size = ctx_size;
+		}
+		return res;
+	}
+#endif
 	switch (algo) {
 #if defined(CFG_CRYPTO_MD5)
 	case TEE_ALG_MD5:
@@ -425,6 +437,14 @@ TEE_Result crypto_hash_init(void *ctx, uint32_t algo)
 	int ltc_res;
 	int ltc_hashindex;
 
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	TEE_Result res;
+	if (crypto_hw_hash_check_support(algo) == SS_HW_SUPPORT_ALG) {
+		res = crypto_hw_hash_init(ctx, algo);
+		return res;
+	}
+#endif
+
 	ltc_res = tee_algo_to_ltc_hashindex(algo, &ltc_hashindex);
 	if (ltc_res != TEE_SUCCESS)
 		return TEE_ERROR_NOT_SUPPORTED;
@@ -440,6 +460,14 @@ TEE_Result crypto_hash_update(void *ctx, uint32_t algo,
 {
 	int ltc_res;
 	int ltc_hashindex;
+
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	TEE_Result res;
+	if (crypto_hw_hash_check_support(algo) == SS_HW_SUPPORT_ALG) {
+		res = crypto_hw_hash_update(ctx, algo, data, len);
+		return res;
+	}
+#endif
 
 	ltc_res = tee_algo_to_ltc_hashindex(algo, &ltc_hashindex);
 	if (ltc_res != TEE_SUCCESS)
@@ -459,6 +487,14 @@ TEE_Result crypto_hash_final(void *ctx, uint32_t algo, uint8_t *digest,
 	size_t hash_size;
 	uint8_t block_digest[TEE_MAX_HASH_SIZE];
 	uint8_t *tmp_digest;
+
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	TEE_Result res;
+	if (crypto_hw_hash_check_support(algo) == SS_HW_SUPPORT_ALG) {
+		res = crypto_hw_hash_final(ctx, algo, digest, len);
+		return res;
+	}
+#endif
 
 	ltc_res = tee_algo_to_ltc_hashindex(algo, &ltc_hashindex);
 	if (ltc_res != TEE_SUCCESS)
@@ -792,7 +828,12 @@ TEE_Result crypto_acipher_gen_rsa_key(struct rsa_keypair *key, size_t key_size)
 	int ltc_res;
 	long e;
 	struct tee_ltc_prng *prng = tee_ltc_get_prng();
-
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	if (crypto_hw_acipher_check_support_key(key_size) == SS_HW_SUPPORT_ALG) {
+		res = crypto_hw_acipher_gen_rsa_key(key, key_size);
+		return res;
+	}
+#endif
 	/* get the public exponent */
 	e = mp_get_int(key->e);
 
@@ -892,6 +933,17 @@ TEE_Result crypto_acipher_rsanopad_encrypt(struct rsa_public_key *key,
 	TEE_Result res;
 	rsa_key ltc_key = { 0, };
 
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	uint32_t modSize;
+	modSize = crypto_bignum_num_bits(key->n);
+	if (crypto_hw_acipher_check_support(TEE_ALG_RSA_NOPAD,
+			modSize) == SS_HW_SUPPORT_ALG) {
+		res = crypto_hw_acipher_rsanopad_encrypt(key, src, src_len, dst,
+				dst_len);
+		return res;
+	}
+#endif
+
 	ltc_key.type = PK_PUBLIC;
 	ltc_key.e = key->e;
 	ltc_key.N = key->n;
@@ -906,6 +958,17 @@ TEE_Result crypto_acipher_rsanopad_decrypt(struct rsa_keypair *key,
 {
 	TEE_Result res;
 	rsa_key ltc_key = { 0, };
+
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	uint32_t modSize;
+	modSize = crypto_bignum_num_bits(key->n);
+	if (crypto_hw_acipher_check_support(TEE_ALG_RSA_NOPAD,
+			modSize) == SS_HW_SUPPORT_ALG) {
+		res = crypto_hw_acipher_rsanopad_decrypt(key, src, src_len, dst,
+				dst_len);
+		return res;
+	}
+#endif
 
 	ltc_key.type = PK_PRIVATE;
 	ltc_key.e = key->e;
@@ -934,6 +997,16 @@ TEE_Result crypto_acipher_rsaes_decrypt(uint32_t algo, struct rsa_keypair *key,
 	int ltc_hashindex, ltc_res, ltc_stat, ltc_rsa_algo;
 	size_t mod_size;
 	rsa_key ltc_key = { 0, };
+
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	uint32_t modSize;
+	modSize = crypto_bignum_num_bits(key->n);
+	if (crypto_hw_acipher_check_support(algo, modSize) == SS_HW_SUPPORT_ALG) {
+		res = crypto_hw_acipher_rsaes_decrypt(algo, key, label,
+				label_len, src, src_len, dst, dst_len);
+		return res;
+	}
+#endif
 
 	ltc_key.type = PK_PRIVATE;
 	ltc_key.e = key->e;
@@ -1035,6 +1108,16 @@ TEE_Result crypto_acipher_rsaes_encrypt(uint32_t algo,
 	};
 	struct tee_ltc_prng *prng = tee_ltc_get_prng();
 
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	uint32_t modSize;
+	modSize = crypto_bignum_num_bits(key->n);
+	if (crypto_hw_acipher_check_support(algo, modSize) == SS_HW_SUPPORT_ALG) {
+		res = crypto_hw_acipher_rsaes_encrypt(algo, key, label,
+				label_len, src, src_len, dst, dst_len);
+		return res;
+	}
+#endif
+
 	mod_size =  ltc_mp.unsigned_size((void *)(ltc_key.N));
 	if (*dst_len < mod_size) {
 		*dst_len = mod_size;
@@ -1088,7 +1171,15 @@ TEE_Result crypto_acipher_rsassa_sign(uint32_t algo, struct rsa_keypair *key,
 	unsigned long ltc_sig_len;
 	rsa_key ltc_key = { 0, };
 	struct tee_ltc_prng *prng = tee_ltc_get_prng();
-
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	uint32_t modSize;
+	modSize = crypto_bignum_num_bits(key->n);
+	if (crypto_hw_acipher_check_support(algo, modSize) == SS_HW_SUPPORT_ALG) {
+		res = crypto_hw_acipher_rsassa_sign(algo, key, salt_len, msg,
+				msg_len, sig, sig_len);
+		return res;
+	}
+#endif
 	ltc_key.type = PK_PRIVATE;
 	ltc_key.e = key->e;
 	ltc_key.N = key->n;
@@ -1179,7 +1270,15 @@ TEE_Result crypto_acipher_rsassa_verify(uint32_t algo,
 		.e = key->e,
 		.N = key->n
 	};
-
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	uint32_t modSize;
+	modSize = crypto_bignum_num_bits(key->n);
+	if (crypto_hw_acipher_check_support(algo, modSize) == SS_HW_SUPPORT_ALG) {
+		res = crypto_hw_acipher_rsassa_verify(algo, key, salt_len, msg,
+				msg_len, sig);
+		return res;
+	}
+#endif
 	res = tee_hash_get_digest_size(TEE_DIGEST_HASH_TO_ALGO(algo),
 				       &hash_size);
 	if (res != TEE_SUCCESS)
@@ -1473,7 +1572,14 @@ TEE_Result crypto_acipher_gen_dh_key(struct dh_keypair *key, struct bignum *q,
 	dh_key ltc_tmp_key;
 	int ltc_res;
 	struct tee_ltc_prng *prng = tee_ltc_get_prng();
-
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	uint32_t keySize;
+	keySize = crypto_bignum_num_bits(key->p);
+	if (crypto_hw_dh_check_support(keySize) == SS_HW_SUPPORT_ALG) {
+		res = crypto_hw_acipher_gen_dh_key(key, q, xbits);
+		return res;
+	}
+#endif
 	/* Generate the DH key */
 	ltc_tmp_key.g = key->g;
 	ltc_tmp_key.p = key->p;
@@ -1504,7 +1610,16 @@ TEE_Result crypto_acipher_dh_shared_secret(struct dh_keypair *private_key,
 		.y = private_key->y,
 		.x = private_key->x
 	};
-
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	TEE_Result res;
+	uint32_t keySize;
+	keySize = crypto_bignum_num_bits(private_key->p);
+	if (crypto_hw_dh_check_support(keySize) == SS_HW_SUPPORT_ALG) {
+		res = crypto_hw_acipher_dh_shared_secret(private_key,
+				public_key, secret);
+		return res;
+	}
+#endif
 	err = dh_shared_secret(&pk, public_key, secret);
 	return ((err == CRYPT_OK) ? TEE_SUCCESS : TEE_ERROR_BAD_PARAMETERS);
 }
@@ -1634,6 +1749,14 @@ TEE_Result crypto_acipher_gen_ecc_key(struct ecc_keypair *key)
 	size_t key_size_bytes = 0;
 	size_t key_size_bits = 0;
 
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	if (crypto_hw_acipher_ecc_check_support_key(
+			key->curve) == SS_HW_SUPPORT_ALG) {
+		res = crypto_hw_acipher_gen_ecc_key(key);
+		return res;
+	}
+#endif
+
 	res = ecc_get_keysize(key->curve, 0, &key_size_bytes, &key_size_bits);
 	if (res != TEE_SUCCESS) {
 		return res;
@@ -1758,6 +1881,15 @@ TEE_Result crypto_acipher_ecc_sign(uint32_t algo, struct ecc_keypair *key,
 	ecc_key ltc_key;
 	struct tee_ltc_prng *prng = tee_ltc_get_prng();
 
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	if (crypto_hw_acipher_ecc_check_support(key->curve,
+			msg_len) == SS_HW_SUPPORT_ALG) {
+		res = crypto_hw_acipher_ecc_sign(key, msg, msg_len, sig,
+				sig_len);
+		return res;
+	}
+#endif
+
 	if (algo == 0) {
 		res = TEE_ERROR_BAD_PARAMETERS;
 		goto err;
@@ -1814,6 +1946,15 @@ TEE_Result crypto_acipher_ecc_verify(uint32_t algo, struct ecc_public_key *key,
 	size_t key_size_bytes;
 	ecc_key ltc_key;
 
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	if (crypto_hw_acipher_ecc_check_support(key->curve,
+			msg_len) == SS_HW_SUPPORT_ALG) {
+		res = crypto_hw_acipher_ecc_verify(key, msg, msg_len, sig,
+				sig_len);
+		return res;
+	}
+#endif
+
 	if (algo == 0) {
 		return TEE_ERROR_BAD_PARAMETERS;
 	}
@@ -1859,6 +2000,15 @@ TEE_Result crypto_acipher_ecc_shared_secret(struct ecc_keypair *private_key,
 	ecc_key ltc_public_key;
 	size_t key_size_bytes;
 	void *key_z;
+
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	if (crypto_hw_acipher_ecc_check_support_key(
+			private_key->curve) == SS_HW_SUPPORT_ALG) {
+		res = crypto_hw_acipher_ecc_shared_secret(private_key,
+				public_key, secret, secret_len);
+		return res;
+	}
+#endif
 
 	/* Check the curves are the same */
 	if (private_key->curve != public_key->curve) {
@@ -1933,6 +2083,13 @@ struct tee_symmetric_xts {
 
 static TEE_Result cipher_get_ctx_size(uint32_t algo, size_t *size)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	TEE_Result res;
+	if (crypto_hw_cipher_check_support(algo) == SS_HW_SUPPORT_ALG) {
+		res = crypto_hw_cipher_get_ctx_size(algo, size);
+		return res;
+	}
+#endif
 	switch (algo) {
 #if defined(CFG_CRYPTO_AES)
 #if defined(CFG_CRYPTO_ECB)
@@ -2068,6 +2225,13 @@ TEE_Result crypto_cipher_init(void *ctx, uint32_t algo,
 	struct tee_symmetric_xts *xts;
 #endif
 
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	if (crypto_hw_cipher_check_support(algo) == SS_HW_SUPPORT_ALG) {
+		res = crypto_hw_cipher_init(ctx, algo, mode, key1, key1_len, iv,
+				iv_len);
+		return res;
+	}
+#endif
 	res = tee_algo_to_ltc_cipherindex(algo, &ltc_cipherindex);
 	if (res != TEE_SUCCESS)
 		return TEE_ERROR_NOT_SUPPORTED;
@@ -2179,6 +2343,15 @@ TEE_Result crypto_cipher_update(void *ctx, uint32_t algo,
 	struct tee_symmetric_xts *xts;
 #endif
 
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	TEE_Result res;
+	if (crypto_hw_cipher_check_support(algo) == SS_HW_SUPPORT_ALG) {
+		res = crypto_hw_cipher_update(ctx, algo, mode, last_block, data,
+				len, dst);
+		return res;
+	}
+#endif
+
 	switch (algo) {
 #if defined(CFG_CRYPTO_ECB)
 	case TEE_ALG_AES_ECB_NOPAD:
@@ -2237,6 +2410,12 @@ TEE_Result crypto_cipher_update(void *ctx, uint32_t algo,
 
 void crypto_cipher_final(void *ctx, uint32_t algo)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	if (crypto_hw_cipher_check_support(algo) == SS_HW_SUPPORT_ALG) {
+		crypto_hw_cipher_final(ctx, algo);
+		return;
+	}
+#endif
 	switch (algo) {
 #if defined(CFG_CRYPTO_ECB)
 	case TEE_ALG_AES_ECB_NOPAD:
@@ -2306,6 +2485,13 @@ struct cbc_state {
 
 static TEE_Result mac_get_ctx_size(uint32_t algo, size_t *size)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	TEE_Result res;
+	if (crypto_hw_mac_check_support(algo) == SS_HW_SUPPORT_ALG) {
+		res = crypto_hw_mac_get_ctx_size(algo, size);
+		return res;
+	}
+#endif
 	switch (algo) {
 #if defined(CFG_CRYPTO_HMAC)
 	case TEE_ALG_HMAC_MD5:
@@ -2397,7 +2583,12 @@ TEE_Result crypto_mac_init(void *ctx, uint32_t algo, const uint8_t *key,
 	uint8_t iv[CBCMAC_MAX_BLOCK_LEN];
 	struct cbc_state *cbc;
 #endif
-
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	if (crypto_hw_mac_check_support(algo) == SS_HW_SUPPORT_ALG) {
+		res = crypto_hw_mac_init(ctx, algo, key, len);
+		return res;
+	}
+#endif
 	switch (algo) {
 #if defined(CFG_CRYPTO_HMAC)
 	case TEE_ALG_HMAC_MD5:
@@ -2472,7 +2663,13 @@ TEE_Result crypto_mac_update(void *ctx, uint32_t algo, const uint8_t *data,
 	struct cbc_state *cbc;
 	size_t pad_len;
 #endif
-
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	TEE_Result res;
+	if (crypto_hw_mac_check_support(algo) == SS_HW_SUPPORT_ALG) {
+		res = crypto_hw_mac_update(ctx, algo, data, len);
+		return res;
+	}
+#endif
 	if (!data || !len)
 		return TEE_SUCCESS;
 
@@ -2547,7 +2744,13 @@ TEE_Result crypto_mac_final(void *ctx, uint32_t algo, uint8_t *digest,
 	size_t pad_len;
 #endif
 	unsigned long ltc_digest_len = digest_len;
-
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	TEE_Result res;
+	if (crypto_hw_mac_check_support(algo) == SS_HW_SUPPORT_ALG) {
+		res = crypto_hw_mac_final(ctx, algo, digest, digest_len);
+		return res;
+	}
+#endif
 	switch (algo) {
 #if defined(CFG_CRYPTO_HMAC)
 	case TEE_ALG_HMAC_MD5:
@@ -2634,6 +2837,13 @@ struct tee_ccm_state {
 
 TEE_Result crypto_aes_ccm_alloc_ctx(void **ctx_ret)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	TEE_Result res;
+	void *ctx;
+	res = crypto_hw_aes_ccm_alloc_ctx(&ctx);
+	*ctx_ret = ctx;
+	return res;
+#else
 	struct tee_ccm_state *ctx = calloc(1, sizeof(*ctx));
 
 	if (!ctx)
@@ -2641,6 +2851,7 @@ TEE_Result crypto_aes_ccm_alloc_ctx(void **ctx_ret)
 
 	*ctx_ret = ctx;
 	return TEE_SUCCESS;
+#endif /* CFG_CRYPT_HW_CRYPTOENGINE */
 }
 
 void crypto_aes_ccm_free_ctx(void *ctx)
@@ -2650,7 +2861,11 @@ void crypto_aes_ccm_free_ctx(void *ctx)
 
 void crypto_aes_ccm_copy_state(void *dst_ctx, void *src_ctx)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	crypto_hw_aes_ccm_copy_state(dst_ctx, src_ctx);
+#else
 	memcpy(dst_ctx, src_ctx, sizeof(struct tee_ccm_state));
+#endif /* CFG_CRYPT_HW_CRYPTOENGINE */
 }
 
 TEE_Result crypto_aes_ccm_init(void *ctx, TEE_OperationMode mode __unused,
@@ -2659,6 +2874,12 @@ TEE_Result crypto_aes_ccm_init(void *ctx, TEE_OperationMode mode __unused,
 			       size_t tag_len, size_t aad_len,
 			       size_t payload_len)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	TEE_Result res;
+	res = crypto_hw_aes_ccm_init(ctx, mode, key, key_len, nonce, nonce_len,
+			tag_len, aad_len, payload_len);
+	return res;
+#else
 	TEE_Result res;
 	int ltc_res;
 	int ltc_cipherindex;
@@ -2696,10 +2917,16 @@ TEE_Result crypto_aes_ccm_init(void *ctx, TEE_OperationMode mode __unused,
 		return TEE_ERROR_BAD_STATE;
 
 	return TEE_SUCCESS;
+#endif /* CFG_CRYPT_HW_CRYPTOENGINE */
 }
 
 TEE_Result crypto_aes_ccm_update_aad(void *ctx, const uint8_t *data, size_t len)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	TEE_Result res;
+	res = crypto_hw_aes_ccm_update_aad(ctx, data, len);
+	return res;
+#else
 	struct tee_ccm_state *ccm = ctx;
 	int ltc_res;
 
@@ -2709,12 +2936,19 @@ TEE_Result crypto_aes_ccm_update_aad(void *ctx, const uint8_t *data, size_t len)
 		return TEE_ERROR_BAD_STATE;
 
 	return TEE_SUCCESS;
+#endif /* CFG_CRYPT_HW_CRYPTOENGINE */
 }
 
-TEE_Result crypto_aes_ccm_update_payload(void *ctx, TEE_OperationMode mode,
+TEE_Result crypto_aes_ccm_update_payload(void *ctx,
+		                         TEE_OperationMode mode __maybe_unused,
 					 const uint8_t *src_data,
 					 size_t len, uint8_t *dst_data)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	TEE_Result res;
+	res = crypto_hw_aes_ccm_update_payload(ctx, src_data, len, dst_data);
+	return res;
+#else
 	int ltc_res, dir;
 	struct tee_ccm_state *ccm = ctx;
 	unsigned char *pt, *ct;	/* the plain and the cipher text */
@@ -2733,12 +2967,19 @@ TEE_Result crypto_aes_ccm_update_payload(void *ctx, TEE_OperationMode mode,
 		return TEE_ERROR_BAD_STATE;
 
 	return TEE_SUCCESS;
+#endif /* CFG_CRYPT_HW_CRYPTOENGINE */
 }
 
 TEE_Result crypto_aes_ccm_enc_final(void *ctx, const uint8_t *src_data,
 				    size_t len, uint8_t *dst_data,
 				    uint8_t *dst_tag, size_t *dst_tag_len)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	TEE_Result res;
+	res = crypto_hw_aes_ccm_enc_final(ctx, src_data, len, dst_data,
+			dst_tag, dst_tag_len);
+	return res;
+#else
 	TEE_Result res;
 	struct tee_ccm_state *ccm = ctx;
 	int ltc_res;
@@ -2763,12 +3004,19 @@ TEE_Result crypto_aes_ccm_enc_final(void *ctx, const uint8_t *src_data,
 		return TEE_ERROR_BAD_STATE;
 
 	return TEE_SUCCESS;
+#endif /* CFG_CRYPT_HW_CRYPTOENGINE */
 }
 
 TEE_Result crypto_aes_ccm_dec_final(void *ctx, const uint8_t *src_data,
 				    size_t len, uint8_t *dst_data,
 				    const uint8_t *tag, size_t tag_len)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	TEE_Result res;
+	res = crypto_hw_aes_ccm_dec_final(ctx, src_data, len, dst_data, tag,
+			tag_len);
+	return res;
+#else
 	TEE_Result res = TEE_ERROR_BAD_STATE;
 	struct tee_ccm_state *ccm = ctx;
 	int ltc_res;
@@ -2796,13 +3044,18 @@ TEE_Result crypto_aes_ccm_dec_final(void *ctx, const uint8_t *src_data,
 	else
 		res = TEE_SUCCESS;
 	return res;
+#endif /* CFG_CRYPT_HW_CRYPTOENGINE */
 }
 
-void crypto_aes_ccm_final(void *ctx)
+void crypto_aes_ccm_final(void *ctx __maybe_unused)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	crypto_hw_aes_ccm_final();
+#else
 	struct tee_ccm_state *ccm = ctx;
 
 	ccm_reset(&ccm->ctx);
+#endif /* CFG_CRYPT_HW_CRYPTOENGINE */
 }
 #endif /*CFG_CRYPTO_CCM*/
 
@@ -2985,6 +3238,11 @@ void crypto_aes_gcm_final(void *ctx)
  ******************************************************************************/
 TEE_Result crypto_rng_read(void *buf, size_t blen)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	TEE_Result res;
+	res = crypto_hw_rng_read(buf, blen);
+	return res;
+#else
 	int err;
 	struct tee_ltc_prng *prng = tee_ltc_get_prng();
 
@@ -2998,8 +3256,10 @@ TEE_Result crypto_rng_read(void *buf, size_t blen)
 		return TEE_ERROR_BAD_STATE;
 
 	return TEE_SUCCESS;
+#endif /* CFG_CRYPT_HW_CRYPTOENGINE */
 }
 
+#if !defined(CFG_CRYPT_HW_CRYPTOENGINE)
 /* Called as a result of rng_generate() below */
 static TEE_Result _tee_ltc_prng_add_entropy(
 	const uint8_t *inbuf __maybe_unused, size_t len __maybe_unused)
@@ -3023,9 +3283,15 @@ static TEE_Result _tee_ltc_prng_add_entropy(
 	return TEE_ERROR_BAD_STATE;
 #endif
 }
+#endif /* CFG_CRYPT_HW_CRYPTOENGINE */
 
 TEE_Result crypto_rng_add_entropy(const uint8_t *inbuf, size_t len)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	TEE_Result res;
+	res = crypto_hw_rng_add_entropy(inbuf, len);
+	return res;
+#else
 	int err;
 	struct tee_ltc_prng *prng = tee_ltc_get_prng();
 
@@ -3041,6 +3307,7 @@ TEE_Result crypto_rng_add_entropy(const uint8_t *inbuf, size_t len)
 		return TEE_ERROR_BAD_STATE;
 
 	return TEE_SUCCESS;
+#endif /* CFG_CRYPT_HW_CRYPTOENGINE */
 }
 
 TEE_Result crypto_init(void)
@@ -3069,6 +3336,11 @@ void tomcrypt_arm_neon_disable(struct tomcrypt_arm_neon_state *state)
 TEE_Result hash_sha256_check(const uint8_t *hash, const uint8_t *data,
 		size_t data_size)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	TEE_Result res;
+	res = crypto_hw_hash_sha256_check(hash, data, data_size);
+	return res;
+#else
 	hash_state hs;
 	uint8_t digest[TEE_SHA256_HASH_SIZE];
 
@@ -3081,9 +3353,11 @@ TEE_Result hash_sha256_check(const uint8_t *hash, const uint8_t *data,
 	if (buf_compare_ct(digest, hash, sizeof(digest)) != 0)
 		return TEE_ERROR_SECURITY;
 	return TEE_SUCCESS;
+#endif /* CFG_CRYPT_HW_CRYPTOENGINE */
 }
 #endif
 
+#if !defined(CFG_CRYPT_HW_CRYPTOENGINE)
 TEE_Result rng_generate(void *buffer, size_t len)
 {
 #if defined(CFG_WITH_SOFTWARE_PRNG)
@@ -3116,6 +3390,7 @@ TEE_Result rng_generate(void *buffer, size_t len)
 	return get_rng_array(buffer, len);
 #endif
 }
+#endif /* CFG_CRYPT_HW_CRYPTOENGINE */
 
 TEE_Result crypto_aes_expand_enc_key(const void *key, size_t key_len,
 				     void *enc_key, unsigned int *rounds)

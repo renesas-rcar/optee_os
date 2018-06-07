@@ -335,7 +335,7 @@ static TEE_Result tee_rpmb_key_gen(uint16_t dev_id __unused,
 
 	if (res == TEE_SUCCESS) {
 		IMSG("RPMB: Using generated key");
-		res = crypto_rpmb_derivekey(key, len);
+		res = crypto_hw_rpmb_derivekey(key, len);
 	}
 	
 	return res;
@@ -395,7 +395,7 @@ static TEE_Result tee_rpmb_mac_calc(uint8_t *mac, uint32_t macsize,
 		/* Add list */
 		listfrm[i] = (uint64_t)&datafrms[i].data;
 	}
-	res = crypto_rpmb_signframes(listfrm, (uint32_t)blkcnt, mac, macsize);
+	res = crypto_hw_rpmb_signframes(listfrm, (uint32_t)blkcnt, mac, macsize);
 
 	free(listfrm);
 	return res;
@@ -754,7 +754,7 @@ static TEE_Result tee_rpmb_data_cpy_mac_calc(struct rpmb_data_frame *datafrm,
 
 	/* Add list against the last block */
 	listfrm[nbr_frms -1U] = (uint64_t)lastfrm->data;
-	res = crypto_rpmb_signframes(listfrm, (uint32_t)nbr_frms,
+	res = crypto_hw_rpmb_signframes(listfrm, (uint32_t)nbr_frms,
 						rawdata->key_mac,
 						RPMB_KEY_MAC_SIZE);
 
