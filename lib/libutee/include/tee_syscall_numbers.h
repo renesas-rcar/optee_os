@@ -84,7 +84,11 @@
 #define RCAR_SCN_GEN_SKEY_PACKAGE		72
 #define RCAR_SCN_ASSET_UNPACK			73
 
+#ifdef PLATFORM_RCAR
 #define TEE_SCN_MAX				73
+#else
+#define TEE_SCN_MAX				70
+#endif
 
 /* Maximum number of allowed arguments for a syscall */
 #define TEE_SVC_MAX_ARGS			8
