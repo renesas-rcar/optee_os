@@ -52,12 +52,13 @@ static void main_tee_entry_fast(struct thread_smc_args *args)
 static unsigned long main_cpu_suspend(unsigned long a0,
 				unsigned long a1 __unused)
 {
+
 	uint32_t exceptions;
 
 	exceptions = cpu_spin_lock_xsave(&main_cpu_lock);
 	TMSG("a0=0x%lX, a1=0x%lX", a0, a1);
 
-	if (a0 == TFW_ARG_SYSTEM_SUSPEND) {
+	if (a0 >= TFW_ARG_SYSTEM_SUSPEND) {
 		if (suspend_to_ram_save_flag == 0U) {
 			suspend_to_ram_save();
 			suspend_to_ram_save_flag = 1U;
