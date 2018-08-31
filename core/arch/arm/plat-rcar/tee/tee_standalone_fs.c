@@ -1554,6 +1554,8 @@ static TEE_Result spi_read_flash(uint32_t flash_addr, uint8_t *buf,
 
 	if (ret == FL_DRV_OK) {
 		res = TEE_SUCCESS;
+	} else if (ret == FL_DRV_ERR_OUT_OF_MEMORY) {
+		res = TEE_ERROR_OUT_OF_MEMORY;
 	} else {
 		res = TEE_ERROR_TARGET_DEAD;
 	}
@@ -1584,9 +1586,13 @@ static TEE_Result spi_erase_and_write_sector(uint32_t sector_addr,
 		}
 		if (ret == FL_DRV_OK) {
 			res = TEE_SUCCESS;
+		} else if (ret == FL_DRV_ERR_OUT_OF_MEMORY) {
+			res = TEE_ERROR_OUT_OF_MEMORY;
 		} else {
 			res = TEE_ERROR_TARGET_DEAD;
 		}
+	} else if (ret == FL_DRV_ERR_OUT_OF_MEMORY) {
+		res = TEE_ERROR_OUT_OF_MEMORY;
 	} else {
 		res = TEE_ERROR_TARGET_DEAD;
 	}
@@ -1642,13 +1648,15 @@ static TEE_Result tee_standalone_create(const char *file, size_t file_len,
 			res = TEE_ERROR_ACCESS_CONFLICT;
 			EMSG("tee file already exists");
 		}
-	} else {
+	} else if (res == TEE_ERROR_ITEM_NOT_FOUND) {
 		lattr |= SAFS_ATTR_DATA_IRUSR | SAFS_ATTR_DATA_IWUSR;
 		rdesc = spi_create_record_info(file, file_len, lattr, 
 				wd, wd_num, &res);
 		if (rdesc == NULL) {
 			EMSG("tee file create failure");
 		}
+	} else {
+		EMSG("Could not create file");
 	}
 
 	if (res == TEE_SUCCESS) {

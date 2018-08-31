@@ -1885,7 +1885,6 @@ static SSError_t ss_build_pub_key(CRYS_RSAUserPubKey_t **userPubKey,
 
 	if (res == SS_SUCCESS) {
 		PROV_DMSG("CALL: CRYS_RSA_Build_PubKey()\n");
-		((mpanum)key->n)->d[bn_num_bytes(key->n)-1U] |= 0x1U;
 		crys_res = CRYS_RSA_Build_PubKey(pubKey_ptr,
 				exponent_ptr,
 				exponentSize,

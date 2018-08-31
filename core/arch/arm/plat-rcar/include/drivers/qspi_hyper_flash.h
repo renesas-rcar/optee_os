@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
- * Copyright (c) 2015-2016, Renesas Electronics Corporation
+ * Copyright (c) 2015-2018, Renesas Electronics Corporation
  */
 
 #ifndef QSPI_HYPER_FLASH_H
@@ -24,8 +24,8 @@
 #define FL_DRV_ERR_SECTOR_EXCEED	5U
 #define FL_DRV_ERR_TIMEOUT		6U
 #define FL_DRV_ERR_GET_SYS_TIME		7U
-#define FL_DRV_ERR_SYSCALL_WAIT		8U
 #define FL_DRV_ERR_STATUS_INCORRECT	9U
+#define FL_DRV_ERR_OUT_OF_MEMORY	10U
 
 /* sector size */
 #define SECTOR_SIZE			0x00040000U

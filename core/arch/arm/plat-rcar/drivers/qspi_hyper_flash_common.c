@@ -5,6 +5,7 @@
 
 #include <kernel/tee_time.h>
 #include <kernel/delay.h>
+#include <kernel/thread.h>
 #include <tee/tee_svc.h>
 #include <drivers/qspi_hyper_flash.h>
 #include <trace.h>
@@ -31,10 +32,9 @@ uint32_t common_wait(uint32_t (*read_status)(uint32_t *), uint32_t *data,
 {
 	uint32_t ret = FL_DRV_OK;
 	TEE_Result res;
-	uint32_t mytime;
 	TEE_Time base;
-	TEE_Time current;
 	uint32_t result;
+	const uint32_t delay = 1U;
 
 	res = tee_time_get_sys_time(&base);
 	if (res != TEE_SUCCESS) {
@@ -48,30 +48,21 @@ uint32_t common_wait(uint32_t (*read_status)(uint32_t *), uint32_t *data,
 				break;
 			}
 
-			res = tee_time_get_sys_time(&current);
+			res = thread_hw_wait_cmd(&base, timeout, wait, delay);
 			if (res != TEE_SUCCESS) {
-				ret = FL_DRV_ERR_GET_SYS_TIME;
-				EMSG("get_sys_time:current res=%x", res);
-			} else {
-				mytime = ((current.seconds - base.seconds)
-				     * 1000U) + (current.millis - base.millis);
-				if (mytime >= timeout) {
+				switch(res) {
+				case TEE_ERROR_OVERFLOW:
 					ret = FL_DRV_ERR_TIMEOUT;
-					EMSG("Time out of device status Ready");
+					break;
+				case TEE_ERROR_OUT_OF_MEMORY:
+					ret = FL_DRV_ERR_OUT_OF_MEMORY;
+					break;
+				default:
+					ret = FL_DRV_ERR_GET_SYS_TIME;
 					break;
 				}
-				/*
-				 * continues for one ms.
-				 * over one ms is syscall_wait running.
-				 */
-				if (mytime > 1U) {
-					res = syscall_wait(wait);
-					if (res != TEE_SUCCESS) {
-						ret = FL_DRV_ERR_SYSCALL_WAIT;
-						EMSG("syscall_wait res=%x",
-									res);
-					}
-				}
+				EMSG("thread_hw_wait_cmd() error res=%x ret=%d"
+					, res, ret);
 			}
 		}
 		if (result == FL_DEVICE_ERR) {

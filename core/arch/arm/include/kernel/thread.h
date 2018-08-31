@@ -651,6 +651,11 @@ uint32_t thread_rpc_cmd(uint32_t cmd, size_t num_params,
 unsigned long thread_smc(unsigned long func_id, unsigned long a1,
 			 unsigned long a2, unsigned long a3);
 
+#if defined(PLATFORM_RCAR)
+TEE_Result thread_hw_wait_cmd(const TEE_Time *base_time, uint32_t timeout,
+			uint32_t wait, uint32_t delay);
+#endif /* PLATFORM_RCAR */
+
 #endif /*ASM*/
 
 #endif /*KERNEL_THREAD_H*/

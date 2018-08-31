@@ -8,7 +8,7 @@
 
 #include <stdint.h>
 
-#define VERSION_OF_RENESAS	"1.0.14"
+#define VERSION_OF_RENESAS	"1.0.15"
 
 extern const int8_t version_of_renesas[];
 

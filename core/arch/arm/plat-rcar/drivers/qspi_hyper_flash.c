@@ -204,15 +204,18 @@ uint32_t qspi_hyper_flash_write(uint32_t flash_addr, const uint8_t *buf,
 	return ret;
 }
 
-static uint32_t erase_flash_unsupported(uint32_t sector_addr)
+static uint32_t erase_flash_unsupported(uint32_t sector_addr __maybe_unused)
 {
 	EMSG("Not execute erase. Unsupport device. sector_addr=%x",
 								sector_addr);
 	return FL_DRV_ERR_UNSUPPORT_DEV;
 }
 
-static uint32_t ext_addr_read_mode_flash_unsupported(uint32_t read_ext_top_addr,
-			uint32_t flash_addr, uint8_t *buf, size_t rsize)
+static uint32_t ext_addr_read_mode_flash_unsupported(
+			uint32_t read_ext_top_addr __maybe_unused,
+			uint32_t flash_addr __maybe_unused,
+			uint8_t *buf __maybe_unused,
+			size_t rsize __maybe_unused)
 {
 	EMSG(
 	"Not execute ext_addr_read_mode. Unsupport device. read_ext_addr=%x",
@@ -221,8 +224,9 @@ static uint32_t ext_addr_read_mode_flash_unsupported(uint32_t read_ext_top_addr,
 	return FL_DRV_ERR_UNSUPPORT_DEV;
 }
 
-static uint32_t write_flash_unsupported(uint32_t buf_addr,
-					uint32_t flash_addr, uint32_t wsize)
+static uint32_t write_flash_unsupported(uint32_t buf_addr __maybe_unused,
+			uint32_t flash_addr __maybe_unused,
+			uint32_t wsize __maybe_unused)
 {
 	EMSG(
 	"Not execute write.Unsupport device.buf_addr=%x flash_addr=%x wsize=%d",
