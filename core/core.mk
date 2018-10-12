@@ -90,6 +90,7 @@ base-prefix :=
 
 ifeq ($(CFG_CRYPT_HW_CRYPTOENGINE),y)
 core-platform-cflags += -DENABLE_CRYPTOENGINE
+core-platform-cflags += -DDX_CC_TEE -DCRYS_NO_CRYS_COMBINED_SUPPORT
 
 ifeq ($(CFG_CRYPT_ENABLE_CEPKA),y)
 libname = crypto_engine_pka
