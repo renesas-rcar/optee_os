@@ -1343,6 +1343,7 @@ TEE_Result TEE_AEInit(TEE_OperationHandle operation, const void *nonce,
 	if (res != TEE_SUCCESS)
 		goto out;
 
+	operation->buffer_offs = 0U;
 	operation->ae_tag_len = tagLen / 8;
 	operation->info.handleState |= TEE_HANDLE_FLAG_INITIALIZED;
 

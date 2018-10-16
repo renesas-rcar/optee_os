@@ -942,6 +942,10 @@ static void spi_write_record_data(struct spif_record_info *record_info,
 	}
 
 	record_info->record_head.data_len = dpos;
+
+	if (g_record_data_rdesc != NULL) {
+		g_record_data_rdesc = NULL;
+	}
 }
 
 static void spi_get_parent_dir(const char *path, size_t path_len,
