@@ -48,11 +48,11 @@
 #define CFG_TA_RAM_SIZE		(0x01E00000U)	/* TA RAM size		*/
 
 #define CFG_SHMEM_START		(0x47E00000U)	/* Share Memory address	*/
-#define CFG_SHMEM_SIZE		(0x00200000U)	/* Share Memory size	*/
-					/* plus OP-TEE Log Area NS size(1MB) */
+#define CFG_SHMEM_SIZE		(0x00100000U)	/* Share Memory size	*/
 
 #define OPTEE_LOG_BASE		(0x46400000U)	/* OP-TEE Log Area address */
 #define OPTEE_LOG_NS_BASE	(0x47FEC000U)	/* OP-TEE Log Area NS address */
+#define OPTEE_LOG_NS_SIZE	(0x00014000U)   /* OP-TEE Log Area NS size */
 
 #define TA_VERIFICATION_BASE	(0x46200000U)	/* TA area for verification */
 #define TA_VERIFICATION_SIZE	(0x00100000U)	/* TA verification size */
@@ -121,11 +121,9 @@
 #define MEMORY1_EXEC		false
 
 /* LOG Area for Normal World */
-/* Map with CFG_SHMEM_START
-#define MEMORY2_BASE		ROUNDDOWN(OPTEE_LOG_NS_BASE, MEM_SECTION_SIZE)
-*/
-#define MEMORY2_SIZE		(MEM_SECTION_SIZE)
-#define MEMORY2_TYPE		MEM_AREA_IO_NSEC
+#define MEMORY2_BASE		(OPTEE_LOG_NS_BASE)
+#define MEMORY2_SIZE		(OPTEE_LOG_NS_SIZE)
+#define MEMORY2_TYPE		MEM_AREA_RAM_NSEC
 #define MEMORY2_SECURE		false
 #define MEMORY2_CACHED		false
 #define MEMORY2_DEVICE		false
