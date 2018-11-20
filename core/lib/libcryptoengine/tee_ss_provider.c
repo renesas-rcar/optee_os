@@ -980,6 +980,42 @@ static SSError_t ss_buffer_update(void *ctx, uint32_t algo,
 	}
 
 	if (res == SS_SUCCESS) {
+		if ((algo == TEE_ALG_AES_CTR) && (*restBufferSize != 0U)) {
+			if (srcLen >= *restBufferSize) {
+				/* Encrypt/decrypt data from restBuffer first */
+				copySize = *restBufferSize;
+				for (; *restBufferSize > 0; (*restBufferSize)--) {
+					**dstData = *srcUpdateData ^ *restBuffer;
+					restBuffer++;
+					(*dstData)++;
+					srcUpdateData++;
+				}
+				srcLen -= copySize;
+				restBuffer -= copySize;
+			} else {
+				/* When srcLen < *restBufferSize we use only
+				 * gamma from restBuffer */
+				copySize = srcLen;
+				for (; srcLen > 0; srcLen--) {
+					**dstData = *srcUpdateData ^ *restBuffer;
+					restBuffer++;
+					(*dstData)++;
+					srcUpdateData++;
+				}
+				/* Then copy rest of restBuffer to start of
+				 * restBuffer (can't use memcpy because of
+				 * crossing risk) */
+				restBuffer -= copySize;
+				for (; srcLen < *restBufferSize - copySize; srcLen++) {
+					*restBuffer = *(restBuffer + copySize);
+					restBuffer++;
+				}
+				*restBufferSize -= copySize;
+				srcLen = 0;
+				PROV_DMSG("restBufferSize%d.\n", *restBufferSize);
+			}
+		}
+		/* Never will be true for TEE_ALG_AES_CTR after previous if */
 		if (((*restBufferSize + srcLen) > updateBlockSize)
 				&& (*restBufferSize != 0U)) {
 			/* There is not yet input data in context. */
@@ -1027,12 +1063,44 @@ static SSError_t ss_buffer_update(void *ctx, uint32_t algo,
 		}
 		/* Rest data exists ? */
 		if ((res == SS_SUCCESS) && (srcLen > 0U)) {
-			PROV_DMSG("%d byte data can't input to CRYS API.\n",
-					srcLen);
-			(void)memcpy((restBuffer + *restBufferSize),
-					srcUpdateData, srcLen);
-			*restBufferSize += srcLen;
-			PROV_DMSG("restBufferSize%d.\n", *restBufferSize);
+			if (algo != TEE_ALG_AES_CTR) {
+				PROV_DMSG("%d byte data can't input to CRYS API.\n",
+						srcLen);
+				(void)memcpy((restBuffer + *restBufferSize),
+						srcUpdateData, srcLen);
+				*restBufferSize += srcLen;
+				PROV_DMSG("restBufferSize%d.\n", *restBufferSize);
+			} else {
+				/* Encrypt/decrypt rest data for CTR mode ? */
+				PROV_DMSG("%d src data byte data \n", srcLen);
+				(void)memset(restBuffer, 0, updateBlockSize);
+				(void)memcpy(restBuffer, srcUpdateData, srcLen);
+				PROV_DMSG("CALL CRYS Update [algo=%d]\n", crysAlgo);
+				PROV_DMSG("context=%p restBuffer=%p\n", context,
+						restBuffer);
+				PROV_DMSG("updateBlockSize=%d dstData=%p\n",
+						updateBlockSize, *dstData);
+				res = ss_update[crysAlgo](context, restBuffer,
+						updateBlockSize,
+						restBuffer + updateBlockSize,
+						crysRes);
+				PROV_DMSG("Result : 0x%08x\n", res);
+				/* Copy answer */
+				copySize = srcLen;
+				for (; copySize > 0; copySize--) {
+					**dstData = *(restBuffer + updateBlockSize);
+					restBuffer++;
+					(*dstData)++;
+				}
+				/* Copy rest gamma blocks */
+				restBuffer -= srcLen;
+				for (; *restBufferSize < updateBlockSize - srcLen; (*restBufferSize)++) {
+					*restBuffer = *(restBuffer + updateBlockSize + srcLen);
+					restBuffer++;
+				}
+				memset(restBuffer, 0, srcLen + updateBlockSize);
+				PROV_DMSG("restBufferSize%d.\n", *restBufferSize);
+			}
 		}
 	}
 

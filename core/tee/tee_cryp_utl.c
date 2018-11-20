@@ -177,11 +177,7 @@ TEE_Result tee_do_cipher_update(void *ctx, uint32_t algo,
 	if (res != TEE_SUCCESS)
 		return res;
 	if ((len % block_size) != 0) {
-#ifdef CFG_CRYPT_HW_CRYPTOENGINE
-		if (!last_block)
-#else
 		if (!last_block && algo != TEE_ALG_AES_CTR)
-#endif
 			return TEE_ERROR_BAD_PARAMETERS;
 
 		switch (algo) {

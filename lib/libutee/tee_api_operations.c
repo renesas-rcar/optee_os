@@ -136,9 +136,6 @@ TEE_Result TEE_AllocateOperation(TEE_OperationHandle *operation,
 		/* FALLTHROUGH */
 	case TEE_ALG_AES_ECB_NOPAD:
 	case TEE_ALG_AES_CBC_NOPAD:
-#ifdef CFG_CRYPT_HW_CRYPTOENGINE
-	case TEE_ALG_AES_CTR:
-#endif
 	case TEE_ALG_AES_CCM:
 	case TEE_ALG_AES_OFB:
 	case TEE_ALG_DES_ECB_NOPAD:
@@ -150,10 +147,8 @@ TEE_Result TEE_AllocateOperation(TEE_OperationHandle *operation,
 		else
 			block_size = TEE_DES_BLOCK_SIZE;
 		/* FALLTHROUGH */
-	case TEE_ALG_AES_GCM:
-#ifndef CFG_CRYPT_HW_CRYPTOENGINE
 	case TEE_ALG_AES_CTR:
-#endif
+	case TEE_ALG_AES_GCM:
 		if (mode == TEE_MODE_ENCRYPT)
 			req_key_usage = TEE_USAGE_ENCRYPT;
 		else if (mode == TEE_MODE_DECRYPT)
