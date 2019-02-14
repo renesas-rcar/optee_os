@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
- * Copyright (c) 2015-2018, Renesas Electronics Corporation
+ * Copyright (c) 2015-2019, Renesas Electronics Corporation
  */
 
 #ifndef RCAR_COMMON_H
@@ -68,6 +68,8 @@
 #define PRR_CUT_10		(0x00000000U)
 #define PRR_CUT_11		(0x00000001U)
 #define PRR_CUT_20		(0x00000010U)
+#define PRR_CUT_M3_11_OR_12	(0x00000010U)	/* M3 Ver.1.1 or Ver.1.2 */
+#define PRR_CUT_M3_13		(0x00000011U)	/* M3 Ver.1.3 */
 
 /* Fuse Monitor Register */
 #define FUSE_DUMMY5		(0xE60603E8U)	/* Fuse dummy5 */

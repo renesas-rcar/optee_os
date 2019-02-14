@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
- * Copyright (c) 2015-2018, Renesas Electronics Corporation
+ * Copyright (c) 2015-2019, Renesas Electronics Corporation
  */
 
 #include <stdint.h>
@@ -14,8 +14,10 @@
 #include "qspi_flash_common.h"
 #include "hyper_flash_control.h"
 #include "rcar_suspend_to_ram.h"
+#include "rcar_common.h"
 
 uint32_t rpc_clock_mode = RPC_CLK_80M;
+uint32_t phycnt_reg;
 
 static void qspi_hyper_flash_backup_cb(enum suspend_to_ram_state state,
 				uint32_t cpu_id);
@@ -24,6 +26,7 @@ static uint32_t ext_addr_read_mode_flash_unsupported(uint32_t read_ext_top_addr,
 			uint32_t flash_addr, uint8_t *buf, size_t rsize);
 static uint32_t write_flash_unsupported(uint32_t buf_addr,
 					uint32_t flash_addr, uint32_t wsize);
+static uint32_t init_rpc_reg_depends_soc(void);
 static uint32_t init_rpc(void);
 
 static struct flash_control_operations flash_control_ops = {
@@ -46,7 +49,11 @@ uint32_t qspi_hyper_flash_init(void)
 {
 	uint32_t ret;
 
-	ret = init_rpc();
+	ret = init_rpc_reg_depends_soc();
+
+	if (ret == FL_DRV_OK) {
+		ret = init_rpc();
+	}
 
 	if (ret == FL_DRV_OK) {
 		ret = hyper_flash_init(&flash_control_ops);
@@ -233,6 +240,47 @@ static uint32_t write_flash_unsupported(uint32_t buf_addr __maybe_unused,
 		buf_addr, flash_addr, wsize);
 
 	return FL_DRV_ERR_UNSUPPORT_DEV;
+}
+
+static uint32_t init_rpc_reg_depends_soc(void)
+{
+	uint32_t ret = FL_DRV_OK;
+	uint32_t prr_product = product_type & PRR_PRODUCT_MASK;
+
+	/*
+	 *  When PHYCNT Bit31 (CAL) is set to 1,
+	 *  if SoC type is M3 (Ver.1.x), STRTIM [2:0] should be set to 110.
+	 *  If SoC type is H3, M3N, E3, M3 (Ver.3.0 or later),
+	 *  STRTIM [2:0] should be set to 111.
+	 */
+
+	phycnt_reg = 0;
+
+	switch (prr_product) {
+	case PRR_PRODUCT_H3:
+	case PRR_PRODUCT_M3N:
+	case PRR_PRODUCT_E3:
+		/* Set PHYCNT Bit15 (STRTIM[0]) */
+		phycnt_reg = 0x00008000U;
+		break;
+	case PRR_PRODUCT_M3:
+		if ((prr_cut != PRR_CUT_10) &&
+		    (prr_cut != PRR_CUT_M3_11_OR_12) &&
+		    (prr_cut != PRR_CUT_M3_13)) { /*  M3 Ver.3.0 or later */
+			/* Set PHYCNT Bit15 (STRTIM[0]) */
+			phycnt_reg = 0x00008000U;
+		}
+		break;
+	default:
+		ret = FL_DRV_ERR_UNSUPPORT_DEV;
+		EMSG("Unsupported product. PRR_PRODUCT=0x%x", prr_product);
+		break;
+	}
+
+	DMSG("PRR_PRODUCT=0x%x, PRR_CUT=0x%x, phycnt_reg=0x%08x",
+		prr_product, prr_cut, phycnt_reg);
+
+	return ret;
 }
 
 static uint32_t init_rpc(void)

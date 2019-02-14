@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
- * Copyright (c) 2015-2018, Renesas Electronics Corporation
+ * Copyright (c) 2015-2019, Renesas Electronics Corporation
  */
 
 #ifndef QSPI_HYPER_FLASH_COMMON_H
@@ -155,6 +155,7 @@
  * Global variable declaration
  */
 extern uint32_t rpc_clock_mode;
+extern uint32_t phycnt_reg;
 
 struct flash_control_operations {
 	uint32_t (*erase)(uint32_t sector_addr);

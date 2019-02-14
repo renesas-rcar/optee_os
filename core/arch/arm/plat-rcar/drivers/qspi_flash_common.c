@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
- * Copyright (c) 2015-2018, Renesas Electronics Corporation
+ * Copyright (c) 2015-2019, Renesas Electronics Corporation
  */
 
 #include <stdint.h>
@@ -79,7 +79,8 @@ static uint32_t qspi_common_erase_sector(uint32_t manual_set_addr)
 	uint32_t ret;
 	uint32_t status = 0U;
 
-	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80030260U;
+	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80030260U |
+		phycnt_reg;
 	/*
 	 * bit31  CAL         =  1 : PHY calibration
 	 * bit1-0 PHYMEM[1:0] = 00 : QSPI-SDR
@@ -135,7 +136,8 @@ static uint32_t qspi_common_read_device_id(uint32_t *read_device_id)
 	uint32_t ret;
 	uint32_t status = 0U;
 
-	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80030260U;
+	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80030260U |
+		phycnt_reg;
 	/*
 	 * bit31  CAL         =  1 : PHY calibration
 	 * bit1-0 PHYMEM[1:0] = 00 : QSPI-SDR
@@ -198,7 +200,8 @@ uint32_t qspi_common_read_device_status(uint32_t *read_status)
 	uint32_t ret;
 	uint32_t status = 0U;
 
-	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80030260U;
+	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80030260U |
+		phycnt_reg;
 	/*
 	 * bit31  CAL         =  1 : PHY calibration
 	 * bit1-0 PHYMEM[1:0] = 00 : QSPI-SDR
@@ -270,7 +273,8 @@ uint32_t qspi_common_set_command(uint32_t command)
 	uint32_t ret;
 	uint32_t status = 0U;
 
-	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80030260U;
+	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80030260U |
+		phycnt_reg;
 	/*
 	 * bit31  CAL         =  1 : PHY calibration
 	 * bit1-0 PHYMEM[1:0] = 00 : QSPI-SDR
