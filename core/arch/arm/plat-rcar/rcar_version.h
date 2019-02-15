@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
- * Copyright (c) 2015-2018, Renesas Electronics Corporation
+ * Copyright (c) 2015-2019, Renesas Electronics Corporation
  */
 
 #ifndef RCAR_VERSION_H
@@ -8,7 +8,7 @@
 
 #include <stdint.h>
 
-#define VERSION_OF_RENESAS	"2.0.0"
+#define VERSION_OF_RENESAS	"2.0.1"
 
 extern const int8_t version_of_renesas[];
 
