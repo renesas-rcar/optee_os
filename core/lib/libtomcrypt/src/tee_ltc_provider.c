@@ -3336,11 +3336,6 @@ void tomcrypt_arm_neon_disable(struct tomcrypt_arm_neon_state *state)
 TEE_Result hash_sha256_check(const uint8_t *hash, const uint8_t *data,
 		size_t data_size)
 {
-#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
-	TEE_Result res;
-	res = crypto_hw_hash_sha256_check(hash, data, data_size);
-	return res;
-#else
 	hash_state hs;
 	uint8_t digest[TEE_SHA256_HASH_SIZE];
 
@@ -3353,11 +3348,9 @@ TEE_Result hash_sha256_check(const uint8_t *hash, const uint8_t *data,
 	if (buf_compare_ct(digest, hash, sizeof(digest)) != 0)
 		return TEE_ERROR_SECURITY;
 	return TEE_SUCCESS;
-#endif /* CFG_CRYPT_HW_CRYPTOENGINE */
 }
 #endif
 
-#if !defined(CFG_CRYPT_HW_CRYPTOENGINE)
 TEE_Result rng_generate(void *buffer, size_t len)
 {
 #if defined(CFG_WITH_SOFTWARE_PRNG)
@@ -3390,7 +3383,6 @@ TEE_Result rng_generate(void *buffer, size_t len)
 	return get_rng_array(buffer, len);
 #endif
 }
-#endif /* CFG_CRYPT_HW_CRYPTOENGINE */
 
 TEE_Result crypto_aes_expand_enc_key(const void *key, size_t key_len,
 				     void *enc_key, unsigned int *rounds)

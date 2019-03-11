@@ -6051,47 +6051,6 @@ static void ss_backup_cb(enum suspend_to_ram_state state,
 }
 suspend_to_ram_cbfunc(ss_backup_cb);
 
-#if defined(CFG_CRYPTO_SHA256)
-/*
- * brief:	Generate SHA256 from input data and compare it with input digest.
- *
- * param[in]	hash		- HASH data generated from input data.
- * param[in]	data		- Input data address.
- * param[in]    data_size       - Size of input data
- * return	TEE_Result      - TEE Internal API error code.
- */
-TEE_Result crypto_hw_hash_sha256_check(const uint8_t *hash, const uint8_t *data,
-		size_t data_size)
-{
-	TEE_Result ret;
-	uint8_t gen_hash[TEE_SHA256_HASH_SIZE];
-	int32_t mem_ret;
-
-	CRYS_HASHUserContext_t ctx;
-
-	ret = crypto_hw_hash_init(&ctx, TEE_ALG_SHA256);
-
-	if (ret == (TEE_Result)TEE_SUCCESS) {
-		ret = crypto_hw_hash_update(&ctx, TEE_ALG_SHA256, data,
-				data_size);
-	}
-
-	if (ret == (TEE_Result)TEE_SUCCESS) {
-		ret = crypto_hw_hash_final(&ctx, TEE_ALG_SHA256, gen_hash,
-				(size_t)TEE_SHA256_HASH_SIZE);
-	}
-
-	if (ret == (TEE_Result)TEE_SUCCESS) {
-		mem_ret = memcmp(gen_hash, hash, (size_t)TEE_SHA256_HASH_SIZE);
-		if (mem_ret != 0) {
-			ret = (TEE_Result)TEE_ERROR_SECURITY;
-		}
-	}
-
-	return ret;
-}
-#endif /* CFG_CRYPTO_SHA256 */
-
 /*
  * brief:	Initialize of Crypto Engine Secure and PKA engines.
  *

@@ -486,17 +486,6 @@ TEE_Result crypto_hw_rng_read(void *outPtr, size_t outSize);
 TEE_Result crypto_hw_rng_add_entropy(const uint8_t *inbuf, size_t len);
 
 /*
- * brief:	Generate SHA256 from input data and compare it with input digest.
- *
- * param[in]	hash		- HASH data generated from input data.
- * param[in]	data		- Input data address.
- * param[in]    data_size       - Size of input data
- * return	TEE_Result      - TEE Internal API error code.
- */
-TEE_Result crypto_hw_hash_sha256_check(const uint8_t *hash, const uint8_t *data,
-		size_t data_size);
-
-/*
  * brief:	Sign by the ECC (FIPS 186-4 ANSI X9.62)
  *
  * param[in]	*key		- Pointer to the struct of the ECC key pair.
