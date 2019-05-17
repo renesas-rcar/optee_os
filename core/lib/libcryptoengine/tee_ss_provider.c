@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
- * Copyright (c) 2015-2018, Renesas Electronics Corporation
+ * Copyright (c) 2015-2019, Renesas Electronics Corporation
  */
 
 #include <initcall.h>
@@ -1780,6 +1780,10 @@ TEE_Result crypto_hw_acipher_gen_rsa_key(struct rsa_keypair *key,
 		}
 	}
 
+	if (res != SS_SUCCESS) {
+		res = SS_ERROR_BAD_PARAMETERS;
+	}
+
 	mp_clear_multi(tmp1,tmp2,NULL);
 	ss_free((void*)pubExp_ptr);
 	ss_free((void*)pCcUserPrivKey);
@@ -2015,6 +2019,8 @@ TEE_Result crypto_hw_acipher_rsanopad_encrypt(struct rsa_public_key *key,
 		in_ptr = (uint8_t *)ss_calloc(1U, in_len, &res);
 		if(res == SS_SUCCESS){
 			(void)memcpy(in_ptr, src, src_len);
+		} else {
+			res = SS_ERROR_GENERIC;
 		}
 		data_ptr = in_ptr;
 		data_len = (uint16_t)src_len;
@@ -2023,6 +2029,9 @@ TEE_Result crypto_hw_acipher_rsanopad_encrypt(struct rsa_public_key *key,
 	if (res == SS_SUCCESS) {
 		out_len = in_len;
 		out_ptr = (uint8_t *)ss_calloc(1U,out_len, &res);
+		if (res != SS_SUCCESS) {
+			res = SS_ERROR_OUT_OF_MEMORY;
+		}
 	}
 
 
@@ -2030,18 +2039,30 @@ TEE_Result crypto_hw_acipher_rsanopad_encrypt(struct rsa_public_key *key,
 		PROV_DMSG("CALL: ss_malloc(CRYS_RSAPrimeData_t)\n");
 		primeData_ptr = (CRYS_RSAPrimeData_t *)ss_malloc(
 				sizeof(CRYS_RSAPrimeData_t), &res);
+		if (res != SS_SUCCESS) {
+			res = SS_ERROR_GENERIC;
+		}
 	}
 
 	mutex_lock(&secure_asymm_mutex);
 	if (res == SS_SUCCESS) {
 		PROV_DMSG("CALL: ss_build_pub_key()\n");
 		res = ss_build_pub_key(&userPubKey_ptr, key);
+		if (res != SS_SUCCESS) {
+			res = SS_ERROR_GENERIC;
+		}
 	}
 	if (res == SS_SUCCESS) {
 		PROV_DMSG("CALL: CRYS_RSA_PRIM_Encrypt()\n");
 		crys_res = CRYS_RSA_PRIM_Encrypt(userPubKey_ptr, primeData_ptr,
 				data_ptr, data_len, out_ptr);
-		res = ss_translate_error_crys2ss_rsa(crys_res);
+		if (crys_res == (CRYSError_t)CRYS_OK) {
+			res = SS_SUCCESS;
+		} else if (crys_res == CRYS_RSA_INVALID_MESSAGE_VAL) {
+			res = SS_ERROR_BAD_PARAMETERS;
+		} else {
+			res = SS_ERROR_GENERIC;
+		}
 		PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n",crys_res,res);
 	}
 	mutex_unlock(&secure_asymm_mutex);
@@ -2104,23 +2125,38 @@ TEE_Result crypto_hw_acipher_rsanopad_decrypt(struct rsa_keypair *key,
 
 	blen = bn_num_bytes(key->n);
 	outBuf = (uint8_t *)ss_malloc(blen, &res);
+	if (res != SS_SUCCESS) {
+		res = SS_ERROR_OUT_OF_MEMORY;
+	}
 
 	if (res == SS_SUCCESS) {
 		PROV_DMSG("CALL: ss_malloc(CRYS_RSAPrimeData_t)\n");
 		primeData_ptr = (CRYS_RSAPrimeData_t *)ss_malloc(
 				sizeof(CRYS_RSAPrimeData_t), &res);
+		if (res != SS_SUCCESS) {
+			res = SS_ERROR_GENERIC;
+		}
 	}
 
 	mutex_lock(&secure_asymm_mutex);
 	if (res == SS_SUCCESS) {
 		PROV_DMSG("CALL: ss_build_priv_key()\n");
 		res = ss_build_priv_key(&userPrivKey_ptr, key);
+		if (res != SS_SUCCESS) {
+			res = SS_ERROR_GENERIC;
+		}
 	}
 	if (res == SS_SUCCESS) {
 		PROV_DMSG("CALL: CRYS_RSA_PRIM_Decrypt()\n");
 		crys_res = CRYS_RSA_PRIM_Decrypt(userPrivKey_ptr, primeData_ptr,
 				rsaData_ptr, rsaDataSize, outBuf);
-		res = ss_translate_error_crys2ss_rsa(crys_res);
+		if (crys_res == (CRYSError_t)CRYS_OK) {
+			res = SS_SUCCESS;
+		} else if (crys_res == CRYS_RSA_INVALID_MESSAGE_VAL) {
+			res = SS_ERROR_BAD_PARAMETERS;
+		} else {
+			res = SS_ERROR_GENERIC;
+		}
 		PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n",crys_res,res);
 	}
 	mutex_unlock(&secure_asymm_mutex);
@@ -2249,12 +2285,12 @@ static SSError_t ss_get_rsa_hash(uint32_t algo,
 		*version = CRYS_PKCS1_VER21;
 		break;
 	default:
-		PROV_EMSG("NOT_SUPPORTED\n");
+		PROV_EMSG("BAD_PARAMETERS\n");
 		*rsa_hashmode = CRYS_RSA_HASH_OpModeLast;
 		*hashSize = 0U;
 		*mgf = CRYS_PKCS1_MGFLast;
 		*version = CRYS_PKCS1_versionLast;
-		res = SS_ERROR_NOT_SUPPORTED;
+		res = SS_ERROR_BAD_PARAMETERS;
 		break;
 	}
 	PROV_DMSG("*rsa_hashmode=0x%08x, *hashSize=0x%08lx,*mgf=0x%08x,*version=0x%08x\n",
@@ -2317,12 +2353,21 @@ TEE_Result crypto_hw_acipher_rsaes_encrypt(uint32_t algo,
 	dataIn_ptr = (uint8_t *)src;
 	dataInSize = (uint16_t)src_len;
 
-	NULL_CHECK_RSA_PUBLIC_KEY(key,res);
+	if (NULL == key) {
+		res = SS_ERROR_GENERIC;
+		PROV_EMSG("GENERIC key is NULL\n");
+	} else {
+		if((NULL == key->e) || (NULL == key->n)) {
+			res = SS_ERROR_GENERIC;
+			PROV_EMSG("GENERIC key menbers are NULL\n");
+		}
+	}
+
 	if (res == SS_SUCCESS) {
 		modulas_size = bn_num_bytes(key->n);
 		if (NULL == dst_len) {
-			res = SS_ERROR_BAD_PARAMETERS;
-			PROV_EMSG("BAD_PARAMETERS(key=%p)\n", key);
+			res = SS_ERROR_GENERIC;
+			PROV_EMSG("GENERIC(key=%p)\n", key);
 		} else {
 			if (*dst_len < modulas_size) {
 				res = SS_ERROR_SHORT_BUFFER;
@@ -2334,11 +2379,17 @@ TEE_Result crypto_hw_acipher_rsaes_encrypt(uint32_t algo,
 	if (res == SS_SUCCESS) {
 		primeData_ptr = (CRYS_RSAPrimeData_t *)ss_malloc(
 				sizeof(CRYS_RSAPrimeData_t), &res);
+		if (res != SS_SUCCESS) {
+			res = SS_ERROR_GENERIC;
+		}
 	}
 
 	mutex_lock(&secure_asymm_mutex);
 	if (res == SS_SUCCESS) {
 		res = ss_build_pub_key(&userPubKey_ptr, key);
+		if (res != SS_SUCCESS) {
+			res = SS_ERROR_GENERIC;
+		}
 	}
 	if (res == SS_SUCCESS) {
 		res = ss_get_rsa_hash((const uint32_t)algo, &hashFunc,
@@ -2357,7 +2408,14 @@ TEE_Result crypto_hw_acipher_rsaes_encrypt(uint32_t algo,
 					primeData_ptr, hashFunc, l, llen, mgf,
 					dataIn_ptr, dataInSize, output_ptr);
 		}
-		res = ss_translate_error_crys2ss_rsa(crys_res);
+		if (crys_res == (CRYSError_t)CRYS_OK) {
+			res = SS_SUCCESS;
+		} else if ((crys_res == CRYS_RSA_INVALID_MESSAGE_DATA_SIZE) ||
+			(crys_res == CRYS_RSA_PKCS1_VER_ARG_ERROR)) {
+			res = SS_ERROR_BAD_PARAMETERS;
+		} else {
+			res = SS_ERROR_GENERIC;
+		}
 		PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n",crys_res,res);
 	}
 	mutex_unlock(&secure_asymm_mutex);
@@ -2435,7 +2493,19 @@ TEE_Result crypto_hw_acipher_rsaes_decrypt(uint32_t algo, struct rsa_keypair *ke
 	dataIn_ptr = (uint8_t *)src;
 	output_ptr = (uint8_t *)dst;
 
-	NULL_CHECK_RSA_KEYPAIR(key,res);
+	if (NULL == key) {
+		res = SS_ERROR_GENERIC;
+		PROV_EMSG("GENERIC key is NULL\n");
+	} else {
+		if((NULL == key->e) || (NULL == key->d) ||
+			(NULL == key->n) || (NULL == key->p) ||
+			(NULL == key->q) || (NULL == key->qp) ||
+			(NULL == key->dp) || (NULL == key->dq)) {
+			res = SS_ERROR_GENERIC;
+			PROV_EMSG("GENERIC key menbers are NULL\n");
+		}
+	}
+
 	if (res == SS_SUCCESS){
 		modulas_size = bn_num_bytes(key->n);
 		if (src_len < 0xFFFFU) {
@@ -2447,8 +2517,8 @@ TEE_Result crypto_hw_acipher_rsaes_decrypt(uint32_t algo, struct rsa_keypair *ke
 	}
 	if (res == SS_SUCCESS){
 		if(dst_len == NULL){
-			res = SS_ERROR_BAD_PARAMETERS;
-			PROV_EMSG("BAD_PARAMETERS(dst_len=%p)\n", key);
+			res = SS_ERROR_GENERIC;
+			PROV_EMSG("GENERIC(dst_len=%p)\n", key);
 		} else {
 			if (*dst_len < 0xFFFFU) {
 				outputSize = (uint16_t)*dst_len;
@@ -2468,11 +2538,17 @@ TEE_Result crypto_hw_acipher_rsaes_decrypt(uint32_t algo, struct rsa_keypair *ke
 	if (res == SS_SUCCESS) {
 		primeData_ptr = (CRYS_RSAPrimeData_t *)ss_malloc(
 				sizeof(CRYS_RSAPrimeData_t), &res);
+		if (res != SS_SUCCESS) {
+			res = SS_ERROR_OUT_OF_MEMORY;
+		}
 	}
 
 	mutex_lock(&secure_asymm_mutex);
 	if (res == SS_SUCCESS) {
 		res = ss_build_priv_key(&userPrivKey_ptr, key);
+		if (res != SS_SUCCESS) {
+			res = SS_ERROR_GENERIC;
+		}
 	}
 	if (res == SS_SUCCESS) {
 		res = ss_get_rsa_hash((const uint32_t)algo, &rsa_hashMode,
@@ -2486,8 +2562,6 @@ TEE_Result crypto_hw_acipher_rsaes_decrypt(uint32_t algo, struct rsa_keypair *ke
 						userPrivKey_ptr, primeData_ptr,
 						dataIn_ptr, dataInSize,
 						output_ptr, &outputSize);
-				res = ss_translate_error_crys2ss_rsa(crys_res);
-				PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n",crys_res,res);
 			} else {
 				*dst_len = modulas_size;
 				res = SS_ERROR_SHORT_BUFFER;
@@ -2502,15 +2576,28 @@ TEE_Result crypto_hw_acipher_rsaes_decrypt(uint32_t algo, struct rsa_keypair *ke
 						rsa_hashMode, l, llen, mgf,
 						dataIn_ptr, dataInSize,
 						output_ptr, &outputSize);
-				res = ss_translate_error_crys2ss_rsa(crys_res);
-				PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n",crys_res,res);
 			} else {
 				*dst_len = modulas_size;
 				res = SS_ERROR_SHORT_BUFFER;
 				PROV_EMSG("SHORT_BUFFER(OAEP)\n");
 			}
 		}
-
+		if (res != SS_ERROR_SHORT_BUFFER){
+			if (crys_res == (CRYSError_t)CRYS_OK) {
+				res = SS_SUCCESS;
+			} else if ((crys_res == CRYS_RSA_PKCS1_VER_ARG_ERROR) ||
+				(crys_res == CRYS_RSA_INVALID_MESSAGE_DATA_SIZE) ||
+				(crys_res == CRYS_RSA_INVALID_MODULUS_SIZE) ||
+				(crys_res == CRYS_RSA_ERROR_IN_DECRYPTED_BLOCK_PARSING) ||
+				(crys_res == CRYS_RSA_15_ERROR_IN_DECRYPTED_DATA_SIZE) ||
+				(crys_res == CRYS_RSA_OAEP_DECODE_ERROR) ||
+				(crys_res == CRYS_RSA_DECRYPT_INVALID_OUTPUT_SIZE)) {
+				res = SS_ERROR_BAD_PARAMETERS;
+			} else {
+				res = SS_ERROR_GENERIC;
+			}
+			PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n",crys_res,res);
+		}
 	}
 	mutex_unlock(&secure_asymm_mutex);
 
@@ -2682,33 +2769,48 @@ TEE_Result crypto_hw_acipher_rsassa_verify(uint32_t algo,
 
 	dataIn_ptr = (uint8_t *)msg;
 	sig_ptr = (uint8_t *)sig;
-	NULL_CHECK_RSA_PUBLIC_KEY(key,res);
+	if (NULL == key) {
+		res = SS_ERROR_SIGNATURE_INVALID;
+		PROV_EMSG("SIGNATURE_INVALID key is NULL\n");
+	} else {
+		if ((NULL == key->e) || (NULL == key->n)) {
+			res = SS_ERROR_SIGNATURE_INVALID;
+			PROV_EMSG("SIGNATURE_INVALID key menbers are NULL\n");
+		}
+	}
 
 	if (res == SS_SUCCESS) {
 		if (salt_len < 0xFFFF) {
 			saltLen = (uint16_t)salt_len;
 		} else {
-			res = SS_ERROR_OVERFLOW;
-			PROV_EMSG("OVERFLOW(salt_len)\n");
+			res = SS_ERROR_SIGNATURE_INVALID;
+			PROV_EMSG("SIGNATURE_INVALID(salt_len)\n");
 		}
 	}
 	if (res == SS_SUCCESS) {
 		if (msg_len < 0xFFFFU) {
 			dataInSize = (uint16_t)msg_len;
 		} else {
-			res = SS_ERROR_OVERFLOW;
-			PROV_EMSG("OVERFLOW(msg_len)\n");
+			res = SS_ERROR_SIGNATURE_INVALID;
+			PROV_EMSG("SIGNATURE_INVALID(msg_len)\n");
 		}
 	}
 	if (res == SS_SUCCESS) {
 		userContext_ptr = (CRYS_RSAPubUserContext_t *)ss_malloc(
 				sizeof(CRYS_RSAPubUserContext_t), &res);
+		if (res != SS_SUCCESS) {
+			res = SS_ERROR_SIGNATURE_INVALID;
+		}
 	}
 
 	mutex_lock(&secure_asymm_mutex);
 	if (res == SS_SUCCESS) {
 		res = ss_build_pub_key(&userPubKey_ptr, key);
+		if (res != SS_SUCCESS) {
+			res = SS_ERROR_SIGNATURE_INVALID;
+		}
 	}
+
 	if (res == SS_SUCCESS) {
 		res = ss_get_rsa_hash((const uint32_t)algo, &rsaHashMode,
 				&hashSize, &mgf, &version);
@@ -2726,7 +2828,11 @@ TEE_Result crypto_hw_acipher_rsassa_verify(uint32_t algo,
 					saltLen, dataIn_ptr, dataInSize,
 					sig_ptr);
 		}
-		res = ss_translate_error_crys2ss_rsa(crys_res);
+		if (crys_res == (CRYSError_t)CRYS_OK) {
+			res = SS_SUCCESS;
+		} else {
+			res = SS_ERROR_SIGNATURE_INVALID;
+		}
 		PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n",crys_res,res);
 	}
 	mutex_unlock(&secure_asymm_mutex);
@@ -2856,6 +2962,10 @@ TEE_Result crypto_hw_acipher_gen_dh_key(struct dh_keypair *key, struct bignum *q
 	if (res == SS_SUCCESS) {
 		res = ss_bn_bin2bn(clientPubKey_ptr, (size_t)clientPubKeySize,
 				key->y);
+	}
+
+	if (res != SS_SUCCESS) {
+		res = SS_ERROR_BAD_PARAMETERS;
 	}
 
 	ss_free((void *)generator_ptr);
@@ -3080,14 +3190,23 @@ TEE_Result crypto_hw_acipher_gen_ecc_key(struct ecc_keypair *key)
 	if (res == SS_SUCCESS) {
 		userpriv_key = (CRYS_ECPKI_UserPrivKey_t *)ss_malloc(
 				sizeof(CRYS_ECPKI_UserPrivKey_t), &res);
+		if (res != SS_SUCCESS) {
+			res = SS_ERROR_BAD_PARAMETERS;
+		}
 	}
 	if (res == SS_SUCCESS) {
 		userpubl_key = (CRYS_ECPKI_UserPublKey_t *)ss_malloc(
 				sizeof(CRYS_ECPKI_UserPublKey_t), &res);
+		if (res != SS_SUCCESS) {
+			res = SS_ERROR_BAD_PARAMETERS;
+		}
 	}
 	if (res == SS_SUCCESS) {
 		temp_buff = (CRYS_ECPKI_KG_TempData_t *)ss_malloc(
 				sizeof(CRYS_ECPKI_KG_TempData_t), &res);
+		if (res != SS_SUCCESS) {
+			res = SS_ERROR_BAD_PARAMETERS;
+		}
 	}
 	if (res == SS_SUCCESS) {
 		res = ss_get_ecc_keysize(key->curve, &domain_id, &key_size_bytes);
@@ -3097,7 +3216,11 @@ TEE_Result crypto_hw_acipher_gen_ecc_key(struct ecc_keypair *key)
 		PROV_DMSG("CALL:  CRYS_ECPKI_GenKeyPair()\n");
 		crys_res = CRYS_ECPKI_GenKeyPair(domain_id, userpriv_key,
 				userpubl_key, temp_buff);
-		res = ss_translate_error_crys2ss_ecc(crys_res);
+		if (crys_res == (CRYSError_t)CRYS_OK) {
+			res = SS_SUCCESS;
+		} else {
+			res = SS_ERROR_BAD_PARAMETERS;
+		}
 		PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n",crys_res,res);
 	}
 	if (res == SS_SUCCESS) {
@@ -3147,7 +3270,7 @@ TEE_Result crypto_hw_acipher_ecc_sign(struct ecc_keypair *key,
 	uint32_t messageSizeInBytes;
 	uint8_t *signatureOut_ptr;
 	uint32_t *signatureOutSize_ptr;
-	uint32_t modulusbytes;
+	uint32_t modulusbytes = 0U;;
 
 	PROV_INMSG("*key=%p, *msg=%p\n", key, msg);
 	PROV_INMSG("msg_len=0x%08lx, *sig=%p, *sig_len=0x%08lx\n", msg_len, sig,
@@ -3169,6 +3292,10 @@ TEE_Result crypto_hw_acipher_ecc_sign(struct ecc_keypair *key,
 	}
 	if (res == SS_SUCCESS) {
 		res = ss_get_ecc_keysize(key->curve, &domain_id, &modulusbytes);
+	}
+	if (*sig_len < (2U * modulusbytes)) {
+		*sig_len = 2U * modulusbytes;
+		res = SS_ERROR_SHORT_BUFFER;
 	}
 
 	if (res == SS_SUCCESS) {
@@ -4904,8 +5031,8 @@ static SSError_t ss_hmac_final(void *ctx, uint32_t algo, uint8_t *digest,
 
 	if (res == SS_SUCCESS) {
 		if (digest_len < (size_t)hmacResultLen) {
-			PROV_EMSG("SHORT_BUFFER(hmacResultLen)\n");
-			res = SS_ERROR_SHORT_BUFFER;
+			PROV_EMSG("BAD_STATE(hmacResultLen)\n");
+			res = SS_ERROR_BAD_STATE;
 		}
 	}
 
@@ -5088,6 +5215,8 @@ TEE_Result crypto_hw_aes_ccm_alloc_ctx(void **ctx)
 			sizeof(SS_AESCCM_Context_t), &ret);
 	if (ret == SS_SUCCESS) {
 		*ctx = ss_ctx;
+	} else {
+		ret = SS_ERROR_OUT_OF_MEMORY;
 	}
 	tee_ret = ss_translate_error_ss2tee(ret);
 
@@ -5217,9 +5346,10 @@ TEE_Result crypto_hw_aes_ccm_init(void *ctx, TEE_OperationMode mode,
 
 	if (res == SS_SUCCESS) {
 		if ((sizeOfT > TEE_CCM_TAG_MAX_LENGTH)
-				|| (sizeOfT < TEE_CCM_TAG_MIN_LENGTH)) {
-			PROV_EMSG("BAD_PARAMETERS(sizeOfT) size\n");
-			res = SS_ERROR_BAD_PARAMETERS;
+				|| (sizeOfT < TEE_CCM_TAG_MIN_LENGTH)
+				|| (sizeOfT % 2U != 0U)) {
+			PROV_EMSG("NOT_SUPPORTED(sizeOfT) size\n");
+			res = SS_ERROR_NOT_SUPPORTED;
 		}
 	}
 
