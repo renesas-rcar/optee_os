@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2014, Linaro Limited
- * Copyright (c) 2018, Renesas Electronics Corporation
+ * Copyright (c) 2018-2019, Renesas Electronics Corporation
  */
 
 #include <assert.h>
@@ -2841,7 +2841,9 @@ TEE_Result crypto_aes_ccm_alloc_ctx(void **ctx_ret)
 	TEE_Result res;
 	void *ctx;
 	res = crypto_hw_aes_ccm_alloc_ctx(&ctx);
-	*ctx_ret = ctx;
+	if (res == TEE_SUCCESS) {
+		*ctx_ret = ctx;
+	}
 	return res;
 #else
 	struct tee_ccm_state *ctx = calloc(1, sizeof(*ctx));

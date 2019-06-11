@@ -2152,7 +2152,8 @@ TEE_Result crypto_hw_acipher_rsanopad_decrypt(struct rsa_keypair *key,
 				rsaData_ptr, rsaDataSize, outBuf);
 		if (crys_res == (CRYSError_t)CRYS_OK) {
 			res = SS_SUCCESS;
-		} else if (crys_res == CRYS_RSA_INVALID_MESSAGE_VAL) {
+		} else if ((crys_res == CRYS_RSA_INVALID_MESSAGE_VAL) ||
+			   (crys_res == CRYS_RSA_INVALID_MESSAGE_DATA_SIZE)){
 			res = SS_ERROR_BAD_PARAMETERS;
 		} else {
 			res = SS_ERROR_GENERIC;
@@ -2591,7 +2592,8 @@ TEE_Result crypto_hw_acipher_rsaes_decrypt(uint32_t algo, struct rsa_keypair *ke
 				(crys_res == CRYS_RSA_ERROR_IN_DECRYPTED_BLOCK_PARSING) ||
 				(crys_res == CRYS_RSA_15_ERROR_IN_DECRYPTED_DATA_SIZE) ||
 				(crys_res == CRYS_RSA_OAEP_DECODE_ERROR) ||
-				(crys_res == CRYS_RSA_DECRYPT_INVALID_OUTPUT_SIZE)) {
+				(crys_res == CRYS_RSA_DECRYPT_INVALID_OUTPUT_SIZE) ||
+				(crys_res == CRYS_RSA_DATA_POINTER_INVALID_ERROR)) {
 				res = SS_ERROR_BAD_PARAMETERS;
 			} else {
 				res = SS_ERROR_GENERIC;
@@ -3270,7 +3272,7 @@ TEE_Result crypto_hw_acipher_ecc_sign(struct ecc_keypair *key,
 	uint32_t messageSizeInBytes;
 	uint8_t *signatureOut_ptr;
 	uint32_t *signatureOutSize_ptr;
-	uint32_t modulusbytes = 0U;;
+	uint32_t modulusbytes = 0U;
 
 	PROV_INMSG("*key=%p, *msg=%p\n", key, msg);
 	PROV_INMSG("msg_len=0x%08lx, *sig=%p, *sig_len=0x%08lx\n", msg_len, sig,
