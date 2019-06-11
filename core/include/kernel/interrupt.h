@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2016, Linaro Limited
- * Copyright (c) 2017, Renesas Electronics Corporation
+ * Copyright (c) 2017-2019, Renesas Electronics Corporation
  */
 #ifndef __KERNEL_INTERRUPT_H
 #define __KERNEL_INTERRUPT_H
@@ -58,5 +58,7 @@ void itr_raise_sgi(size_t it, uint8_t cpu_mask);
  * according to the cpu_mask.
  */
 void itr_set_affinity(size_t it, uint8_t cpu_mask);
+
+void itr_set_all_cpu_mask(uint8_t cpu_mask);
 
 #endif /*__KERNEL_INTERRUPT_H*/

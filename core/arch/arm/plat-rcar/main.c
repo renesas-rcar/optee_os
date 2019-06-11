@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
- * Copyright (c) 2015-2018, Renesas Electronics Corporation
+ * Copyright (c) 2015-2019, Renesas Electronics Corporation
  */
 
 #include <platform_config.h>
@@ -34,9 +34,15 @@ static void main_tee_entry_fast(struct thread_smc_args *args);
 static unsigned long main_cpu_suspend(unsigned long a0, unsigned long a1);
 static unsigned long main_cpu_resume(unsigned long a0, unsigned long a1);
 static void main_fiq(void);
+static void main_hook_gic_add(struct itr_chip *chip, size_t it, uint32_t flags);
 
 static uint32_t suspend_to_ram_save_flag = 0U;
 static uint32_t main_cpu_lock = (uint32_t)SPINLOCK_UNLOCK;
+static uint32_t cpu_on_core_lock = (uint32_t)SPINLOCK_UNLOCK;
+static uint8_t cpu_on_core_bit = 0U;
+static void (*gic_add_ptr_bk)(struct itr_chip *chip, size_t it,
+				uint32_t flags);
+static struct itr_ops main_itr_ops;
 
 static void main_tee_entry_fast(struct thread_smc_args *args)
 {
@@ -94,12 +100,50 @@ static unsigned long main_cpu_resume(unsigned long a0 __unused,
 	return 0U;
 }
 
+void main_secondary_init_gic(void)
+{
+	uint32_t exceptions;
+	uint8_t cpu_mask;
+
+	DMSG("IN cpu_on_core_bit=0x%x, get_core_pos()=%lu",
+					cpu_on_core_bit, get_core_pos());
+	exceptions = cpu_spin_lock_xsave(&cpu_on_core_lock);
+
+	cpu_on_core_bit |= (uint8_t)(0x1U << get_core_pos());
+	cpu_mask = cpu_on_core_bit;
+
+	itr_set_all_cpu_mask(cpu_mask);
+
+	cpu_spin_unlock_xrestore(&cpu_on_core_lock, exceptions);
+	DMSG("OUT cpu_mask=0x%x", cpu_mask);
+}
+
+static unsigned long main_cpu_off(unsigned long a0 __unused,
+				unsigned long a1 __unused)
+{
+	uint32_t exceptions;
+	uint8_t cpu_mask;
+
+	DMSG("IN cpu_on_core_bit=0x%x, get_core_pos()=%lu",
+				cpu_on_core_bit, get_core_pos());
+	exceptions = cpu_spin_lock_xsave(&cpu_on_core_lock);
+
+	cpu_on_core_bit &= (0xFFU ^ (uint8_t)(0x1U << get_core_pos()));
+	cpu_mask = cpu_on_core_bit;
+
+	itr_set_all_cpu_mask(cpu_mask);
+
+	cpu_spin_unlock_xrestore(&cpu_on_core_lock, exceptions);
+	DMSG("OUT cpu_mask=0x%x", cpu_mask);
+	return 0;
+}
+
 static const struct thread_handlers handlers = {
 	.std_smc = tee_entry_std,
 	.fast_smc = main_tee_entry_fast,
 	.nintr = main_fiq,
 	.cpu_on = cpu_on_handler,
-	.cpu_off = pm_do_nothing,
+	.cpu_off = main_cpu_off,
 	.cpu_suspend = main_cpu_suspend,
 	.cpu_resume = main_cpu_resume,
 	.system_off = pm_do_nothing,
@@ -175,6 +219,29 @@ void main_init_gic(void)
 	gic_init_base_addr(&gic_data, gicc_base, gicd_base);
 
 	itr_init(&gic_data.chip);
+
+	cpu_on_core_bit = (uint8_t)(0x1U << get_core_pos());
+
+	gic_add_ptr_bk = gic_data.chip.ops->add;
+	main_itr_ops = *gic_data.chip.ops;
+	main_itr_ops.add = main_hook_gic_add;
+	gic_data.chip.ops = (const struct itr_ops *)&main_itr_ops;
+}
+
+static void main_hook_gic_add(struct itr_chip *chip, size_t it, uint32_t flags)
+{
+	uint32_t exceptions;
+	uint8_t cpu_mask;
+
+	DMSG("IN cpu_on_core_bit=0x%x, it=0x%lu", cpu_on_core_bit, it);
+	gic_add_ptr_bk(chip, it, flags);
+
+	exceptions = cpu_spin_lock_xsave(&cpu_on_core_lock);
+	cpu_mask = cpu_on_core_bit;
+	itr_set_affinity(it, cpu_mask);
+
+	cpu_spin_unlock_xrestore(&cpu_on_core_lock, exceptions);
+	DMSG("OUT cpu_mask=0x%x", cpu_mask);
 }
 
 static void main_fiq(void)

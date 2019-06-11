@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2016, Linaro Limited
- * Copyright (c) 2016-2017, Renesas Electronics Corporation
+ * Copyright (c) 2016-2019, Renesas Electronics Corporation
  */
 
 #include <kernel/interrupt.h>
@@ -83,4 +83,13 @@ void itr_raise_sgi(size_t it, uint8_t cpu_mask)
 void itr_set_affinity(size_t it, uint8_t cpu_mask)
 {
 	itr_chip->ops->set_affinity(itr_chip, it, cpu_mask);
+}
+
+void itr_set_all_cpu_mask(uint8_t cpu_mask)
+{
+	struct itr_handler *h;
+
+	SLIST_FOREACH(h, &handlers, link) {
+		itr_chip->ops->set_affinity(itr_chip, h->it, cpu_mask);
+	}
 }
