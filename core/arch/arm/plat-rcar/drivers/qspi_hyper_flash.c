@@ -249,9 +249,8 @@ static uint32_t init_rpc_reg_depends_soc(void)
 
 	/*
 	 *  When PHYCNT Bit31 (CAL) is set to 1,
-	 *  if SoC type is M3 (Ver.1.x), STRTIM [2:0] should be set to 110.
-	 *  If SoC type is H3, M3N, E3, M3 (Ver.3.0 or later),
-	 *  STRTIM [2:0] should be set to 111.
+	 *  if SoC type is M3, STRTIM [2:0] should be set to 110.
+	 *  If SoC type is H3, M3N, E3, STRTIM [2:0] should be set to 111.
 	 */
 
 	phycnt_reg = 0;
@@ -264,12 +263,7 @@ static uint32_t init_rpc_reg_depends_soc(void)
 		phycnt_reg = 0x00008000U;
 		break;
 	case PRR_PRODUCT_M3:
-		if ((prr_cut != PRR_CUT_10) &&
-		    (prr_cut != PRR_CUT_M3_11_OR_12) &&
-		    (prr_cut != PRR_CUT_M3_13)) { /*  M3 Ver.3.0 or later */
-			/* Set PHYCNT Bit15 (STRTIM[0]) */
-			phycnt_reg = 0x00008000U;
-		}
+		/* nothing to do */
 		break;
 	default:
 		ret = FL_DRV_ERR_UNSUPPORT_DEV;
