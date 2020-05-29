@@ -674,6 +674,11 @@ struct mobj *thread_rpc_alloc_global_payload(size_t size);
  */
 void thread_rpc_free_global_payload(struct mobj *mobj);
 
+#if defined(PLATFORM_RCAR)
+TEE_Result thread_hw_wait_cmd(const TEE_Time *base_time, uint32_t timeout,
+			uint32_t wait, uint32_t delay);
+#endif /* PLATFORM_RCAR */
+
 #endif /*__ASSEMBLER__*/
 
 #endif /*KERNEL_THREAD_H*/

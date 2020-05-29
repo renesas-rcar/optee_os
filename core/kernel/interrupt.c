@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2016-2019, Linaro Limited
+ * Copyright (c) 2016-2019, Renesas Electronics Corporation
  */
 
 #include <kernel/interrupt.h>
@@ -57,6 +58,11 @@ void itr_add(struct itr_handler *h)
 	SLIST_INSERT_HEAD(&handlers, h, link);
 }
 
+void itr_del(struct itr_handler *h)
+{
+	SLIST_REMOVE(&handlers, h, itr_handler, link);
+}
+
 void itr_enable(size_t it)
 {
 	itr_chip->ops->enable(itr_chip, it);
@@ -86,4 +92,13 @@ void itr_set_affinity(size_t it, uint8_t cpu_mask)
 void __weak __noreturn itr_core_handler(void)
 {
 	panic("Secure interrupt handler not defined");
+}
+
+void itr_set_all_cpu_mask(uint8_t cpu_mask)
+{
+	struct itr_handler *h;
+
+	SLIST_FOREACH(h, &handlers, link) {
+		itr_chip->ops->set_affinity(itr_chip, h->it, cpu_mask);
+	}
 }

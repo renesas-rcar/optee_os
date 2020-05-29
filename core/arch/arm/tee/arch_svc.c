@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2014, Linaro Limited
+ * Copyright (c) 2016-2017, Renesas Electronics Corporation
  */
 
 #include <arm.h>
@@ -24,6 +25,9 @@
 #include <util.h>
 
 #include "arch_svc_private.h"
+#ifdef PLATFORM_RCAR
+#include <rcar_maskrom.h>
+#endif
 
 #if (TRACE_LEVEL == TRACE_FLOW) && defined(CFG_TEE_CORE_TA_TRACE)
 #define TRACE_SYSCALLS
@@ -117,6 +121,11 @@ static const struct syscall_entry tee_svc_syscall_table[] = {
 	SYSCALL_ENTRY(syscall_not_supported),
 	SYSCALL_ENTRY(syscall_not_supported),
 	SYSCALL_ENTRY(syscall_cache_operation),
+#ifdef PLATFORM_RCAR
+	SYSCALL_ENTRY(syscall_rcar_aes_unwrap),
+	SYSCALL_ENTRY(syscall_rcar_gen_skey_package),
+	SYSCALL_ENTRY(syscall_rcar_asset_unpack),
+#endif
 };
 
 #ifdef TRACE_SYSCALLS

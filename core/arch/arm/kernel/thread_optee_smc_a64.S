@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2019, Linaro Limited
+ * Copyright (c) 2020, Renesas Electronics Corporation
  */
 
 #include <arm64_macros.S>
@@ -72,7 +73,7 @@ LOCAL_FUNC vector_fiq_entry , : , .identity_map
 END_FUNC vector_fiq_entry
 
 LOCAL_FUNC vector_cpu_on_entry , : , .identity_map
-	adr	x16, thread_cpu_on_handler_ptr
+	ldr	x16, =thread_cpu_on_handler_ptr
 	ldr	x16, [x16]
 	ldr	x17, boot_mmu_config + CORE_MMU_CONFIG_LOAD_OFFSET
 	sub	x16, x16, x17
@@ -85,7 +86,7 @@ END_FUNC vector_cpu_on_entry
 
 LOCAL_FUNC vector_cpu_off_entry , : , .identity_map
 	readjust_pc
-	adr	x16, thread_cpu_off_handler_ptr
+	ldr	x16, =thread_cpu_off_handler_ptr
 	ldr	x16, [x16]
 	blr	x16
 	mov	x1, x0
@@ -96,7 +97,7 @@ END_FUNC vector_cpu_off_entry
 
 LOCAL_FUNC vector_cpu_suspend_entry , : , .identity_map
 	readjust_pc
-	adr	x16, thread_cpu_suspend_handler_ptr
+	ldr	x16, =thread_cpu_suspend_handler_ptr
 	ldr	x16, [x16]
 	blr	x16
 	mov	x1, x0
@@ -107,7 +108,7 @@ END_FUNC vector_cpu_suspend_entry
 
 LOCAL_FUNC vector_cpu_resume_entry , : , .identity_map
 	readjust_pc
-	adr	x16, thread_cpu_resume_handler_ptr
+	ldr	x16, =thread_cpu_resume_handler_ptr
 	ldr	x16, [x16]
 	blr	x16
 	mov	x1, x0
@@ -118,7 +119,7 @@ END_FUNC vector_cpu_resume_entry
 
 LOCAL_FUNC vector_system_off_entry , : , .identity_map
 	readjust_pc
-	adr	x16, thread_system_off_handler_ptr
+	ldr	x16, =thread_system_off_handler_ptr
 	ldr	x16, [x16]
 	blr	x16
 	mov	x1, x0
@@ -129,7 +130,7 @@ END_FUNC vector_system_off_entry
 
 LOCAL_FUNC vector_system_reset_entry , : , .identity_map
 	readjust_pc
-	adr	x16, thread_system_reset_handler_ptr
+	ldr	x16, =thread_system_reset_handler_ptr
 	ldr	x16, [x16]
 	blr	x16
 	mov	x1, x0

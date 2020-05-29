@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
+ * Copyright (c) 2016, Renesas Electronics Corporation
  * Copyright (c) 2016, Linaro Limited
  * Copyright (c) 2014, STMicroelectronics International N.V.
  */
@@ -266,6 +267,15 @@ struct core_mmu_phys_mem {
 
 #define phys_mem_map_end \
 	SCATTERED_ARRAY_END(phys_mem_map, struct core_mmu_phys_mem)
+
+#ifdef MMU_EXEC_ATTR_MAPPING
+#define setopt_exec_attr(addr) \
+	static const paddr_t __exec_attr_ ## addr \
+		__used __section("exec_attr_section") = (addr)
+#else
+#define setopt_exec_attr(addr) \
+	static const paddr_t __exec_attr_ ## addr __unused
+#endif
 
 #ifdef CFG_CORE_RESERVED_SHM
 /* Default NSec shared memory allocated from NSec world */

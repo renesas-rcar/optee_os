@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
+ * Copyright (c) 2017-2020, Renesas Electronics Corporation
  */
 
 #include <arm.h>
@@ -817,6 +818,7 @@ bool tee_ta_session_is_cancelled(struct tee_ta_session *s, TEE_Time *curr_time)
 
 static void update_current_ctx(struct thread_specific_data *tsd)
 {
+	uint32_t exceptions = thread_mask_exceptions(THREAD_EXCP_ALL);
 	struct tee_ta_ctx *ctx = NULL;
 	struct tee_ta_session *s = TAILQ_FIRST(&tsd->sess_stack);
 
@@ -835,6 +837,8 @@ static void update_current_ctx(struct thread_specific_data *tsd)
 	 */
 	if (is_user_mode_ctx(ctx) != core_mmu_user_mapping_is_active())
 		panic("unexpected active mapping");
+
+	thread_unmask_exceptions(exceptions);
 }
 
 void tee_ta_push_current_session(struct tee_ta_session *sess)

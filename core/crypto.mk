@@ -17,11 +17,13 @@ CFG_CRYPTO_CBC ?= y
 CFG_CRYPTO_CTR ?= y
 CFG_CRYPTO_CTS ?= y
 CFG_CRYPTO_XTS ?= y
+CFG_CRYPTO_OFB ?= y
 
 # Message authentication codes
 CFG_CRYPTO_HMAC ?= y
 CFG_CRYPTO_CMAC ?= y
 CFG_CRYPTO_CBC_MAC ?= y
+CFG_CRYPTO_XCBC_MAC ?= y
 
 # Hashes
 CFG_CRYPTO_MD5 ?= y

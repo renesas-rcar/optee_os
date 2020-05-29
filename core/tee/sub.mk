@@ -25,7 +25,7 @@ srcs-$(CFG_CRYPTO_PBKDF2) += tee_cryp_pbkdf2.c
 ifeq ($(CFG_WITH_USER_TA),y)
 
 srcs-y += tee_svc.c
-cppflags-tee_svc.c-y += -DTEE_IMPL_VERSION=$(TEE_IMPL_VERSION)
+cppflags-tee_svc.c-y += -DTEE_IMPL_VERSION='$(TEE_IMPL_VERSION)'
 srcs-y += tee_svc_cryp.c
 srcs-y += tee_svc_storage.c
 srcs-$(CFG_RPMB_FS) += tee_rpmb_fs.c
@@ -34,7 +34,7 @@ srcs-$(call cfg-one-enabled,CFG_REE_FS CFG_TEE_CORE_EMBED_INTERNAL_TESTS) += \
 	fs_htree.c
 srcs-$(CFG_REE_FS) += fs_dirfile.c
 srcs-$(CFG_REE_FS) += tee_fs_rpc.c
-srcs-$(call cfg-one-enabled,CFG_REE_FS CFG_RPMB_FS) += tee_fs_rpc_cache.c
+srcs-$(call cfg-one-enabled,CFG_REE_FS CFG_RPMB_FS CFG_STANDALONE_FS) += tee_fs_rpc_cache.c
 srcs-y += tee_fs_key_manager.c
 srcs-y += tee_obj.c
 srcs-y += tee_pobj.c

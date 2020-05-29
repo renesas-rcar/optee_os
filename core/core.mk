@@ -112,6 +112,25 @@ include mk/lib.mk
 endif
 endif #tomcrypt
 
+ifeq ($(CFG_CRYPT_HW_CRYPTOENGINE),y)
+core-platform-cflags += -DENABLE_CRYPTOENGINE
+core-platform-cflags += -DDX_CC_TEE -DCRYS_NO_CRYS_COMBINED_SUPPORT
+
+ifeq ($(CFG_CRYPT_ENABLE_CEPKA),y)
+libname = crypto_engine_pka
+libdir = core/lib/libcryptoengine
+include core/lib/libcryptoengine/libcc.mk
+endif
+
+libname = crypto_engine_secure
+libdir = core/lib/libcryptoengine
+include core/lib/libcryptoengine/libcc.mk
+
+libname = crypto_engine
+libdir = core/lib/libcryptoengine
+include mk/lib.mk
+endif
+
 ifeq ($(CFG_CRYPTOLIB_NAME),mbedtls)
 $(call force,CFG_CRYPTO_RSASSA_NA1,n,not supported by mbedtls)
 libname = tomcrypt

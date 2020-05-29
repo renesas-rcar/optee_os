@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
+ * Copyright (c) 2017-2020, Renesas Electronics Corporation
  */
 #include <stdlib.h>
 #include <string.h>
@@ -121,6 +122,7 @@ TEE_Result TEE_AllocateOperation(TEE_OperationHandle *operation,
 	case TEE_ALG_AES_ECB_NOPAD:
 	case TEE_ALG_AES_CBC_NOPAD:
 	case TEE_ALG_AES_CCM:
+	case TEE_ALG_AES_OFB:
 	case TEE_ALG_DES_ECB_NOPAD:
 	case TEE_ALG_DES_CBC_NOPAD:
 	case TEE_ALG_DES3_ECB_NOPAD:
@@ -249,6 +251,7 @@ TEE_Result TEE_AllocateOperation(TEE_OperationHandle *operation,
 	case TEE_ALG_AES_CBC_MAC_NOPAD:
 	case TEE_ALG_AES_CBC_MAC_PKCS5:
 	case TEE_ALG_AES_CMAC:
+	case TEE_ALG_AES_XCBC_MAC:
 	case TEE_ALG_DES_CBC_MAC_PKCS5:
 	case TEE_ALG_DES3_CBC_MAC_NOPAD:
 	case TEE_ALG_DES3_CBC_MAC_PKCS5:
@@ -741,6 +744,16 @@ void TEE_CopyOperation(TEE_OperationHandle dst_op, TEE_OperationHandle src_op)
 	dst_op->info.handleState = src_op->info.handleState;
 	dst_op->info.keySize = src_op->info.keySize;
 	dst_op->operationState = src_op->operationState;
+
+	if ((src_op->info.operationClass == (uint32_t)TEE_OPERATION_AE)
+		&& ((src_op->info.handleState
+			& (uint32_t)TEE_HANDLE_FLAG_INITIALIZED) != 0U)) {
+		dst_op->ae_tag_len = src_op->ae_tag_len;
+		DMSG("Copy a value of %d byte AE tag length.\n",
+				dst_op->ae_tag_len);
+	} else {
+		DMSG("It is not necessary to copy a Tag length.\n");
+	}
 
 	if (dst_op->buffer_two_blocks != src_op->buffer_two_blocks ||
 	    dst_op->block_size != src_op->block_size)
@@ -1327,6 +1340,7 @@ TEE_Result TEE_AEInit(TEE_OperationHandle operation, const void *nonce,
 	if (res != TEE_SUCCESS)
 		goto out;
 
+	operation->buffer_offs = 0U;
 	operation->ae_tag_len = tagLen / 8;
 	operation->info.handleState |= TEE_HANDLE_FLAG_INITIALIZED;
 

@@ -3,3 +3,7 @@ cscope.*
 out
 .cproject
 .project
+/core/lib/libcryptoengine/libcrypto_engine_pka.a
+/core/lib/libcryptoengine/libcrypto_engine_secure.a
+/core/lib/libcryptoengine/include_secure
+/core/lib/libcryptoengine/include_pka

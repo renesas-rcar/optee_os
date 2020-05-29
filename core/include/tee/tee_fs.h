@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
+ * Copyright (c) 2016-2020, Renesas Electronics Corporation
  */
 
 #ifndef TEE_FS_H
@@ -59,5 +60,10 @@ extern const struct tee_file_operations rpmb_fs_ops;
 TEE_Result tee_rpmb_fs_raw_open(const char *fname, bool create,
 				struct tee_file_handle **fh);
 #endif
+#ifdef CFG_STANDALONE_FS
+extern const struct tee_file_operations standalone_fs_ops;
+#endif
+
+const struct tee_file_operations *file_ops(uint32_t storage_id);
 
 #endif /*TEE_FS_H*/

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
+ * Copyright (c) 2016-2020, Renesas Electronics Corporation
  */
 #include <stdlib.h>
 #include <string.h>
@@ -412,3 +413,29 @@ TEE_Result TEE_CacheInvalidate(char *buf, size_t len)
 {
 	return utee_cache_operation(buf, len, TEE_CACHEINVALIDATE);
 }
+
+TEE_Result RCAR_AesUnwrap(void *srcData, uint32_t srcLen, void *keyData,
+	uint32_t keySize, uint32_t isSecretKey, void *destData, uint32_t *dstLen)
+{
+	DMSG("Call %s\n", __func__);
+	return urcar_aes_unwrap(srcData, srcLen, keyData, keySize, isSecretKey,
+			destData, dstLen);
+}
+
+TEE_Result RCAR_GenSkeyPackage(RCAR_SkeyParams_t *skeyParams,
+		uint8_t *skeyPackageBuf, uint32_t skeyPackageSize)
+{
+	DMSG("Call %s\n", __func__);
+	return urcar_gen_skey_package(skeyParams, skeyPackageBuf, skeyPackageSize);
+}
+
+TEE_Result RCAR_AssetUnpack(uint32_t assetId,
+		uint8_t *pAssetPackage, uint32_t assetPackagLen,
+		uint8_t *pAssetData, uint32_t *pAssetDataLen,
+		uint32_t *pUserData)
+{
+	DMSG("Call %s\n", __func__);
+	return urcar_gen_asset_unpack(assetId, pAssetPackage, assetPackagLen,
+			pAssetData, pAssetDataLen, pUserData);
+}
+

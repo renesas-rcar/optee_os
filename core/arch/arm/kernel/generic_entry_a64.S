@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2015, Linaro Limited
+ * Copyright (c) 2017-2020, Renesas Electronics Corporation
  */
 
 #include <platform_config.h>
@@ -25,7 +26,7 @@
 		cmp	x0, #CFG_TEE_CORE_NB_CORE
 		/* Unsupported CPU, park it before it breaks something */
 		bge	unhandled_cpu
-		adr	x1, stack_tmp_stride
+		ldr	x1, =stack_tmp_stride
 		ldr	w1, [x1]
 		mul	x1, x0, x1
 		adrp	x0, stack_tmp_export
@@ -104,15 +105,15 @@ copy_init:
 	 * [struct boot_embdata + data] : Should be moved to __end, first
 	 * uint32_t tells the length of the struct + data
 	 */
-	adr	x0, __end		/* dst */
-	adr	x1, __data_end		/* src */
+	ldr	x0, =__end		/* dst */
+	ldr	x1, =__data_end		/* src */
 	ldr	w2, [x1]		/* struct boot_embdata::total_len */
 	/* Copy backwards (as memmove) in case we're overlapping */
 	add	x0, x0, x2
 	add	x1, x1, x2
 	adr	x3, cached_mem_end
 	str	x0, [x3]
-	adr	x2, __end
+	ldr	x2, =__end
 
 copy_init:
 	ldp	x3, x4, [x1, #-16]!

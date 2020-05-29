@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
+ * Copyright (c) 2016, Renesas Electronics Corporation
  * Copyright (c) 2014, Linaro Limited
  */
 
@@ -72,6 +73,8 @@
 #define TEE_STORAGE_PRIVATE_RPMB 0x80000100
 /* Was TEE_STORAGE_PRIVATE_SQL, which isn't supported any longer */
 #define TEE_STORAGE_PRIVATE_SQL_RESERVED  0x80000200
+/* Storage is provided by the QSPI/Hyper Flash */
+#define TEE_STORAGE_PRIVATE_STANDALONE 0x80001000
 
 /*
  * Extension of "Memory Access Rights Constants"

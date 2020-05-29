@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2016, Linaro Limited
+ * Copyright (c) 2017, Renesas Electronics Corporation
  */
 
 /*
@@ -59,7 +60,8 @@ TEE_Result tee_fs_rpc_readdir(uint32_t id, struct tee_fs_dir *d,
 			      struct tee_fs_dirent **ent);
 
 struct thread_specific_data;
-#if defined(CFG_WITH_USER_TA) && (defined(CFG_REE_FS) || defined(CFG_RPMB_FS))
+#if defined(CFG_WITH_USER_TA) && (defined(CFG_REE_FS) || defined(CFG_RPMB_FS) \
+	|| defined(CFG_STANDALONE_FS))
 /* Frees the cache of allocated FS RPC memory */
 void tee_fs_rpc_cache_clear(struct thread_specific_data *tsd);
 #else

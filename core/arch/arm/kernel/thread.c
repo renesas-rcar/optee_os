@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
+ * Copyright (c) 2016-2020, Renesas Electronics Corporation
  * Copyright (c) 2016, Linaro Limited
  * Copyright (c) 2014, STMicroelectronics International N.V.
  */
@@ -56,7 +57,11 @@
 #endif /*ARM32*/
 
 #ifdef ARM64
+#ifndef ENABLE_CRYPTOENGINE
 #define STACK_TMP_SIZE		(2048 + STACK_TMP_OFFS)
+#else
+#define STACK_TMP_SIZE		((2048 * 4) + STACK_TMP_OFFS)
+#endif
 #define STACK_THREAD_SIZE	8192
 
 #if TRACE_LEVEL > 0

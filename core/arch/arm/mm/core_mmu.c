@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
+ * Copyright (c) 2017-2020, Renesas Electronics Corporation
  * Copyright (c) 2016, Linaro Limited
  * Copyright (c) 2014, STMicroelectronics International N.V.
  */
@@ -560,6 +561,11 @@ static void verify_special_mem_areas(struct tee_mmap_region *mem_map,
 	}
 }
 
+#ifdef MMU_EXEC_ATTR_MAPPING
+extern const paddr_t __start_exec_attr_section;
+extern const paddr_t __stop_exec_attr_section;
+#endif
+
 static void add_phys_mem(struct tee_mmap_region *memory_map, size_t num_elems,
 			 const struct core_mmu_phys_mem *mem, size_t *last)
 {
@@ -707,7 +713,7 @@ static bool __maybe_unused map_is_pgdir(const struct tee_mmap_region *mm)
 {
 	return mm->region_size == CORE_MMU_PGDIR_SIZE;
 }
-
+#ifndef MMU_DIRECT_MAPPING
 static int cmp_mmap_by_lower_va(const void *a, const void *b)
 {
 	const struct tee_mmap_region *mm_a = a;
@@ -715,6 +721,7 @@ static int cmp_mmap_by_lower_va(const void *a, const void *b)
 
 	return CMP_TRILEAN(mm_a->va, mm_b->va);
 }
+#endif
 
 static void dump_mmap_table(struct tee_mmap_region *memory_map)
 {
@@ -913,6 +920,15 @@ static bool assign_mem_va(vaddr_t tee_ram_va,
 	struct tee_mmap_region *map = NULL;
 	vaddr_t va = tee_ram_va;
 	bool va_is_secure = true;
+#ifdef MMU_DIRECT_MAPPING
+	size_t last;
+	size_t n;
+	vaddr_t ram_higher_va = 0;
+	size_t ram_higher_size = 0;
+#endif
+#ifdef MMU_EXEC_ATTR_MAPPING
+	const paddr_t *exec;
+#endif
 
 	/* Clear eventual previous assignments */
 	for (map = memory_map; !core_mmap_is_end_of_table(map); map++)
@@ -937,6 +953,9 @@ static bool assign_mem_va(vaddr_t tee_ram_va,
 	}
 
 	if (core_mmu_place_tee_ram_at_top(tee_ram_va)) {
+#ifdef MMU_DIRECT_MAPPING
+		panic(); /* Direct Mapping is not supported */
+#endif
 		/*
 		 * Map non-tee ram regions at addresses lower than the tee
 		 * ram region.
@@ -975,6 +994,15 @@ static bool assign_mem_va(vaddr_t tee_ram_va,
 		 */
 		for (map = memory_map; !core_mmap_is_end_of_table(map); map++) {
 			map->attr = core_mmu_type_to_attr(map->type);
+#ifdef MMU_EXEC_ATTR_MAPPING
+			for (exec = &__start_exec_attr_section;
+			     exec < &__stop_exec_attr_section; exec++) {
+				if (map->pa ==
+				    ROUNDDOWN(*exec, CORE_MMU_PGDIR_SIZE)) {
+					map->attr |= TEE_MATTR_PX;
+				}
+			}
+#endif
 			if (map->va)
 				continue;
 
@@ -1000,11 +1028,62 @@ static bool assign_mem_va(vaddr_t tee_ram_va,
 				if (ADD_OVERFLOW(va, offs, &va))
 					return false;
 			}
-
+#ifndef MMU_DIRECT_MAPPING
 			map->va = va;
 			if (ADD_OVERFLOW(va, map->size, &va))
 				return false;
+#else
+			map->va = map->pa;	/* 1-to-1 pa = va mapping */
+			if (map->type < MEM_AREA_IO_NSEC) {
+				if (ram_higher_va < map->va) {
+					ram_higher_va = map->va;
+					ram_higher_size = map->size;
+				} else if ((ram_higher_va == map->pa) && 
+					(ram_higher_size < map->size)) {
+					ram_higher_size = map->size;
+				}
+			}
+#endif
 		}
+#ifdef MMU_DIRECT_MAPPING
+		last = 0;
+		for (map = memory_map; !core_mmap_is_end_of_table(map); map++) {
+			switch (map->type) {
+			case MEM_AREA_RES_VASPACE:
+			case MEM_AREA_SHM_VASPACE:
+			case MEM_AREA_TA_VASPACE:
+				map->va = ram_higher_va + ram_higher_size;
+				ram_higher_va = map->va;
+				ram_higher_size = map->size;
+				break;
+			default:
+				break;
+			}
+			last++;
+		}
+		/*
+		 * The memory map should be sorted by virtual address
+		 * when this function returns. As we're assigning va in
+		 * the oposite direction we need to reverse the list.
+		 */
+		for (n = 0; n < last; n++) {
+			size_t o;
+			size_t min;
+
+			for (min = n, o = n + 1; o < last; o++) {
+				if (memory_map[min].va > memory_map[o].va) {
+					min = o;
+				}
+			}
+			if (n != min) {
+				struct tee_mmap_region r;
+
+				r = memory_map[n];
+				memory_map[n] = memory_map[min];
+				memory_map[min] = r;
+			}
+		}
+#endif
 	}
 
 	return true;
@@ -1130,9 +1209,10 @@ static unsigned long init_mem_map(struct tee_mmap_region *memory_map,
 		panic();
 
 out:
+#ifndef MMU_DIRECT_MAPPING
 	qsort(memory_map, last, sizeof(struct tee_mmap_region),
 	      cmp_mmap_by_lower_va);
-
+#endif
 	dump_mmap_table(memory_map);
 
 	return offs;
@@ -1663,7 +1743,11 @@ void core_mmu_map_region(struct mmu_partition *prtn, struct tee_mmap_region *mm)
 			/* We can map part of the region at current level */
 			core_mmu_get_entry(&tbl_info, idx, NULL, &old_attr);
 			if (old_attr)
+#ifndef MMU_DIRECT_MAPPING
 				panic("Page is already mapped");
+#else
+				return;
+#endif
 
 			core_mmu_set_entry(&tbl_info, idx, paddr, mm->attr);
 			paddr += 1 << tbl_info.shift;
