@@ -113,6 +113,7 @@ endif
 endif #tomcrypt
 
 ifeq ($(CFG_CRYPT_HW_CRYPTOENGINE),y)
+base-prefix :=
 core-platform-cflags += -DENABLE_CRYPTOENGINE
 core-platform-cflags += -DDX_CC_TEE -DCRYS_NO_CRYS_COMBINED_SUPPORT
 

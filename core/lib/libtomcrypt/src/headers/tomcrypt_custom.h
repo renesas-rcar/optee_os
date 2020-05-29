@@ -7,9 +7,16 @@
  * The library is free for all purposes without any express
  * guarantee it works.
  */
+/* 
+ * Copyright (c) 2020, Renesas Electronics Corporation
+ */
 
 #ifndef TOMCRYPT_CUSTOM_H_
 #define TOMCRYPT_CUSTOM_H_
+
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+#define LTC_NO_PROTOTYPES
+#endif
 
 /* macros for various libc functions you can change for embedded targets */
 #ifndef XMALLOC

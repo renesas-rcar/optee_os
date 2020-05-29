@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2014, Linaro Limited
- * Copyright (c) 2018, Renesas Electronics Corporation
+ * Copyright (c) 2018-2020, Renesas Electronics Corporation
  */
 
 #include <crypto/crypto.h>
@@ -265,7 +265,9 @@ static TEE_Result tee_cryp_init(void)
 		EMSG("Failed to initialize crypto API: %#" PRIx32, res);
 		panic();
 	}
+#ifndef CFG_CRYPT_HW_CRYPTOENGINE
 	plat_rng_init();
+#endif
 
 	return TEE_SUCCESS;
 }

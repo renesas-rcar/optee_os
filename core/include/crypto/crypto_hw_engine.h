@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
- * Copyright (c) 2018, Renesas Electronics Corporation
+ * Copyright (c) 2018-2020, Renesas Electronics Corporation
  */
 
 #ifndef __CRYPTO_CRYPTO_HW_ENGINE_H
@@ -12,6 +12,11 @@
 #define SS_HW_NOT_SUPPORT_ALG 0U
 /* This flag notice that it is not an algorithm supported by SS6.3-Secure. */
 #define SS_HW_SUPPORT_ALG 1U
+
+/* This flag indicates that the SW engine is running. */
+#define SS_SW_ENGINE 0U
+/* This flag indicates that the HW engine is running. */
+#define SS_HW_ENGINE 1U
 
 /*
  * brief: This function enables derivation of 128 bit customer keys
@@ -91,6 +96,30 @@ TEE_Result crypto_hw_asset_unpack(uint32_t assetId, uint8_t *pAssetPackage,
 		uint32_t *pAssetDataLen, uint32_t *pUserData);
 
 /* Provide the function to get a context size for cryptographic processing */
+
+/*
+ * brief:   Get current HASH algorithm.
+ *
+ * param[in]    *ctx    - Context to HASH algorithm.
+ * param[out]   *algo   - Current HASH algorithm.
+ */
+void crypto_hw_hash_get_current_algo(void *ctx, uint32_t *algo);
+
+/*
+ * brief:   Get current AES,DES algorithm.
+ *
+ * param[in]    ctx     - Context to AES,DES algorithm.
+ * param[out]   *algo   - Current AES,DES algorithm.
+ */
+void crypto_hw_cipher_get_current_algo(void *ctx, uint32_t *algo);
+
+/*
+ * brief:   Get current HMAC,AES-MAC algorithm.
+ *
+ * param[in]    ctx     - Context to HMAC,AES-MAC algorithm.
+ * param[out]   *algo   - Current HMAC,AES-MAC algorithm.
+ */
+void crypto_hw_mac_get_current_algo(void *ctx, uint32_t *algo);
 
 /*
  * brief: Get context size to HASH algorithm.
@@ -527,6 +556,33 @@ TEE_Result crypto_hw_acipher_ecc_shared_secret(struct ecc_keypair *private_key,
 		unsigned long *secret_len);
 
 /*
+ * brief:   Allocate a context for HASH algorithm.
+ *
+ * param[in]    **ctx     - Pointer to the HASH context.
+ * param[in]    algo      - Cryptographic algorithm.
+ * return   TEE_Result    - TEE Internal API error code.
+ */
+TEE_Result crypto_hw_hash_alloc_ctx(void **ctx, uint32_t algo);
+
+/*
+ * brief:   Allocate a context for AES,DES algorithm.
+ *
+ * param[in]    **ctx     - Pointer to the AES,DES context.
+ * param[in]    algo      - Cryptographic algorithm.
+ * return   TEE_Result    - TEE Internal API error code.
+ */
+TEE_Result crypto_hw_cipher_alloc_ctx(void **ctx, uint32_t algo);
+
+/*
+ * brief:   Allocate a context for HMAC,AES-MAC algorithm.
+ *
+ * param[in]    **ctx     - Pointer to the HMAC,AES-MAC context.
+ * param[in]    algo      - Cryptographic algorithm.
+ * return   TEE_Result    - TEE Internal API error code.
+ */
+TEE_Result crypto_hw_mac_alloc_ctx(void **ctx, uint32_t algo);
+
+/*
  * brief:	Allocate a context for AESCCM algorithm.
  *
  * param[in]	ctx		- Pointer to the AESCCM context.
@@ -621,5 +677,40 @@ TEE_Result crypto_hw_aes_ccm_dec_final(void *ctx, const uint8_t *src_data,
  */
 void crypto_hw_aes_ccm_final(void);
 
+/*
+ * brief: Check the engine running in HASH processing.
+ *
+ * param[in]    *ctx       - Context to HASH algorithm.
+ * param[out]	*engine    - Crypto engine in use.
+ * return	TEE_Result     - TEE internal API error code.
+ */
+TEE_Result crypto_hw_hash_check_current_engine(void *ctx, uint32_t *engine);
+
+/*
+ * brief: Check the engine running in Cipher processing.
+ *
+ * param[in]    *ctx       - Context to Cipher algorithm.
+ * param[out]	*engine    - Crypto engine in use.
+ * return	TEE_Result     - TEE internal API error code.
+ */
+TEE_Result crypto_hw_cipher_check_current_engine(void *ctx, uint32_t *engine);
+
+/*
+ * brief: Check the engine running in MAC processing.
+ *
+ * param[in]    *ctx       - Context to MAC algorithm.
+ * param[out]	*engine    - Crypto engine in use.
+ * return	TEE_Result     - TEE internal API error code.
+ */
+TEE_Result crypto_hw_mac_check_current_engine(void *ctx, uint32_t *engine);
+
+/*
+ * brief: Check the engine running in AESCCM processing.
+ *
+ * param[in]    *ctx       - Context to AESCCM algorithm.
+ * param[out]	*engine    - Crypto engine in use.
+ * return	TEE_Result     - TEE internal API error code.
+ */
+TEE_Result crypto_hw_aes_ccm_check_current_engine(void *ctx, uint32_t *engine);
 
 #endif /* __CRYPTO_CRYPTO_HW_ENGINE_H */

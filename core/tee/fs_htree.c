@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2017, Linaro Limited
- * Copyright (c) 2018, Renesas Electronics Corporation
+ * Copyright (c) 2018-2020, Renesas Electronics Corporation
  */
 
 #include <assert.h>
@@ -452,7 +452,7 @@ static TEE_Result authenc_init(void **ctx_ret, TEE_OperationMode mode,
 	uint8_t *iv;
 #ifdef CFG_CRYPT_HW_CRYPTOENGINE
 	uint8_t *aad_data = NULL;
-	uint8_t *copy_dst;
+	uint8_t *copy_dst = NULL;
 #endif
 
 	if (ni) {
@@ -497,8 +497,7 @@ static TEE_Result authenc_init(void **ctx_ret, TEE_OperationMode mode,
 		copy_dst += TEE_FS_HTREE_FEK_SIZE;
 		(void)memcpy(copy_dst, iv, TEE_FS_HTREE_IV_SIZE);
 
-		res = crypto_authenc_update_aad(ctx, alg, mode, aad_data,
-				aad_len);
+        res = crypto_authenc_update_aad(ctx, mode, aad_data, aad_len);
 		free(aad_data);
 	}
 #else

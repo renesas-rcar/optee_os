@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
- * Copyright (c) 2015-2018, Renesas Electronics Corporation
+ * Copyright (c) 2015-2020, Renesas Electronics Corporation
  */
 
 #ifndef TEE_PROVIDER_COMMON_H
@@ -15,11 +15,13 @@
 #include <utee_defines.h>
 #include <trace.h>
 #include <tee_api_types.h>
+#include <tee_api_defines_extensions.h>
 #include <string_ext.h>
 #include <util.h>
-#include <tomcrypt_mpa.h>
+#include <tomcrypt_mp.h>
 #include <tomcrypt_macros.h>
 #include "include_secure/crys_error.h"
+#include "tomcrypt_private.h"
 /******************************************************************************/
 /* Defines                                                                    */
 /******************************************************************************/

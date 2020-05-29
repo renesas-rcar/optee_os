@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
- * Copyright (c) 2015-2019, Renesas Electronics Corporation
+ * Copyright (c) 2015-2020, Renesas Electronics Corporation
  */
 
 #include <initcall.h>
@@ -8,7 +8,7 @@
 #include <kernel/panic.h>
 #include <rcar_suspend_to_ram.h>
 #include <crypto/crypto.h>
-#include <crypto/aes-ccm.h>
+#include <crypto/crypto_impl.h>
 #include "tee_provider_common.h"
 #include "include_secure/crys.h"
 #include "include_secure/crys_rsa_types.h"
@@ -36,6 +36,7 @@
 #endif
 
 typedef struct {
+    struct crypto_authenc_ctx sw_ctx;
 	CRYS_AESCCM_UserContext_t crys_ctx;
 	CRYSError_t crys_error;
 	uint8_t restBuf[16U];
@@ -45,6 +46,7 @@ typedef struct {
 } SS_AESCCM_Context_t;
 
 typedef struct {
+    struct crypto_cipher_ctx sw_ctx;
 	CRYS_AESUserContext_t crys_ctx;
 	CRYSError_t crys_error;
 	uint8_t restBuf[32U];
@@ -54,6 +56,17 @@ typedef struct {
 } SS_AES_Context_t;
 
 typedef struct {
+    struct crypto_mac_ctx sw_ctx;
+	CRYS_AESUserContext_t crys_ctx;
+	CRYSError_t crys_error;
+	uint8_t restBuf[32U];
+	uint32_t restBufSize;
+	uint32_t blockSize;
+	TEE_OperationMode mode;
+} SS_AES_Context2_t;
+
+typedef struct {
+    struct crypto_cipher_ctx sw_ctx;
 	CRYS_DESUserContext_t crys_ctx;
 	CRYSError_t crys_error;
 	uint8_t restBuf[8U];
@@ -62,20 +75,39 @@ typedef struct {
 } SS_DES_Context_t;
 
 typedef struct {
+    struct crypto_hash_ctx sw_ctx;
 	CRYS_HASHUserContext_t crys_ctx;
 	CRYSError_t crys_error;
 	uint8_t restBuf[128U];
 	uint32_t restBufSize;
 	uint32_t blockSize;
+	uint32_t algo;
 } SS_HASH_Context_t;
 
 typedef struct {
+    struct crypto_mac_ctx sw_ctx;
 	CRYS_HMACUserContext_t crys_ctx;
 	CRYSError_t crys_error;
 	uint8_t restBuf[128U];
 	uint32_t restBufSize;
 	uint32_t blockSize;
 } SS_HMAC_Context_t;
+
+typedef struct {
+    uint32_t algo;
+    union {
+        SS_AES_Context_t aes_ctx;
+        SS_DES_Context_t des_ctx;
+    } u;
+} SS_Cipher_Context_t;
+
+typedef struct {
+    uint32_t algo;
+    union {
+        SS_HMAC_Context_t hmac_ctx;
+        SS_AES_Context2_t aes_ctx;
+    } u;
+} SS_MAC_Context_t;
 
 typedef enum {
 	SS_ALG_AES,
@@ -822,6 +854,7 @@ static SSError_t ss_buffer_update(void *ctx, uint32_t algo,
 	CRYSError_t *crysRes;
 	ss_crys_algo crysAlgo;
 	SS_AES_Context_t *aesCtx;
+	SS_AES_Context2_t *aesCtx2;
 	SS_DES_Context_t *desCtx;
 	SS_HASH_Context_t *hashCtx;
 	SS_HMAC_Context_t *hmacCtx;
@@ -859,6 +892,15 @@ static SSError_t ss_buffer_update(void *ctx, uint32_t algo,
 #if defined(CFG_CRYPTO_XCBC_MAC)
 	case TEE_ALG_AES_XCBC_MAC:
 #endif
+		PROV_DMSG("algo=AES (no CCM)\n");
+		crysAlgo = SS_ALG_AES;
+		aesCtx2 = (SS_AES_Context2_t *)ctx;
+		context = (void *)&aesCtx2->crys_ctx;
+		crysRes = &aesCtx2->crys_error;
+		restBuffer = aesCtx2->restBuf;
+		restBufferSize = &aesCtx2->restBufSize;
+		updateBlockSize = aesCtx2->blockSize;
+		break;
 #if defined(CFG_CRYPTO_ECB)
 	case TEE_ALG_AES_ECB_NOPAD:
 #endif
@@ -1156,6 +1198,7 @@ uint32_t crypto_hw_mac_check_support(uint32_t algo)
 	case TEE_ALG_DES_CBC_MAC_PKCS5:
 	case TEE_ALG_DES3_CBC_MAC_NOPAD:
 	case TEE_ALG_DES3_CBC_MAC_PKCS5:
+	case TEE_ALG_HMAC_SM3:
 		ret = SS_HW_NOT_SUPPORT_ALG;
 		break;
 	default:
@@ -1181,6 +1224,9 @@ uint32_t crypto_hw_cipher_check_support(uint32_t algo)
 	uint32_t ret;
 	switch ((int32_t)algo) {
 	case TEE_ALG_AES_XTS:
+	case TEE_ALG_SM4_ECB_NOPAD:
+	case TEE_ALG_SM4_CBC_NOPAD:
+	case TEE_ALG_SM4_CTR:
 		ret = SS_HW_NOT_SUPPORT_ALG;
 		break;
 	default:
@@ -1358,6 +1404,95 @@ uint32_t crypto_hw_dh_check_support(uint32_t keySize)
  * Message digest functions
  ******************************************************************************/
 
+#ifdef _CFG_CRYPTO_WITH_HASH
+/*
+ * brief: Check the engine running in HASH processing.
+ *
+ * param[in]    *ctx       - Context to HASH algorithm.
+ * param[out]   *engine    - Crypto engine in use.
+ * return   TEE_Result     - TEE internal API error code.
+ */
+TEE_Result crypto_hw_hash_check_current_engine(void *ctx, uint32_t *engine)
+{
+    TEE_Result tee_ret = TEE_SUCCESS;
+	SSError_t res = SS_SUCCESS;
+    SS_HASH_Context_t *hash_ctx = NULL;
+
+    if (ctx != NULL)
+    {
+        hash_ctx = (SS_HASH_Context_t *)ctx;
+        if (hash_ctx->sw_ctx.ops != NULL)
+        {
+            *engine = SS_SW_ENGINE;
+            PROV_DMSG("The engine currently operating in HASH processing is the SW engine.\n");
+        }
+        else
+        {
+            *engine = SS_HW_ENGINE;
+            PROV_DMSG("The engine currently operating in HASH processing is the HW engine.\n");
+        }
+    }
+    else
+    {
+        res = SS_ERROR_BAD_PARAMETERS;
+        PROV_EMSG("BAD_PARAMETERS ctx=%p\n",ctx);
+    }
+
+	tee_ret = ss_translate_error_ss2tee(res);
+    PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n",res,tee_ret);
+    return tee_ret;
+}
+
+/*
+ * brief:	Get current HASH algorithm.
+ *
+ * param[in]	*ctx	- Context to HASH algorithm.
+ * param[out]	*algo  	- Current HASH algorithm.
+ */
+void crypto_hw_hash_get_current_algo(void *ctx, uint32_t *algo)
+{
+    SS_HASH_Context_t *hash_ctx = NULL;
+
+    hash_ctx = (SS_HASH_Context_t *)ctx;
+    *algo = hash_ctx->algo;
+    PROV_DMSG("Current hash algorithm=0x%08x\n", *algo);
+
+    return;
+}
+
+/*
+ * brief:	Allocate a context for HASH algorithm.
+ *
+ * param[in]	ctx	    	- Pointer to the HASH context.
+ * param[in]	algo		- Cryptographic algorithm.
+ * return	TEE_Result	- TEE Internal API error code.
+ */
+TEE_Result crypto_hw_hash_alloc_ctx(void **ctx, uint32_t algo)
+{
+    TEE_Result tee_ret = TEE_SUCCESS;
+    SSError_t ret = SS_SUCCESS;
+    SS_HASH_Context_t *ss_ctx = NULL;
+
+    ss_ctx = (SS_HASH_Context_t *)ss_calloc(1U,
+            sizeof(SS_HASH_Context_t), &ret);
+    if (ret == SS_SUCCESS)
+    {
+        PROV_DMSG("algo = 0x%08x\n", algo);
+        ss_ctx->algo = algo;
+        ss_ctx->sw_ctx.ops = NULL;
+        *ctx = ss_ctx;
+    }
+    else
+    {
+        PROV_EMSG("ERROR SS_ERROR_OUT_OF_MEMORY\n");
+        ret = SS_ERROR_OUT_OF_MEMORY;
+    }
+
+    tee_ret = ss_translate_error_ss2tee(ret);
+    PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n",res,tee_res);
+    return tee_ret;
+}
+
 /*
  * brief:	Get context size to HASH algorithm.
  *
@@ -1365,7 +1500,6 @@ uint32_t crypto_hw_dh_check_support(uint32_t keySize)
  * param[out]	*size		- Size of context to HASH algorithm.
  * return	TEE_Result	- TEE internal API error code.
  */
-#ifdef _CFG_CRYPTO_WITH_HASH
 TEE_Result crypto_hw_hash_get_ctx_size(uint32_t algo, size_t *size)
 {
 	TEE_Result tee_res;
@@ -2210,6 +2344,13 @@ static SSError_t ss_get_rsa_hash(uint32_t algo,
 		*mgf = CRYS_PKCS1_NO_MGF;
 		*version = CRYS_PKCS1_VER15;
 		break;
+    case TEE_ALG_RSASSA_PKCS1_V1_5:
+        PROV_DMSG("algo=TEE_ALG_RSASSA_PKCS1_V1_5");
+        *rsa_hashmode =  CRYS_RSA_After_HASH_NOT_KNOWN_mode;
+        *hashSize = 0U;
+        *mgf = CRYS_PKCS1_NO_MGF;
+        *version = CRYS_PKCS1_VER15;
+        break;
 	case TEE_ALG_RSASSA_PKCS1_V1_5_SHA1:
 		PROV_DMSG("algo=TEE_ALG_RSASSA_PKCS1_V1_5_SHA1");
 		*rsa_hashmode = CRYS_RSA_After_SHA1_mode;
@@ -3618,6 +3759,190 @@ TEE_Result crypto_hw_acipher_ecc_shared_secret(struct ecc_keypair *private_key,
 
 #if defined(_CFG_CRYPTO_WITH_CIPHER)
 /*
+ * brief: Check the engine running in Cipher processing.
+ *
+ * param[in]    *ctx       - Context to Cipher algorithm.
+ * param[out]   *engine    - Crypto engine in use.
+ * return   TEE_Result     - TEE internal API error code.
+ */
+TEE_Result crypto_hw_cipher_check_current_engine(void *ctx, uint32_t *engine)
+{
+    TEE_Result tee_ret = TEE_SUCCESS;
+	SSError_t res = SS_SUCCESS;
+    SS_Cipher_Context_t *cipher_ctx = NULL;
+
+    if (ctx != NULL)
+    {
+        cipher_ctx = (SS_Cipher_Context_t *)ctx;
+        switch (cipher_ctx->algo)
+        {
+#if defined(CFG_CRYPTO_AES)
+#if defined(CFG_CRYPTO_ECB)
+            case TEE_ALG_AES_ECB_NOPAD:
+#endif
+#if defined(CFG_CRYPTO_CBC)
+            case TEE_ALG_AES_CBC_NOPAD:
+#endif
+#if defined(CFG_CRYPTO_CTR)
+            case TEE_ALG_AES_CTR:
+#endif
+#if defined(CFG_CRYPTO_OFB)
+            case TEE_ALG_AES_OFB:
+#endif
+#if defined(CFG_CRYPTO_CTS)
+            case TEE_ALG_AES_CTS:
+#endif
+                if (cipher_ctx->u.aes_ctx.sw_ctx.ops != NULL)
+                {
+                    *engine = SS_SW_ENGINE;
+                    PROV_DMSG("The engine currently operating in cipher processing is the SW engine.\n");
+                }
+                else
+                {
+                    *engine = SS_HW_ENGINE;
+                    PROV_DMSG("The engine currently operating in cipher processing is the HW engine.\n");
+                }
+                break;
+#endif
+#if defined(CFG_CRYPTO_DES)
+#if defined(CFG_CRYPTO_ECB)
+            case TEE_ALG_DES_ECB_NOPAD:
+            case TEE_ALG_DES3_ECB_NOPAD:
+#endif
+#if defined(CFG_CRYPTO_CBC)
+            case TEE_ALG_DES_CBC_NOPAD:
+            case TEE_ALG_DES3_CBC_NOPAD:
+#endif
+                if (cipher_ctx->u.des_ctx.sw_ctx.ops != NULL)
+                {
+                    *engine = SS_SW_ENGINE;
+                    PROV_DMSG("The engine currently operating in cipher processing is the SW engine.\n");
+                }
+                else
+                {
+                    *engine = SS_HW_ENGINE;
+                    PROV_DMSG("The engine currently operating in cipher processing is the HW engine.\n");
+                }
+                break;
+#endif
+            default:
+                *engine = SS_SW_ENGINE;
+                PROV_DMSG("The engine currently operating in cipher processing is the SW engine.\n");
+                break;
+        }
+    }
+    else
+    {
+        res = SS_ERROR_BAD_PARAMETERS;
+        PROV_EMSG("BAD_PARAMETERS ctx=%p\n",ctx);
+    }
+
+	tee_ret = ss_translate_error_ss2tee(res);
+    PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n",res,tee_ret);
+    return tee_ret;
+}
+
+/*
+ * brief:	Get current AES,DES algorithm.
+ *
+ * param[in]	*ctx	- Context to AES,DES algorithm.
+ * param[out]	*algo	- code.Current AES,DES algorithm.
+ */
+void crypto_hw_cipher_get_current_algo(void *ctx, uint32_t *algo)
+{
+    SS_Cipher_Context_t *cipher_ctx = NULL;
+
+    cipher_ctx = (SS_Cipher_Context_t *)ctx;
+    *algo = cipher_ctx->algo;
+    PROV_DMSG("Current cipher algorithm=0x%08x\n", *algo);
+
+    return;
+}
+
+/*
+ * brief:	Allocate a context for AES,DES algorithm.
+ *
+ * param[in]	ctx	    	- Pointer to the AES,DES context.
+ * param[in]	algo		- Cryptographic algorithm.
+ * return	TEE_Result	- TEE Internal API error code.
+ */
+TEE_Result crypto_hw_cipher_alloc_ctx(void **ctx, uint32_t algo)
+{
+    TEE_Result tee_ret = TEE_SUCCESS;
+    SSError_t ret = SS_SUCCESS;
+    SS_Cipher_Context_t *ss_cipher_ctx = NULL;
+
+    PROV_DMSG("algo = 0x%08x\n", algo);
+
+    switch ((int32_t)algo)
+    {
+#if defined(CFG_CRYPTO_AES)
+#if defined(CFG_CRYPTO_ECB)
+        case TEE_ALG_AES_ECB_NOPAD:
+#endif
+#if defined(CFG_CRYPTO_CBC)
+        case TEE_ALG_AES_CBC_NOPAD:
+#endif
+#if defined(CFG_CRYPTO_CTR)
+        case TEE_ALG_AES_CTR:
+#endif
+#if defined(CFG_CRYPTO_OFB)
+        case TEE_ALG_AES_OFB:
+#endif
+#if defined(CFG_CRYPTO_CTS)
+        case TEE_ALG_AES_CTS:
+#endif
+            ss_cipher_ctx = (SS_Cipher_Context_t *)ss_calloc(1U,
+                sizeof(SS_Cipher_Context_t), &ret);
+            if (ret == SS_SUCCESS)
+            {
+                ss_cipher_ctx->algo = algo;
+                ss_cipher_ctx->u.aes_ctx.sw_ctx.ops = NULL;
+                *ctx = ss_cipher_ctx;
+            }
+            else
+            {
+                PROV_EMSG("ERROR SS_ERROR_OUT_OF_MEMORY\n");
+                ret = SS_ERROR_OUT_OF_MEMORY;
+            }
+            break;
+#endif
+#if defined(CFG_CRYPTO_DES)
+#if defined(CFG_CRYPTO_ECB)
+        case TEE_ALG_DES_ECB_NOPAD:
+        case TEE_ALG_DES3_ECB_NOPAD:
+#endif
+#if defined(CFG_CRYPTO_CBC)
+        case TEE_ALG_DES_CBC_NOPAD:
+        case TEE_ALG_DES3_CBC_NOPAD:
+#endif
+            ss_cipher_ctx = (SS_Cipher_Context_t *)ss_calloc(1U,
+                sizeof(SS_Cipher_Context_t), &ret);
+            if (ret == SS_SUCCESS)
+            {
+                ss_cipher_ctx->algo = algo;
+                ss_cipher_ctx->u.des_ctx.sw_ctx.ops = NULL;
+                *ctx = ss_cipher_ctx;
+            }
+            else
+            {
+                PROV_EMSG("ERROR SS_ERROR_OUT_OF_MEMORY\n");
+                ret = SS_ERROR_OUT_OF_MEMORY;
+            }
+            break;
+#endif
+        default:
+            PROV_EMSG("ERROR SS_ERROR_NOT_SUPPORTED\n");
+            ret = SS_ERROR_NOT_SUPPORTED;
+            break;
+    }
+
+    tee_ret = ss_translate_error_ss2tee(ret);
+    PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n",res,tee_res);
+    return tee_ret;
+}
+
+/*
  * brief:	Get context size to AES,DES algorithm.
  *
  * param[in]	algo		- Cryptographic algorithm.
@@ -3646,8 +3971,8 @@ TEE_Result crypto_hw_cipher_get_ctx_size(uint32_t algo, size_t *size)
 #if defined(CFG_CRYPTO_CTS)
 	case TEE_ALG_AES_CTS:
 #endif
-		PROV_DMSG("ctx size = sizeof(SS_AES_Context_t)\n");
-		*size = sizeof(SS_AES_Context_t);
+		PROV_DMSG("ctx size = sizeof(SS_Cipher_Context_t)\n");
+		*size = sizeof(SS_Cipher_Context_t);
 		break;
 #endif
 #if defined(CFG_CRYPTO_DES)
@@ -3659,8 +3984,8 @@ TEE_Result crypto_hw_cipher_get_ctx_size(uint32_t algo, size_t *size)
 	case TEE_ALG_DES_CBC_NOPAD:
 	case TEE_ALG_DES3_CBC_NOPAD:
 #endif
-		PROV_DMSG("ctx size = sizeof(SS_DES_Context_t)\n");
-		*size = sizeof(SS_DES_Context_t);
+		PROV_DMSG("ctx size = sizeof(SS_Cipher_Context_t)\n");
+		*size = sizeof(SS_Cipher_Context_t);
 		break;
 #endif
 	default:
@@ -4012,6 +4337,7 @@ TEE_Result crypto_hw_cipher_init(void *ctx, uint32_t algo,
 		size_t iv_len __maybe_unused)
 {
 	SSError_t res;
+    SS_Cipher_Context_t *ss_cipher_ctx = NULL;
 	PROV_INMSG("*ctx=%p, algo=%d, mode=%d, *key1=%p, key1_len=%ld\n",ctx,algo,mode,key1,key1_len);
 	PROV_INMSG("*iv=%p, *iv_len=%ld\n", iv, iv_len);
 
@@ -4019,6 +4345,8 @@ TEE_Result crypto_hw_cipher_init(void *ctx, uint32_t algo,
 	PROV_DHEXDUMP(key1,key1_len);
 	PROV_DMSG("Input iv\n");
 	PROV_DHEXDUMP(iv,iv_len);
+
+    ss_cipher_ctx = (SS_Cipher_Context_t *)ctx;
 
 	switch ((int32_t)algo) {
 #if defined(CFG_CRYPTO_AES)
@@ -4038,9 +4366,9 @@ TEE_Result crypto_hw_cipher_init(void *ctx, uint32_t algo,
 	case TEE_ALG_AES_CTS:
 #endif
 		PROV_DMSG("Input ctx\n");
-		PROV_DHEXDUMP(ctx,sizeof(SS_AES_Context_t));
+		PROV_DHEXDUMP(&(ss_cipher_ctx->u.aes_ctx),sizeof(SS_AES_Context_t));
 		PROV_DMSG("CALL: ss_aes_init\n");
-		res = ss_aes_init(ctx, algo, mode, key1, key1_len, iv, iv_len);
+		res = ss_aes_init(&(ss_cipher_ctx->u.aes_ctx), algo, mode, key1, key1_len, iv, iv_len);
 		PROV_DMSG("Result: 0x%08x\n",res);
 		break;
 #endif
@@ -4054,7 +4382,7 @@ TEE_Result crypto_hw_cipher_init(void *ctx, uint32_t algo,
 	case TEE_ALG_DES3_CBC_NOPAD:
 #endif
 		PROV_DMSG("CALL: ss_aes_init\n");
-		res = ss_des_init(ctx, algo, mode, key1, key1_len, iv, iv_len);
+		res = ss_des_init(&(ss_cipher_ctx->u.des_ctx), algo, mode, key1, key1_len, iv, iv_len);
 		PROV_DMSG("Result: 0x%08x\n",res);
 		break;
 #endif
@@ -4264,6 +4592,7 @@ TEE_Result crypto_hw_cipher_update(void *ctx, uint32_t algo,
 {
 	TEE_Result tee_res;
 	SSError_t res;
+    SS_Cipher_Context_t *ss_cipher_ctx = NULL;
 
 	PROV_INMSG("*ctx=%p, algo=%d, mode=%d, last_block=%d\n",ctx,algo,mode,last_block);
 	PROV_INMSG("*data=%p, len=%ld, *dst=%p\n",data,len,dst);
@@ -4272,6 +4601,8 @@ TEE_Result crypto_hw_cipher_update(void *ctx, uint32_t algo,
 	PROV_DHEXDUMP(data,len);
 	PROV_DMSG("Input dst data\n");
 	PROV_DHEXDUMP(dst,len);
+
+    ss_cipher_ctx = (SS_Cipher_Context_t *)ctx;
 
 	switch ((int32_t)algo) {
 #if defined(CFG_CRYPTO_AES)
@@ -4292,8 +4623,8 @@ TEE_Result crypto_hw_cipher_update(void *ctx, uint32_t algo,
 #endif
 		PROV_DMSG("CALL: ss_aes_update\n");
 		PROV_DMSG("Input ctx\n");
-		PROV_DHEXDUMP(ctx,sizeof(SS_AES_Context_t));
-		res = ss_aes_update(ctx, algo,last_block, data, len, dst);
+		PROV_DHEXDUMP(&(ss_cipher_ctx->u.aes_ctx),sizeof(SS_AES_Context_t));
+		res = ss_aes_update(&(ss_cipher_ctx->u.aes_ctx), algo,last_block, data, len, dst);
 		PROV_DMSG("Result: 0x%08x\n",res);
 		break;
 #endif
@@ -4308,8 +4639,8 @@ TEE_Result crypto_hw_cipher_update(void *ctx, uint32_t algo,
 #endif
 		PROV_DMSG("CALL: ss_des_update\n");
 		PROV_DMSG("Input ctx\n");
-		PROV_DHEXDUMP(ctx,sizeof(SS_DES_Context_t));
-		res = ss_des_update(ctx, algo, data, len, dst);
+		PROV_DHEXDUMP(&(ss_cipher_ctx->u.des_ctx),sizeof(SS_DES_Context_t));
+		res = ss_des_update(&(ss_cipher_ctx->u.des_ctx), algo, data, len, dst);
 		PROV_DMSG("Result: 0x%08x\n",res);
 		break;
 #endif
@@ -4461,7 +4792,10 @@ static void ss_des_final(void *ctx, uint32_t algo)
  */
 void crypto_hw_cipher_final(void *ctx, uint32_t algo)
 {
+    SS_Cipher_Context_t *ss_cipher_ctx = NULL;
 	PROV_INMSG("*ctx=%p, algo=%d\n",ctx,algo);
+
+    ss_cipher_ctx = (SS_Cipher_Context_t *)ctx;
 
 	switch ((int32_t)algo) {
 #if defined(CFG_CRYPTO_AES)
@@ -4482,8 +4816,8 @@ void crypto_hw_cipher_final(void *ctx, uint32_t algo)
 #endif
 		PROV_DMSG("CALL: ss_aes_final\n");
 		PROV_DMSG("Input ctx\n");
-		PROV_DHEXDUMP(ctx,sizeof(SS_AES_Context_t));
-		ss_aes_final(ctx, algo);
+		PROV_DHEXDUMP(&(ss_cipher_ctx->u.aes_ctx),sizeof(SS_AES_Context_t));
+		ss_aes_final(&(ss_cipher_ctx->u.aes_ctx), algo);
 		break;
 #endif
 #if defined(CFG_CRYPTO_DES)
@@ -4497,8 +4831,8 @@ void crypto_hw_cipher_final(void *ctx, uint32_t algo)
 #endif
 		PROV_DMSG("CALL: ss_des_final\n");
 		PROV_DMSG("Input ctx\n");
-		PROV_DHEXDUMP(ctx,sizeof(SS_DES_Context_t));
-		ss_des_final(ctx, algo);
+		PROV_DHEXDUMP(&(ss_cipher_ctx->u.des_ctx),sizeof(SS_DES_Context_t));
+		ss_des_final(&(ss_cipher_ctx->u.aes_ctx), algo);
 		break;
 #endif
 	case TEE_ALG_DES_CBC_MAC_NOPAD:
@@ -4525,6 +4859,222 @@ void crypto_hw_cipher_final(void *ctx, uint32_t algo)
 
 #if defined(_CFG_CRYPTO_WITH_MAC)
 /*
+ * brief: Check the engine running in MAC processing.
+ *
+ * param[in]    *ctx       - Context to MAC algorithm.
+ * param[out]   *engine    - Crypto engine in use.
+ * return   TEE_Result     - TEE internal API error code.
+ */
+TEE_Result crypto_hw_mac_check_current_engine(void *ctx, uint32_t *engine)
+{
+    TEE_Result tee_ret = TEE_SUCCESS;
+    SSError_t res = SS_SUCCESS;
+    SS_MAC_Context_t *mac_ctx = NULL;
+
+    if (ctx != NULL)
+    {
+        mac_ctx = (SS_MAC_Context_t *)ctx;
+        switch (mac_ctx->algo)
+        {
+#if defined(CFG_CRYPTO_HMAC)
+            case TEE_ALG_HMAC_MD5:
+            case TEE_ALG_HMAC_SHA224:
+            case TEE_ALG_HMAC_SHA1:
+            case TEE_ALG_HMAC_SHA256:
+            case TEE_ALG_HMAC_SHA384:
+            case TEE_ALG_HMAC_SHA512:
+                if (mac_ctx->u.hmac_ctx.sw_ctx.ops != NULL)
+                {
+                    *engine = SS_SW_ENGINE;
+                    PROV_DMSG("The engine currently operating in MAC processing is the SW engine.\n");
+                }
+                else
+                {
+                    *engine = SS_HW_ENGINE;
+                    PROV_DMSG("The engine currently operating in MAC processing is the HW engine.\n");
+                }
+                break;
+#endif
+#if defined(CFG_CRYPTO_CBC_MAC)
+            case TEE_ALG_AES_CBC_MAC_NOPAD:
+            case TEE_ALG_AES_CBC_MAC_PKCS5:
+                if (mac_ctx->u.aes_ctx.sw_ctx.ops != NULL)
+                {
+                    *engine = SS_SW_ENGINE;
+                    PROV_DMSG("The engine currently operating in MAC processing is the SW engine.\n");
+                }
+                else
+                {
+                    *engine = SS_HW_ENGINE;
+                    PROV_DMSG("The engine currently operating in MAC processing is the HW engine.\n");
+                }
+                break;
+#endif
+#if defined(CFG_CRYPTO_CMAC)
+            case TEE_ALG_AES_CMAC:
+                if (mac_ctx->u.aes_ctx.sw_ctx.ops != NULL)
+                {
+                    *engine = SS_SW_ENGINE;
+                    PROV_DMSG("The engine currently operating in MAC processing is the SW engine.\n");
+                }
+                else
+                {
+                    *engine = SS_HW_ENGINE;
+                    PROV_DMSG("The engine currently operating in MAC processing is the HW engine.\n");
+                }
+                break;
+#endif
+#if defined(CFG_CRYPTO_XCBC_MAC)
+            case TEE_ALG_AES_XCBC_MAC:
+                if (mac_ctx->u.aes_ctx.sw_ctx.ops != NULL)
+                {
+                    *engine = SS_SW_ENGINE;
+                    PROV_DMSG("The engine currently operating in MAC processing is the SW engine.\n");
+                }
+                else
+                {
+                    *engine = SS_HW_ENGINE;
+                    PROV_DMSG("The engine currently operating in MAC processing is the HW engine.\n");
+                }
+                break;
+#endif
+            default:
+                *engine = SS_SW_ENGINE;
+                PROV_DMSG("The engine currently operating in cipher processing is the SW engine.\n");
+                break;
+        }
+    }
+    else
+    {
+        res = SS_ERROR_BAD_PARAMETERS;
+        PROV_EMSG("BAD_PARAMETERS ctx=%p\n",ctx);
+    }
+
+    tee_ret = ss_translate_error_ss2tee(res);
+    PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n",res,tee_ret);
+    return tee_ret;
+}
+
+/*
+ * brief:	Get current HMAC,AES-MAC algorithm.
+ *
+ * param[in]	*ctx	- Context to HMAC,AES-MAC algorithm.
+ * param[out]	*algo	- Current HMAC,AES-MAC algorithm.
+ */
+void crypto_hw_mac_get_current_algo(void *ctx, uint32_t *algo)
+{
+    SS_MAC_Context_t *mac_ctx = NULL;
+
+    mac_ctx = (SS_MAC_Context_t *)ctx;
+    *algo = mac_ctx->algo;
+    PROV_DMSG("Current cipher algorithm=0x%08x\n", *algo);
+
+    return;
+}
+
+/*
+ * brief:	Allocate a context for HMAC,AES-MAC algorithm.
+ *
+ * param[in]	ctx	    	- Pointer to the HMAC,AES-MAC context.
+ * param[in]	algo		- Cryptographic algorithm.
+ * return	TEE_Result	- TEE Internal API error code.
+ */
+TEE_Result crypto_hw_mac_alloc_ctx(void **ctx, uint32_t algo)
+{
+    TEE_Result tee_ret = TEE_SUCCESS;
+    SSError_t ret = SS_SUCCESS;
+    SS_MAC_Context_t *ss_mac_ctx = NULL;
+
+    PROV_DMSG("algo = 0x%08x\n", algo);
+
+    switch ((int32_t)algo)
+    {
+#if defined(CFG_CRYPTO_HMAC)
+        case TEE_ALG_HMAC_MD5:
+        case TEE_ALG_HMAC_SHA224:
+        case TEE_ALG_HMAC_SHA1:
+        case TEE_ALG_HMAC_SHA256:
+        case TEE_ALG_HMAC_SHA384:
+        case TEE_ALG_HMAC_SHA512:
+            ss_mac_ctx = (SS_MAC_Context_t *)ss_calloc(1U,
+                sizeof(SS_MAC_Context_t), &ret);
+            if (ret == SS_SUCCESS)
+            {
+                ss_mac_ctx->algo = algo;
+                ss_mac_ctx->u.hmac_ctx.sw_ctx.ops = NULL;
+                *ctx = ss_mac_ctx;
+            }
+            else
+            {
+                PROV_EMSG("ERROR SS_ERROR_OUT_OF_MEMORY\n");
+                ret = SS_ERROR_OUT_OF_MEMORY;
+            }
+            break;
+#endif
+#if defined(CFG_CRYPTO_CBC_MAC)
+        case TEE_ALG_AES_CBC_MAC_NOPAD:
+        case TEE_ALG_AES_CBC_MAC_PKCS5:
+            ss_mac_ctx = (SS_MAC_Context_t *)ss_calloc(1U,
+                sizeof(SS_MAC_Context_t), &ret);
+            if (ret == SS_SUCCESS)
+            {
+                ss_mac_ctx->algo = algo;
+                ss_mac_ctx->u.aes_ctx.sw_ctx.ops = NULL;
+                *ctx = ss_mac_ctx;
+            }
+            else
+            {
+                PROV_EMSG("ERROR SS_ERROR_OUT_OF_MEMORY\n");
+                ret = SS_ERROR_OUT_OF_MEMORY;
+            }
+            break;
+#endif
+#if defined(CFG_CRYPTO_CMAC)
+        case TEE_ALG_AES_CMAC:
+            ss_mac_ctx = (SS_MAC_Context_t *)ss_calloc(1U,
+                sizeof(SS_MAC_Context_t), &ret);
+            if (ret == SS_SUCCESS)
+            {
+                ss_mac_ctx->algo = algo;
+                ss_mac_ctx->u.aes_ctx.sw_ctx.ops = NULL;
+                *ctx = ss_mac_ctx;
+            }
+            else
+            {
+                PROV_EMSG("ERROR SS_ERROR_OUT_OF_MEMORY\n");
+                ret = SS_ERROR_OUT_OF_MEMORY;
+            }
+            break;
+#endif
+#if defined(CFG_CRYPTO_XCBC_MAC)
+        case TEE_ALG_AES_XCBC_MAC:
+            ss_mac_ctx = (SS_MAC_Context_t *)ss_calloc(1U,
+                sizeof(SS_MAC_Context_t), &ret);
+            if (ret == SS_SUCCESS)
+            {
+                ss_mac_ctx->algo = algo;
+                ss_mac_ctx->u.aes_ctx.sw_ctx.ops = NULL;
+                *ctx = ss_mac_ctx;
+            }
+            else
+            {
+                PROV_EMSG("ERROR SS_ERROR_OUT_OF_MEMORY\n");
+                ret = SS_ERROR_OUT_OF_MEMORY;
+            }
+            break;
+#endif
+        default:
+            PROV_EMSG("ERROR SS_ERROR_NOT_SUPPORTED\n");
+            ret = SS_ERROR_NOT_SUPPORTED;
+            break;
+    }
+
+    tee_ret = ss_translate_error_ss2tee(ret);
+    PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n",res,tee_res);
+    return tee_ret;
+}
+
+/*
  * brief:	Get context size to HMAC,AES-MAC algorithm.
  *
  * param[in]	algo		- Cryptographic algorithm.
@@ -4546,27 +5096,27 @@ TEE_Result crypto_hw_mac_get_ctx_size(uint32_t algo, size_t *size)
 	case TEE_ALG_HMAC_SHA256:
 	case TEE_ALG_HMAC_SHA384:
 	case TEE_ALG_HMAC_SHA512:
-		PROV_DMSG("ctx size = sizeof(SS_HMAC_Context_t)\n");
-		*size = sizeof(SS_HMAC_Context_t);
+		PROV_DMSG("ctx size = sizeof(SS_MAC_Context_t)\n");
+		*size = sizeof(SS_MAC_Context_t);
 		break;
 #endif
 #if defined(CFG_CRYPTO_CBC_MAC)
 	case TEE_ALG_AES_CBC_MAC_NOPAD:
 	case TEE_ALG_AES_CBC_MAC_PKCS5:
-		PROV_DMSG("ctx size = sizeof(SS_AES_Context_t)\n");
-		*size = sizeof(SS_AES_Context_t);
+		PROV_DMSG("ctx size = sizeof(SS_MAC_Context_t)\n");
+		*size = sizeof(SS_MAC_Context_t);
 		break;
 #endif
 #if defined(CFG_CRYPTO_CMAC)
 	case TEE_ALG_AES_CMAC:
-		PROV_DMSG("ctx size = sizeof(SS_AES_Context_t)\n");
-		*size = sizeof(SS_AES_Context_t);
+		PROV_DMSG("ctx size = sizeof(SS_MAC_Context_t)\n");
+		*size = sizeof(SS_MAC_Context_t);
 		break;
 #endif
 #if defined(CFG_CRYPTO_XCBC_MAC)
 	case TEE_ALG_AES_XCBC_MAC:
-		PROV_DMSG("ctx size = sizeof(SS_AES_Context_t)\n");
-		*size = sizeof(SS_AES_Context_t);
+		PROV_DMSG("ctx size = sizeof(SS_MAC_Context_t)\n");
+		*size = sizeof(SS_MAC_Context_t);
 		break;
 #endif
 	default:
@@ -4596,7 +5146,7 @@ static SSError_t ss_aesmac_init(void *ctx, uint32_t algo __unused,
 {
 	SSError_t res = SS_SUCCESS;
 	CRYSError_t crys_res;
-	SS_AES_Context_t *ss_ctx;
+	SS_AES_Context2_t *ss_ctx;
 	CRYS_AESUserContext_t *contextID_ptr;
 	CRYS_AES_IvCounter_t ivCounter_ptr = {0U};
 	CRYS_AES_OperationMode_t aesMode;
@@ -4606,8 +5156,8 @@ static SSError_t ss_aesmac_init(void *ctx, uint32_t algo __unused,
 	PROV_INMSG("START: ss_aesmac_init\n");
 
 	if (ctx != NULL) {
-		ss_ctx = (SS_AES_Context_t *)ctx;
-		(void)memset(ss_ctx,0,sizeof(SS_AES_Context_t));
+		ss_ctx = (SS_AES_Context2_t *)ctx;
+		(void)memset(ss_ctx,0,sizeof(SS_AES_Context2_t));
 		ss_ctx->crys_error = SS_SUCCESS;
 		ss_ctx->blockSize = 16U;
 		ss_ctx->restBufSize = 0U;
@@ -4797,9 +5347,13 @@ TEE_Result crypto_hw_mac_init(void *ctx, uint32_t algo, const uint8_t *key,
 {
 	TEE_Result tee_res;
 	SSError_t res;
+    SS_MAC_Context_t *ss_mac_ctx = NULL;
 
 	PROV_INMSG("START: mac_init\n");
 	PROV_DMSG("algo = 0x%08x\n",algo);
+
+    ss_mac_ctx = (SS_MAC_Context_t *)ctx;
+
 	switch ((int32_t)algo) {
 #if defined(CFG_CRYPTO_HMAC)
 	case TEE_ALG_HMAC_MD5:
@@ -4809,26 +5363,26 @@ TEE_Result crypto_hw_mac_init(void *ctx, uint32_t algo, const uint8_t *key,
 	case TEE_ALG_HMAC_SHA384:
 	case TEE_ALG_HMAC_SHA512:
 		PROV_DMSG("CALL:  ss_hmac_init()\n");
-		res = ss_hmac_init(ctx, algo, key, len);
+		res = ss_hmac_init(&(ss_mac_ctx->u.hmac_ctx), algo, key, len);
 		break;
 #endif
 #if defined(CFG_CRYPTO_CBC_MAC)
 	case TEE_ALG_AES_CBC_MAC_NOPAD:
 	case TEE_ALG_AES_CBC_MAC_PKCS5:
 		PROV_DMSG("CALL:  ss_aesmac_init()\n");
-		res = ss_aesmac_init(ctx, algo, key, len);
+		res = ss_aesmac_init(&(ss_mac_ctx->u.aes_ctx), algo, key, len);
 		break;
 #endif
 #if defined(CFG_CRYPTO_CMAC)
 	case TEE_ALG_AES_CMAC:
 		PROV_DMSG("CALL:  ss_aesmac_init()\n");
-		res = ss_aesmac_init(ctx, algo, key, len);
+		res = ss_aesmac_init(&(ss_mac_ctx->u.aes_ctx), algo, key, len);
 		break;
 #endif
 #if defined(CFG_CRYPTO_XCBC_MAC)
 	case TEE_ALG_AES_XCBC_MAC:
 		PROV_DMSG("CALL:  ss_aesmac_init()\n");
-		res = ss_aesmac_init(ctx, algo, key, len);
+		res = ss_aesmac_init(&(ss_mac_ctx->u.aes_ctx), algo, key, len);
 		break;
 #endif
 	default:
@@ -4882,12 +5436,12 @@ static SSError_t ss_aesmac_update(void *ctx, uint32_t algo, const uint8_t *data,
 		size_t len)
 {
 	SSError_t res = SS_SUCCESS;
-	SS_AES_Context_t *ss_ctx;
+	SS_AES_Context2_t *ss_ctx;
 	uint8_t *nullBuf = NULL;
 
 	PROV_INMSG("START: ss_aesmac_update\n");
 
-	CHECK_CONTEXT(res, ss_ctx, SS_AES_Context_t, ctx);
+	CHECK_CONTEXT(res, ss_ctx, SS_AES_Context2_t, ctx);
 
 	if(SS_SUCCESS == res){
 		res = ss_buffer_update(ctx, algo, data, len, &nullBuf);
@@ -4911,8 +5465,11 @@ TEE_Result crypto_hw_mac_update(void *ctx, uint32_t algo, const uint8_t *data,
 {
 	TEE_Result tee_res;
 	SSError_t res;
+    SS_MAC_Context_t *ss_mac_ctx = NULL;
 
 	PROV_INMSG("START: mac_update\n");
+
+    ss_mac_ctx = (SS_MAC_Context_t *)ctx;
 
 	switch ((int32_t)algo) {
 #if defined(CFG_CRYPTO_HMAC)
@@ -4923,7 +5480,7 @@ TEE_Result crypto_hw_mac_update(void *ctx, uint32_t algo, const uint8_t *data,
 	case TEE_ALG_HMAC_SHA384:
 	case TEE_ALG_HMAC_SHA512:
 		PROV_DMSG("CALL: ss_hmac_update()\n");
-		res = ss_hmac_update(ctx, algo, data, len);
+		res = ss_hmac_update(&(ss_mac_ctx->u.hmac_ctx), algo, data, len);
 		break;
 #endif
 #if defined(CFG_CRYPTO_AES)
@@ -4938,7 +5495,7 @@ TEE_Result crypto_hw_mac_update(void *ctx, uint32_t algo, const uint8_t *data,
 	case TEE_ALG_AES_XCBC_MAC:
 #endif
 		PROV_DMSG("CALL: ss_aesmac_update() algo=CMAC\n");
-		res = ss_aesmac_update(ctx, algo, data, len);
+		res = ss_aesmac_update(&(ss_mac_ctx->u.aes_ctx), algo, data, len);
 		break;
 #endif
 	case TEE_ALG_DES_CBC_MAC_NOPAD:
@@ -5075,7 +5632,7 @@ static SSError_t ss_aesmac_final(void *ctx, uint32_t algo, uint8_t *digest, size
 {
 	SSError_t res = SS_SUCCESS;
 	CRYSError_t crys_res;
-	SS_AES_Context_t *ss_ctx;
+	SS_AES_Context2_t *ss_ctx;
 	CRYS_AESUserContext_t *contextID_ptr;
 	uint8_t *dataIn_ptr;
         uint32_t dataInSize;
@@ -5083,7 +5640,7 @@ static SSError_t ss_aesmac_final(void *ctx, uint32_t algo, uint8_t *digest, size
 	PROV_INMSG("START: ss_aesmac_final\n");
 
 	if (ctx != NULL) {
-		ss_ctx = (SS_AES_Context_t *)ctx;
+		ss_ctx = (SS_AES_Context2_t *)ctx;
 	} else {
 		PROV_EMSG("BAD_PARAMETERS(ctx)\n");
 		res = SS_ERROR_BAD_PARAMETERS;
@@ -5141,8 +5698,11 @@ TEE_Result crypto_hw_mac_final(void *ctx, uint32_t algo, uint8_t *digest,
 {
 	TEE_Result tee_res;
 	SSError_t res;
+    SS_MAC_Context_t *ss_mac_ctx = NULL;
 
 	PROV_INMSG("START: mac_final\n");
+
+    ss_mac_ctx = (SS_MAC_Context_t *)ctx;
 
 	switch ((int32_t)algo) {
 #if defined(CFG_CRYPTO_HMAC)
@@ -5153,26 +5713,26 @@ TEE_Result crypto_hw_mac_final(void *ctx, uint32_t algo, uint8_t *digest,
 	case TEE_ALG_HMAC_SHA384:
 	case TEE_ALG_HMAC_SHA512:
 		PROV_DMSG("CALL: ss_hmac_final()\n");
-		res = ss_hmac_final(ctx, algo, digest, digest_len);
+		res = ss_hmac_final(&(ss_mac_ctx->u.hmac_ctx), algo, digest, digest_len);
 		break;
 #endif
 #if defined(CFG_CRYPTO_CBC_MAC)
 	case TEE_ALG_AES_CBC_MAC_PKCS5:
 	case TEE_ALG_AES_CBC_MAC_NOPAD:
 		PROV_DMSG("CALL: ss_aesmac_final() algo=AES_MAC\n");
-		res = ss_aesmac_final(ctx, algo, digest, digest_len);
+		res = ss_aesmac_final(&(ss_mac_ctx->u.aes_ctx), algo, digest, digest_len);
 		break;
 #endif
 #if defined(CFG_CRYPTO_CMAC)
 	case TEE_ALG_AES_CMAC:
 		PROV_DMSG("CALL: ss_aesmac_final() algo=CMAC\n");
-		res = ss_aesmac_final(ctx, algo, digest, digest_len);
+		res = ss_aesmac_final(&(ss_mac_ctx->u.aes_ctx), algo, digest, digest_len);
 		break;
 #endif
 #if defined(CFG_CRYPTO_XCBC_MAC)
 	case TEE_ALG_AES_XCBC_MAC:
 		PROV_DMSG("CALL: ss_aesmac_final() algo=CMAC\n");
-		res = ss_aesmac_final(ctx, algo, digest, digest_len);
+		res = ss_aesmac_final(&(ss_mac_ctx->u.aes_ctx), algo, digest, digest_len);
 		break;
 #endif
 	case TEE_ALG_DES_CBC_MAC_NOPAD:
@@ -5202,6 +5762,44 @@ TEE_Result crypto_hw_mac_final(void *ctx, uint32_t algo, uint8_t *digest,
 
 #if defined(CFG_CRYPTO_CCM)
 /*
+ * brief: Check the engine running in AESCCM processing.
+ *
+ * param[in]    *ctx       - Context to AESCCM algorithm.
+ * param[out]   *engine    - Crypto engine in use.
+ * return   TEE_Result     - TEE internal API error code.
+ */
+TEE_Result crypto_hw_aes_ccm_check_current_engine(void *ctx, uint32_t *engine)
+{
+    TEE_Result tee_ret = TEE_SUCCESS;
+	SSError_t res = SS_SUCCESS;
+    SS_AESCCM_Context_t *aesccm_ctx = NULL;
+
+    if (ctx != NULL)
+    {
+        aesccm_ctx = (SS_AESCCM_Context_t *)ctx;
+        if (aesccm_ctx->sw_ctx.ops != NULL)
+        {
+            *engine = SS_SW_ENGINE;
+            PROV_DMSG("The engine currently operating in AESCCM processing is the SW engine.\n");
+        }
+        else
+        {
+            *engine = SS_HW_ENGINE;
+            PROV_DMSG("The engine currently operating in AESCCM processing is the HW engine.\n");
+        }
+    }
+    else
+    {
+        res = SS_ERROR_BAD_PARAMETERS;
+        PROV_EMSG("BAD_PARAMETERS ctx=%p\n",ctx);
+    }
+
+	tee_ret = ss_translate_error_ss2tee(res);
+    PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n",res,tee_ret);
+    return tee_ret;
+}
+
+/*
  * brief:	Allocate a context for AESCCM algorithm.
  *
  * param[in]	ctx		- Pointer to the AESCCM context.
@@ -5209,20 +5807,27 @@ TEE_Result crypto_hw_mac_final(void *ctx, uint32_t algo, uint8_t *digest,
  */
 TEE_Result crypto_hw_aes_ccm_alloc_ctx(void **ctx)
 {
-	TEE_Result tee_ret;
-	SSError_t ret = SS_SUCCESS;
-	SS_AESCCM_Context_t *ss_ctx;
+    TEE_Result tee_ret = TEE_SUCCESS;
+    SSError_t ret = SS_SUCCESS;
+    SS_AESCCM_Context_t *ss_ctx = NULL;
 
-	ss_ctx = (SS_AESCCM_Context_t *)ss_calloc(1U,
-			sizeof(SS_AESCCM_Context_t), &ret);
-	if (ret == SS_SUCCESS) {
-		*ctx = ss_ctx;
-	} else {
-		ret = SS_ERROR_OUT_OF_MEMORY;
-	}
-	tee_ret = ss_translate_error_ss2tee(ret);
+    ss_ctx = (SS_AESCCM_Context_t *)ss_calloc(1U,
+            sizeof(SS_AESCCM_Context_t), &ret);
+    if (ret == SS_SUCCESS)
+    {
+        PROV_DMSG("algo = 0x%08x\n", algo);
+        ss_ctx->sw_ctx.ops = NULL;
+        *ctx = ss_ctx;
+    }
+    else
+    {
+        PROV_EMSG("ERROR SS_ERROR_OUT_OF_MEMORY\n");
+        ret = SS_ERROR_OUT_OF_MEMORY;
+    }
 
-	return tee_ret;
+    tee_ret = ss_translate_error_ss2tee(ret);
+    PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n", res, tee_res);
+    return tee_ret;
 }
 
 /*

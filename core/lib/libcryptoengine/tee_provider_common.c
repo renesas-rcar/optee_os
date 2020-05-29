@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
- * Copyright (c) 2015-2018, Renesas Electronics Corporation
+ * Copyright (c) 2015-2020, Renesas Electronics Corporation
  */
 
+#include "tee_api_defines.h"
 #include "tee_provider_common.h"
 
 const ErrorTable_t error_tbl[SS_ERROR_LAST_NUM] = {
