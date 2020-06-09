@@ -46,7 +46,9 @@ static struct itr_ops main_itr_ops;
 void tee_entry_fast(struct thread_smc_args *args)
 {
 	DMSG("IN args->a0=0x%lX", args->a0);
-	if (args->a0 == OPTEE_SMC_GET_SHM_CONFIG) {
+	if ((args->a0 == OPTEE_SMC_GET_SHM_CONFIG) &&
+	    (args->a1 == SMC_RCAR_CMD) &
+	    (args->a2 == START_DLOG_OUTPUT)) {
 		is_normal_world_initialized = 1;
 		DMSG("Normal World was initialized");
 	}
@@ -155,13 +157,13 @@ register_phys_mem_pgdir(MEM_AREA_IO_SEC, GICC_BASE, GIC_DIST_REG_SIZE);
 register_phys_mem_pgdir(MEMORY1_TYPE, MEMORY1_BASE, MEMORY1_SIZE);
 #endif
 #ifdef MEMORY2_BASE
-register_phys_mem_pgdir(MEMORY2_TYPE, MEMORY2_BASE, MEMORY2_SIZE);
+register_phys_mem(MEMORY2_TYPE, MEMORY2_BASE, MEMORY2_SIZE);
 #endif
 #ifdef MEMORY3_BASE
 register_phys_mem_pgdir(MEMORY3_TYPE, MEMORY3_BASE, MEMORY3_SIZE);
 #endif
 #ifdef MEMORY4_BASE
-register_phys_mem_pgdir(MEMORY4_TYPE, MEMORY4_BASE, MEMORY4_SIZE);
+register_phys_mem(MEMORY4_TYPE, MEMORY4_BASE, MEMORY4_SIZE);
 #endif
 #ifdef MEMORY5_BASE
 register_phys_mem_pgdir(MEMORY5_TYPE, MEMORY5_BASE, MEMORY5_SIZE);

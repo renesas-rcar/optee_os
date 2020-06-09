@@ -89,6 +89,15 @@
 #define TMSG(...)   trace_printf_helper(TRACE_DEBUG, true, __VA_ARGS__)
 #endif /* RCAR_TEST_LOG */
 
+/*
+ * Define the information of debug log that communicates between Normal
+ * World and Secure World.
+ */
+#define SMC_RCAR_CMD		(12345U)
+
+#define START_DLOG_OUTPUT	(1U)
+
+/* Declaration of global variables */
 extern uint32_t product_type;
 extern const int8_t *product_name;
 extern uint32_t prr_cut;

@@ -1743,11 +1743,7 @@ void core_mmu_map_region(struct mmu_partition *prtn, struct tee_mmap_region *mm)
 			/* We can map part of the region at current level */
 			core_mmu_get_entry(&tbl_info, idx, NULL, &old_attr);
 			if (old_attr)
-#ifndef MMU_DIRECT_MAPPING
 				panic("Page is already mapped");
-#else
-				return;
-#endif
 
 			core_mmu_set_entry(&tbl_info, idx, paddr, mm->attr);
 			paddr += 1 << tbl_info.shift;
