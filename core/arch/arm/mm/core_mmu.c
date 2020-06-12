@@ -561,11 +561,6 @@ static void verify_special_mem_areas(struct tee_mmap_region *mem_map,
 	}
 }
 
-#ifdef MMU_EXEC_ATTR_MAPPING
-extern const paddr_t __start_exec_attr_section;
-extern const paddr_t __stop_exec_attr_section;
-#endif
-
 static void add_phys_mem(struct tee_mmap_region *memory_map, size_t num_elems,
 			 const struct core_mmu_phys_mem *mem, size_t *last)
 {
@@ -926,9 +921,6 @@ static bool assign_mem_va(vaddr_t tee_ram_va,
 	vaddr_t ram_higher_va = 0;
 	size_t ram_higher_size = 0;
 #endif
-#ifdef MMU_EXEC_ATTR_MAPPING
-	const paddr_t *exec;
-#endif
 
 	/* Clear eventual previous assignments */
 	for (map = memory_map; !core_mmap_is_end_of_table(map); map++)
@@ -994,15 +986,6 @@ static bool assign_mem_va(vaddr_t tee_ram_va,
 		 */
 		for (map = memory_map; !core_mmap_is_end_of_table(map); map++) {
 			map->attr = core_mmu_type_to_attr(map->type);
-#ifdef MMU_EXEC_ATTR_MAPPING
-			for (exec = &__start_exec_attr_section;
-			     exec < &__stop_exec_attr_section; exec++) {
-				if (map->pa ==
-				    ROUNDDOWN(*exec, CORE_MMU_PGDIR_SIZE)) {
-					map->attr |= TEE_MATTR_PX;
-				}
-			}
-#endif
 			if (map->va)
 				continue;
 

@@ -86,7 +86,6 @@ endif
 
 core-platform-cflags += -DPLATFORM_RCAR
 core-platform-cflags += -DMMU_DIRECT_MAPPING
-core-platform-cflags += -DMMU_EXEC_ATTR_MAPPING
 
 # Not covered by compile - /core/arch/arm/kernel/trace_ext.c
 WITH_TRACE_EXT := n
