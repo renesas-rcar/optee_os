@@ -1058,7 +1058,7 @@ static SSError_t ss_buffer_update(void *ctx, uint32_t algo,
 			}
 		}
 		/* Never will be true for TEE_ALG_AES_CTR after previous if */
-		if (((*restBufferSize + srcLen) > updateBlockSize)
+		if (((*restBufferSize + srcLen) >= updateBlockSize)
 				&& (*restBufferSize != 0U)) {
 			/* There is not yet input data in context. */
 			copySize = updateBlockSize - *restBufferSize;
