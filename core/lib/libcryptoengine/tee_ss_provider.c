@@ -1027,10 +1027,12 @@ static SSError_t ss_buffer_update(void *ctx, uint32_t algo,
 				/* Encrypt/decrypt data from restBuffer first */
 				copySize = *restBufferSize;
 				for (; *restBufferSize > 0; (*restBufferSize)--) {
-					**dstData = *srcUpdateData ^ *restBuffer;
-					restBuffer++;
-					(*dstData)++;
-					srcUpdateData++;
+					if (NULL != *dstData) {
+						**dstData = *srcUpdateData ^ *restBuffer;
+						restBuffer++;
+						(*dstData)++;
+						srcUpdateData++;
+					}
 				}
 				srcLen -= copySize;
 				restBuffer -= copySize;
@@ -1039,10 +1041,12 @@ static SSError_t ss_buffer_update(void *ctx, uint32_t algo,
 				 * gamma from restBuffer */
 				copySize = srcLen;
 				for (; srcLen > 0; srcLen--) {
-					**dstData = *srcUpdateData ^ *restBuffer;
-					restBuffer++;
-					(*dstData)++;
-					srcUpdateData++;
+					if (NULL != *dstData) {
+						**dstData = *srcUpdateData ^ *restBuffer;
+						restBuffer++;
+						(*dstData)++;
+						srcUpdateData++;
+					}
 				}
 				/* Then copy rest of restBuffer to start of
 				 * restBuffer (can't use memcpy because of
@@ -1485,12 +1489,10 @@ TEE_Result crypto_hw_hash_alloc_ctx(void **ctx, uint32_t algo)
     }
     else
     {
-        PROV_EMSG("ERROR SS_ERROR_OUT_OF_MEMORY\n");
-        ret = SS_ERROR_OUT_OF_MEMORY;
+        PROV_EMSG("ERROR TEE_ERROR_OUT_OF_MEMORY\n");
+        tee_ret = TEE_ERROR_OUT_OF_MEMORY;
     }
 
-    tee_ret = ss_translate_error_ss2tee(ret);
-    PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n",res,tee_res);
     return tee_ret;
 }
 
@@ -5813,12 +5815,10 @@ TEE_Result crypto_hw_aes_ccm_alloc_ctx(void **ctx)
     }
     else
     {
-        PROV_EMSG("ERROR SS_ERROR_OUT_OF_MEMORY\n");
-        ret = SS_ERROR_OUT_OF_MEMORY;
+        PROV_EMSG("ERROR TEE_ERROR_OUT_OF_MEMORY\n");
+        tee_ret = TEE_ERROR_OUT_OF_MEMORY;
     }
 
-    tee_ret = ss_translate_error_ss2tee(ret);
-    PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n", res, tee_res);
     return tee_ret;
 }
 

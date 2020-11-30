@@ -1668,7 +1668,9 @@ static TEE_Result tee_standalone_create(const char *file, size_t file_len,
 		if (fdp != NULL) {
 			*fh_out = (struct tee_file_handle *)fdp;
 		} else {
-			spi_free_rdesc(rdesc);
+			if (rdesc != NULL) {
+				spi_free_rdesc(rdesc);
+			}
 			res = TEE_ERROR_OUT_OF_MEMORY;
 		}
 	}

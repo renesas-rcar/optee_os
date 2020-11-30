@@ -61,16 +61,6 @@ SECTIONS
 		KEEP(*(.version))
 
 		. = ALIGN(8);
-		__suspend_to_ram_backup_start = .;
-		KEEP(*(.suspend_to_ram_backup))
-		__suspend_to_ram_backup_end = .;
-
-		. = ALIGN(8);
-		__suspend_to_ram_backup_num_start = .;
-		KEEP(*(.suspend_to_ram_backup_num))
-		__suspend_to_ram_backup_num_end = .;
-
-		. = ALIGN(8);
 		__suspend_to_ram_cbfunc_start = .;
 		KEEP(*(.suspend_to_ram_cbfunc))
 		__suspend_to_ram_cbfunc_end = .;
