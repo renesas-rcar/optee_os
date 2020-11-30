@@ -108,14 +108,18 @@ void crypto_hash_copy_state(void *dst_ctx, void *src_ctx)
     size_t ctx_size = 0;
     uint32_t algo = 0;
     uint32_t engine = 0;
+    TEE_Result res = TEE_SUCCESS;
 
     if (crypto_hw_hash_check_current_engine(src_ctx, &engine) == TEE_SUCCESS)
     {
         if (engine == SS_HW_ENGINE)
         {
             crypto_hw_hash_get_current_algo(src_ctx, &algo);
-            assert(!crypto_hw_hash_get_ctx_size(algo, &ctx_size));
-            memcpy(dst_ctx, src_ctx, ctx_size);
+            res = crypto_hw_hash_get_ctx_size(algo, &ctx_size);
+            if(res == TEE_SUCCESS)
+            {
+                memcpy(dst_ctx, src_ctx, ctx_size);
+            }
             return;
         }
     }
@@ -301,14 +305,18 @@ void crypto_cipher_copy_state(void *dst_ctx, void *src_ctx)
     size_t ctx_size = 0;
     uint32_t algo = 0;
     uint32_t engine = 0;
+    TEE_Result res = TEE_SUCCESS;
 
     if (crypto_hw_cipher_check_current_engine(src_ctx, &engine) == TEE_SUCCESS)
     {
         if (engine == SS_HW_ENGINE)
         {
             crypto_hw_cipher_get_current_algo(src_ctx, &algo);
-            assert(!crypto_hw_cipher_get_ctx_size(algo, &ctx_size));
-            memcpy(dst_ctx, src_ctx, ctx_size);
+            res = crypto_hw_cipher_get_ctx_size(algo, &ctx_size);
+            if(res == TEE_SUCCESS)
+            {
+                memcpy(dst_ctx, src_ctx, ctx_size);
+            }
             return;
         }
     }
@@ -537,14 +545,18 @@ void crypto_mac_copy_state(void *dst_ctx, void *src_ctx)
     size_t ctx_size = 0;
     uint32_t algo = 0;
     uint32_t engine = 0;
+    TEE_Result res = TEE_SUCCESS;
 
     if (crypto_hw_mac_check_current_engine(src_ctx, &engine) == TEE_SUCCESS)
     {
         if (engine == SS_HW_ENGINE)
         {
             crypto_hw_mac_get_current_algo(src_ctx, &algo);
-            assert(!crypto_hw_mac_get_ctx_size(algo, &ctx_size));
-            memcpy(dst_ctx, src_ctx, ctx_size);
+            res = crypto_hw_mac_get_ctx_size(algo, &ctx_size);
+            if(res == TEE_SUCCESS)
+            {
+                memcpy(dst_ctx, src_ctx, ctx_size);
+            }
             return;
         }
     }
