@@ -243,6 +243,7 @@ do { \
 
 #define CHECK_CRYS_ERROR_AESCCM_BASE		(CRYS_AESCCM_MODULE_ERROR_BASE >> 8U)
 #define CHECK_CRYS_ERROR_AES_BASE		(CRYS_AES_MODULE_ERROR_BASE >> 8U)
+#define CRYS_ECDSA_VERIFY_CALC_SIGNATURE_IS_INVALID		0x00F10824U
 
 /*************** declaration statement ***************/
 /* Provide SS6.3-Secure Driver specific functions */
@@ -802,6 +803,10 @@ SSError_t ss_translate_error_crys2ss_ecc(CRYSError_t err)
 	case CRYS_ECPKI_IS_NOT_SUPPORTED:
 		PROV_DMSG("res = SS_ERROR_NOT_SUPPORTED\n");
 		res = SS_ERROR_NOT_SUPPORTED;
+		break;
+	case CRYS_ECDSA_VERIFY_CALC_SIGNATURE_IS_INVALID:
+		PROV_EMSG("res = SS_ERROR_SIGNATURE_INVALID\n");
+		res = SS_ERROR_SIGNATURE_INVALID;
 		break;
 	default:
 		PROV_DMSG("res = SS_ERROR_BAD_PARAMETERS\n");
@@ -3487,14 +3492,14 @@ TEE_Result crypto_hw_acipher_ecc_sign(struct ecc_keypair *key,
  * param[in]	msg_len		- Size of message data buffer.
  * param[in]	*sig		- Pointer to the signature data buffer.
  * param[in]	*sig_len	- Size of signature data buffer.
- * return	TEE_Result	- TEE internal API error code.
+ * return	SSError_t	- SS provider error code.
  */
 static SSError_t ss_ecc_verify_secure(struct ecc_public_key *key,
 		const uint8_t *msg, size_t msg_len, const uint8_t *sig,
 		size_t sig_len)
 {
 	SSError_t res = SS_SUCCESS;
-	CRYSError_t crys_res;
+	CRYSError_t crys_res = CRYS_OK;
 
 	CRYS_ECPKI_UserPublKey_t *userPublKey_ptr = NULL;
 	CRYS_ECDSA_VerifyUserContext_t *verifyUserContext_ptr = NULL;
