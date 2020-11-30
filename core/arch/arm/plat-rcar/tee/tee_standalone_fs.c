@@ -18,6 +18,7 @@
 #include "tee_standalone_fs.h"
 #include "platform_config.h"
 #include "rcar_common.h"
+#include "rcar_mutex.h"
 
 static struct spim_sector_info g_sector[SURFACE_NUM][SAVE_SECTOR_NUM] __nex_bss;
 static int32_t g_current_surface[SAVE_SECTOR_NUM] __nex_bss;
@@ -399,12 +400,12 @@ static void spi_free_file(char *path)
 
 static void spi_lock(void)
 {
-	mutex_lock(&g_standalone_fs_mutex);
+	rcar_nex_mutex_lock(&g_standalone_fs_mutex);
 }
 
 static void spi_unlock(void)
 {
-	mutex_unlock(&g_standalone_fs_mutex);
+	rcar_nex_mutex_unlock(&g_standalone_fs_mutex);
 }
 
 static TEE_Result spi_encrypt_term_info(const struct spif_term_info *term_info,

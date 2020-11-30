@@ -7,6 +7,7 @@
 #include "include_pka/sa_pkadrvlib.h"
 #include "tee_provider_common.h"
 #include "tee_pka_provider.h"
+#include "rcar_mutex.h"
 
 /******************************************************************************/
 /* Static Function Prototypes                                                 */
@@ -241,7 +242,7 @@ TEE_Result ss_ecc_verify_pka(struct ecc_public_key *key, const uint8_t *msg,
 		res = pka_get_ecc_digest(messageSizeInBytes, &eccHash);
 	}
 
-	mutex_lock(&pka_ecdsa_mutex);
+	rcar_nex_mutex_lock(&pka_ecdsa_mutex);
 	if (res == SS_SUCCESS) {
 		/* build public key */
 		*publKeyIn_ptr = (uint8_t)CRYS_EC_PointUncompressed;
@@ -277,7 +278,7 @@ TEE_Result ss_ecc_verify_pka(struct ecc_public_key *key, const uint8_t *msg,
 		res = pka_translate_error_pka2ss_ecc(pka_res);
 		PROV_DMSG("Result: res=0x%08x\n", res);
 	}
-	mutex_unlock(&pka_ecdsa_mutex);
+	rcar_nex_mutex_unlock(&pka_ecdsa_mutex);
 
 	ss_free((void *)publKeyX_ptr);
 	ss_free((void *)publKeyY_ptr);
