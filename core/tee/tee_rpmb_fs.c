@@ -336,14 +336,23 @@ static void get_op_result_bits(uint8_t *bytes, uint8_t *res)
 	*res = *(bytes + 1) & RPMB_RESULT_MASK;
 }
 
+#ifdef PLATFORM_RCAR
+static TEE_Result tee_rpmb_mac_calc(uint8_t *mac, uint32_t macsize,
+				    uint8_t *key __unused, uint32_t keysize __unused,
+				    struct rpmb_data_frame *datafrms,
+				    uint16_t blkcnt)
+#else
 static TEE_Result tee_rpmb_mac_calc(uint8_t *mac, uint32_t macsize,
 				    uint8_t *key, uint32_t keysize,
 				    struct rpmb_data_frame *datafrms,
 				    uint16_t blkcnt)
+#endif
 {
 	TEE_Result res = TEE_ERROR_GENERIC;
 	int i;
+#ifndef PLATFORM_RCAR
 	void *ctx = NULL;
+#endif
 #ifdef PLATFORM_RCAR
 	size_t listsize;
 	uint64_t *listfrm = NULL;
@@ -778,8 +787,8 @@ func_exit:
 
 func_exit:
 	crypto_mac_free_ctx(ctx);
-	return res;
 #endif /* PLATFORM_RCAR */
+	return res;
 }
 
 static TEE_Result tee_rpmb_resp_unpack_verify(struct rpmb_data_frame *datafrm,
