@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
- * Copyright (c) 2015-2016, Renesas Electronics Corporation
+ * Copyright (c) 2015-2020, Renesas Electronics Corporation
  */
 
 #ifndef RCAR_LOG_FUNC_H
@@ -67,7 +67,7 @@ extern int32_t is_normal_world_initialized;
 /*
  * Prototype declaration
  */
-
+void log_buf_init(void);
 void log_buf_write(const struct msg_block_t *msg_block, int32_t msg_block_num);
 #ifdef RCAR_DEBUG_LOG
 void log_debug_send(const struct msg_block_t *msg_block, int32_t msg_block_num);

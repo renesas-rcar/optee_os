@@ -314,7 +314,7 @@ static SSError_t ss_crys_aesccm_update(void *ctx, uint8_t *dataIn_ptr,
 static void ss_backup_cb(enum suspend_to_ram_state state, uint32_t cpu_id);
 static TEE_Result crypto_hw_init_crypto_engine(void);
 
-static struct mutex secure_asymm_mutex = MUTEX_INITIALIZER;
+static struct mutex secure_asymm_mutex __nex_data = MUTEX_INITIALIZER;
 
 static SSError_t ss_crys_aes_update(void *ctx, uint8_t *dataIn_ptr,
 		uint32_t dataInSize, uint8_t *dataOut_ptr, CRYSError_t *crysRes)
@@ -6742,19 +6742,29 @@ static TEE_Result crypto_hw_init_crypto_engine(void)
 	SSError_t res;
 	DX_CclibRetCode_t crys_res;
 	DxUTILError_t util_res;
-	PROV_INMSG("START %s\n", __func__);
-	crys_res = DX_CclibInit();
-	res = ss_translate_error_crys2ss_init(crys_res);
-	PROV_DMSG("crys_res=0x%08x -> res=0x%08x \n",crys_res,res);
-	if (res == SS_SUCCESS) {
-		util_res = DX_UTIL_SetSessionKey();
-		res = ss_translate_error_crys2ss_util(util_res);
-	}
+	static uint32_t hwengine_init_flag __nex_bss = INIT_FLAG_UNINITIALIZED;
+
+	rcar_nex_mutex_lock(&secure_asymm_mutex);
+	if (hwengine_init_flag == INIT_FLAG_UNINITIALIZED) {
+		PROV_INMSG("START %s\n", __func__);
+		crys_res = DX_CclibInit();
+		res = ss_translate_error_crys2ss_init(crys_res);
+		PROV_DMSG("crys_res=0x%08x -> res=0x%08x \n",crys_res,res);
+		if (res == SS_SUCCESS) {
+			util_res = DX_UTIL_SetSessionKey();
+			res = ss_translate_error_crys2ss_util(util_res);
+		}
 #if defined(CFG_CRYPT_ENABLE_CEPKA)
-	if (res == SS_SUCCESS) {
-		res = pka_verify_init();
-	}
+		if (res == SS_SUCCESS) {
+			res = pka_verify_init();
+		}
 #endif
+		/* Secure and PKA engines has been initialized */
+		hwengine_init_flag = INIT_FLAG_INITIALIZED;
+	} else {
+		res = SS_SUCCESS;
+	}
+	rcar_nex_mutex_unlock(&secure_asymm_mutex);
 	tee_res = ss_translate_error_ss2tee(res);
 	PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n",res,tee_res);
 

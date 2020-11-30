@@ -55,7 +55,7 @@ static uint32_t get_auth_mode(void);
 static uint32_t call_maskrom_api(void);
 static uint64_t check_object_addr(const uint32_t *cert_header);
 
-static struct mutex g_rom_api_mutex = MUTEX_INITIALIZER;
+static struct mutex g_rom_api_mutex __nex_data = MUTEX_INITIALIZER;
 
 static uint32_t get_key_cert_size(const uint32_t *cert_header)
 {

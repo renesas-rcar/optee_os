@@ -32,8 +32,8 @@
 #include "tee_standalone_fs_key_manager.h"
 
 static const uint8_t string_for_ssk_gen[] = "ONLY_FOR_tee_fs_ssk";
-static uint8_t g_safs_suk[SAFS_EK_SIZE];
-static uint8_t g_safs_ivek[TEE_SHA256_HASH_SIZE];
+static uint8_t g_safs_suk[SAFS_EK_SIZE] __nex_bss;
+static uint8_t g_safs_ivek[TEE_SHA256_HASH_SIZE] __nex_bss;
 
 static TEE_Result generate_ssk(uint8_t *ssk, uint32_t ssk_size,
 			uint8_t *huk, uint32_t huk_size,

@@ -51,17 +51,18 @@ static void mfis_err_itr_del(void);
 /******************************************************************************/
 /* Global                                                                     */
 /******************************************************************************/
-static uint32_t		thread_global_lock = (uint32_t)SPINLOCK_UNLOCK;
-static uint32_t		mfis_state = MFIS_STATE_NOACTIVE;
-static uint32_t		mfis_reg_num = MFIS_ERR_DET_MAX;
-static uint32_t		mfis_suspend_flag = 0U;
-static MFIS_REG_T	mfis_reg;
-static MFIS_ERR_SETTING_T	local_setting;
-static void (*user_cb)(MFIS_ERR_FACTOR_T*) = NULL;
+static uint32_t		thread_global_lock __nex_data = (uint32_t)SPINLOCK_UNLOCK;
+static uint32_t		mfis_state __nex_data = MFIS_STATE_NOACTIVE;
+static uint32_t		mfis_reg_num __nex_data = MFIS_ERR_DET_MAX;
+static MFIS_REG_T	mfis_reg __nex_bss;
+static MFIS_ERR_SETTING_T	local_setting __nex_bss;
+static void (*user_cb)(MFIS_ERR_FACTOR_T*) __nex_bss = NULL;
 
 static void mfis_backup_cb(enum suspend_to_ram_state state,
 			uint32_t cpu_id __unused)
 {
+	static uint32_t mfis_suspend_flag __nex_bss = 0U;
+
 	if ((SUS2RAM_STATE_SUSPEND == state) && (MFIS_STATE_NOACTIVE != mfis_state)) {
 		(void)mfis_error_detection_stop();
 		mfis_suspend_flag = 1U;
@@ -218,17 +219,29 @@ int32_t mfis_error_detection_stop(void)
 static TEE_Result mfis_err_init(void)
 {
 	uint32_t loop;
-	
-	(void)memset(&mfis_reg, 0x00, sizeof(MFIS_REG_T));
+	uint32_t exceptions;
+	static uint32_t mfis_err_init_flag __nex_bss = INIT_FLAG_UNINITIALIZED;
 
-	for(loop = 0U; loop < mfis_reg_num; loop++)
-	{
-		mfis_reg.array[loop].MFIERRCTLR = MFIERRCTLR(loop);
-		mfis_reg.array[loop].MFIERRSTSR = MFIERRSTSR(loop);
-		mfis_reg.array[loop].MFIERRTGTR = MFIERRTGTR(loop);
-		itr_add(&mfis_err_itr[loop]);
+	exceptions = cpu_spin_lock_xsave(&thread_global_lock);
+	if (mfis_err_init_flag == INIT_FLAG_UNINITIALIZED) {
+		(void)memset(&mfis_reg, 0x00, sizeof(MFIS_REG_T));
+
+		for(loop = 0U; loop < mfis_reg_num; loop++)
+		{
+			mfis_reg.array[loop].MFIERRCTLR = MFIERRCTLR(loop);
+			mfis_reg.array[loop].MFIERRSTSR = MFIERRSTSR(loop);
+			mfis_reg.array[loop].MFIERRTGTR = MFIERRTGTR(loop);
+			itr_add(&mfis_err_itr[loop]);
+		}
+		mfis_reg.array[1U].MFIERRTGTR = MFIERRTGTR6;
+
+		/* MFIS ERROR has been initialized */
+		mfis_err_init_flag = INIT_FLAG_INITIALIZED;
+		DMSG("MFIS driver: initialized");
+	} else {
+		DMSG("MFIS driver: already initialized");
 	}
-	mfis_reg.array[1U].MFIERRTGTR = MFIERRTGTR6;
+	cpu_spin_unlock_xrestore(&thread_global_lock, exceptions);
 
 	return TEE_SUCCESS;
 }

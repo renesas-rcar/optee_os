@@ -659,7 +659,11 @@ uint32_t core_mmu_type_to_attr(enum teecore_memtypes t)
 	case MEM_AREA_TEE_ASAN:
 		return attr | TEE_MATTR_SECURE | TEE_MATTR_PRW | cached;
 	case MEM_AREA_TEE_COHERENT:
+#ifndef PLATFORM_RCAR
 		return attr | TEE_MATTR_SECURE | TEE_MATTR_PRWX | noncache;
+#else
+		return attr | TEE_MATTR_SECURE | TEE_MATTR_PRX | noncache;
+#endif /* PLATFORM_RCAR */
 	case MEM_AREA_TA_RAM:
 		return attr | TEE_MATTR_SECURE | TEE_MATTR_PRW | cached;
 	case MEM_AREA_NSEC_SHM:

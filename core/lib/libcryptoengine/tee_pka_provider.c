@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
- * Copyright (c) 2015-2018, Renesas Electronics Corporation
+ * Copyright (c) 2015-2020, Renesas Electronics Corporation
  */
 
 #include "include_pka/crys_error.h"
@@ -20,7 +20,7 @@ static SSError_t pka_get_ecc_keysize(uint32_t curve,
 static void userProcessCompletedFunc(CRYSError_t opStatus __unused,
 		void* pVerifContext __unused);
 
-static struct mutex pka_ecdsa_mutex = MUTEX_INITIALIZER;
+static struct mutex pka_ecdsa_mutex __nex_data = MUTEX_INITIALIZER;
 
 /*
  * brief:	Translate  CRYS API AES error into SS provider error.

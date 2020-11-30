@@ -19,15 +19,15 @@
 #include "platform_config.h"
 #include "rcar_common.h"
 
-static struct spim_sector_info g_sector[SURFACE_NUM][SAVE_SECTOR_NUM];
-static int32_t g_current_surface[SAVE_SECTOR_NUM];
-static struct handle_db g_fd_handle_db = HANDLE_DB_INITIALIZER;
-static struct handle_db g_rd_handle_db = HANDLE_DB_INITIALIZER;
-static struct mutex g_standalone_fs_mutex = MUTEX_INITIALIZER;
-static TEE_Result g_standalone_fs_status = TEE_ERROR_STORAGE_NOT_AVAILABLE;
-static uint8_t *g_work_buf;
-static uint8_t *g_record_data_buf;
-static struct spim_record_descriptor *g_record_data_rdesc;
+static struct spim_sector_info g_sector[SURFACE_NUM][SAVE_SECTOR_NUM] __nex_bss;
+static int32_t g_current_surface[SAVE_SECTOR_NUM] __nex_bss;
+static struct handle_db g_fd_handle_db __nex_data = HANDLE_DB_INITIALIZER;
+static struct handle_db g_rd_handle_db __nex_data = HANDLE_DB_INITIALIZER;
+static struct mutex g_standalone_fs_mutex __nex_data = MUTEX_INITIALIZER;
+static TEE_Result g_standalone_fs_status __nex_data = TEE_ERROR_STORAGE_NOT_AVAILABLE;
+static uint8_t *g_work_buf __nex_bss;
+static uint8_t *g_record_data_buf __nex_bss;
+static struct spim_record_descriptor *g_record_data_rdesc __nex_bss;
 
 static TEE_Result tee_standalone_fs_init(void);
 static TEE_Result spi_init_sector_info(void);
@@ -176,23 +176,42 @@ static TEE_Result tee_standalone_fs_init(void)
 {
 	TEE_Result res;
 	uint32_t ret;
+	static uint32_t fs_init_flag __nex_bss = INIT_FLAG_UNINITIALIZED;
 
-	res = tee_sfkm_init_key_manager();
+	spi_lock();
 
-	if (res == TEE_SUCCESS) {
-		ret = qspi_hyper_flash_init();
-		if (ret != FL_DRV_OK) {
-			res = TEE_ERROR_TARGET_DEAD;
+	if (fs_init_flag == INIT_FLAG_UNINITIALIZED) {
+
+		res = tee_sfkm_init_key_manager();
+
+		if (res == TEE_SUCCESS) {
+			ret = qspi_hyper_flash_init();
+			if (ret != FL_DRV_OK) {
+				res = TEE_ERROR_TARGET_DEAD;
+			}
 		}
+
+		if (res == TEE_SUCCESS) {
+			res = spi_init_sector_info();
+		}
+
+		if (res == TEE_SUCCESS) {
+			g_standalone_fs_status = res;
+		}
+
+		if (res == TEE_SUCCESS) {
+			DMSG("Stand-alone FS: init success");
+		} else {
+			EMSG("Stand-alone FS: init error");
+		}
+		/* Stand-alone FS has been initialized */
+		fs_init_flag = INIT_FLAG_INITIALIZED;
+	} else {
+		res = TEE_SUCCESS;
+		DMSG("Stand-alone FS: already initialized");
 	}
 
-	if (res == TEE_SUCCESS) {
-		res = spi_init_sector_info();
-	}
-
-	if (res == TEE_SUCCESS) {
-		g_standalone_fs_status = res;
-	}
+	spi_unlock();
 
 	return res;
 }

@@ -52,18 +52,19 @@ static void swdt_itr_del(void);
 /******************************************************************************/
 /* Global                                                                     */
 /******************************************************************************/
-static uint32_t		thread_global_lock = (uint32_t)SPINLOCK_UNLOCK;
-static uint16_t		swdt_initial_count = 0U;
-static uint32_t		swdt_state = SWDT_STATE_NOACTIVE;
-static uint16_t		swdt_count = 0U;
-static uint8_t		swdt_clk = 0U;
-static uint8_t		swdt_expanded_clk = 0U;
-static uint32_t		swdt_suspend_flag = 0U;
-static void		(*user_cb)(void) = NULL;
+static uint32_t		thread_global_lock __nex_data = (uint32_t)SPINLOCK_UNLOCK;
+static uint16_t		swdt_initial_count __nex_bss = 0U;
+static uint32_t		swdt_state __nex_data = SWDT_STATE_NOACTIVE;
+static uint16_t		swdt_count __nex_bss = 0U;
+static uint8_t		swdt_clk __nex_bss = 0U;
+static uint8_t		swdt_expanded_clk __nex_bss = 0U;
+static void		(*user_cb)(void) __nex_bss = NULL;
 
 static void swdt_backup_cb(enum suspend_to_ram_state state,
 			uint32_t cpu_id __unused)
 {
+	static uint32_t swdt_suspend_flag __nex_bss = 0U;
+
 	if ((SUS2RAM_STATE_SUSPEND == state) && (SWDT_STATE_NOACTIVE != swdt_state)) {
 		(void)swdt_stop();
 		swdt_suspend_flag = 1U;
@@ -233,7 +234,20 @@ int32_t swdt_kick(void)
 
 static TEE_Result swdt_init(void)
 {
-	itr_add(swdt_itr);
+	uint32_t exceptions;
+	static uint32_t swdt_init_flag __nex_bss = INIT_FLAG_UNINITIALIZED;
+
+	exceptions = cpu_spin_lock_xsave(&thread_global_lock);
+	if (swdt_init_flag == INIT_FLAG_UNINITIALIZED) {
+		itr_add(swdt_itr);
+
+		/* SWDT has been initialized */
+		swdt_init_flag = INIT_FLAG_INITIALIZED;
+		DMSG("SWDT driver: initialized");
+	} else {
+		DMSG("SWDT driver: already initialized");
+	}
+	cpu_spin_unlock_xrestore(&thread_global_lock, exceptions);
 
 	return TEE_SUCCESS;
 }
