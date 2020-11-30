@@ -84,6 +84,10 @@ CFG_HYPER_FLASH := y
 CFG_RCAR_UNSUPPORT_TA_VER_DB := y
 endif
 
+ifeq ($(CFG_RPMB_FS),y)
+CFG_RCAR_UNSUPPORT_TA_VER_DB := y
+endif
+
 core-platform-cflags += -DPLATFORM_RCAR
 core-platform-cflags += -DMMU_DIRECT_MAPPING
 
