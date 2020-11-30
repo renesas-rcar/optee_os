@@ -11,7 +11,7 @@
 /******************************************************************************/
 /* Public Function Prototypes                                                 */
 /******************************************************************************/
-TEE_Result ss_ecc_verify_pka(struct ecc_public_key *key,
+SSError_t ss_ecc_verify_pka(struct ecc_public_key *key,
 		const uint8_t *msg, size_t msg_len, const uint8_t *sig,
 		size_t sig_len);
 

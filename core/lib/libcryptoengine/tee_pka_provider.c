@@ -48,6 +48,10 @@ static SSError_t pka_translate_error_pka2ss_ecc(SA_PkadrvlibRetCode_t err)
 		PROV_EMSG("res = SS_ERROR_BAD_STATE\n");
 		res = SS_ERROR_BAD_STATE;
 		break;
+	case SA_PKADRVLIB_RET_ECDSA_VERIFY_ERROR:
+		PROV_EMSG("res = SS_ERROR_SIGNATURE_INVALID\n");
+		res = SS_ERROR_SIGNATURE_INVALID;
+		break;
 	default:
 		PROV_EMSG("res = SS_ERROR_BAD_PARAMETERS\n");
 		res = SS_ERROR_BAD_PARAMETERS;
@@ -172,15 +176,14 @@ static void userProcessCompletedFunc(CRYSError_t opStatus __unused,
  * param[in]	msg_len		- Size of message data buffer.
  * param[in]	*sig		- Pointer to the signature data buffer.
  * param[in]	*sig_len	- Size of signature data buffer.
- * return	TEE_Result	- TEE internal API error code.
+ * return	SSError_t	- SS provider error code.
  */
-TEE_Result ss_ecc_verify_pka(struct ecc_public_key *key, const uint8_t *msg,
+SSError_t ss_ecc_verify_pka(struct ecc_public_key *key, const uint8_t *msg,
 		size_t msg_len, const uint8_t *sig, size_t sig_len)
 {
-	TEE_Result tee_res;
-	CRYSError_t crys_res;
+	CRYSError_t crys_res = CRYS_OK;
 	SSError_t res = SS_SUCCESS;
-	SA_PkadrvlibRetCode_t pka_res;
+	SA_PkadrvlibRetCode_t pka_res = SA_PKADRVLIB_RET_OK;
 	CRYS_ECPKI_UserPublKey_t *pUserPublKey = NULL;
 	CRYS_ECPKI_HASH_OpMode_t eccHash;
 	uint8_t *pSignatureIn;
@@ -286,8 +289,8 @@ TEE_Result ss_ecc_verify_pka(struct ecc_public_key *key, const uint8_t *msg,
 	ss_free((void *)pUserPublKey);
 
 	OUTMSG("END do_ecc_verify_pka res=0x%08x\n", res);
-	tee_res = ss_translate_error_ss2tee(res);
-	return tee_res;
+
+	return res;
 }
 
 /*
