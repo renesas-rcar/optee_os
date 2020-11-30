@@ -3788,16 +3788,8 @@ TEE_Result crypto_hw_cipher_check_current_engine(void *ctx, uint32_t *engine)
 #if defined(CFG_CRYPTO_CTS)
             case TEE_ALG_AES_CTS:
 #endif
-                if (cipher_ctx->u.aes_ctx.sw_ctx.ops != NULL)
-                {
-                    *engine = SS_SW_ENGINE;
-                    PROV_DMSG("The engine currently operating in cipher processing is the SW engine.\n");
-                }
-                else
-                {
-                    *engine = SS_HW_ENGINE;
-                    PROV_DMSG("The engine currently operating in cipher processing is the HW engine.\n");
-                }
+                *engine = SS_HW_ENGINE;
+                PROV_DMSG("The engine currently operating in cipher processing is the HW engine.\n");
                 break;
 #endif
 #if defined(CFG_CRYPTO_DES)
@@ -3809,16 +3801,8 @@ TEE_Result crypto_hw_cipher_check_current_engine(void *ctx, uint32_t *engine)
             case TEE_ALG_DES_CBC_NOPAD:
             case TEE_ALG_DES3_CBC_NOPAD:
 #endif
-                if (cipher_ctx->u.des_ctx.sw_ctx.ops != NULL)
-                {
-                    *engine = SS_SW_ENGINE;
-                    PROV_DMSG("The engine currently operating in cipher processing is the SW engine.\n");
-                }
-                else
-                {
-                    *engine = SS_HW_ENGINE;
-                    PROV_DMSG("The engine currently operating in cipher processing is the HW engine.\n");
-                }
+                *engine = SS_HW_ENGINE;
+                PROV_DMSG("The engine currently operating in cipher processing is the HW engine.\n");
                 break;
 #endif
             default:
@@ -4879,59 +4863,27 @@ TEE_Result crypto_hw_mac_check_current_engine(void *ctx, uint32_t *engine)
             case TEE_ALG_HMAC_SHA256:
             case TEE_ALG_HMAC_SHA384:
             case TEE_ALG_HMAC_SHA512:
-                if (mac_ctx->u.hmac_ctx.sw_ctx.ops != NULL)
-                {
-                    *engine = SS_SW_ENGINE;
-                    PROV_DMSG("The engine currently operating in MAC processing is the SW engine.\n");
-                }
-                else
-                {
-                    *engine = SS_HW_ENGINE;
-                    PROV_DMSG("The engine currently operating in MAC processing is the HW engine.\n");
-                }
+                *engine = SS_HW_ENGINE;
+                PROV_DMSG("The engine currently operating in MAC processing is the HW engine.\n");
                 break;
 #endif
 #if defined(CFG_CRYPTO_CBC_MAC)
             case TEE_ALG_AES_CBC_MAC_NOPAD:
             case TEE_ALG_AES_CBC_MAC_PKCS5:
-                if (mac_ctx->u.aes_ctx.sw_ctx.ops != NULL)
-                {
-                    *engine = SS_SW_ENGINE;
-                    PROV_DMSG("The engine currently operating in MAC processing is the SW engine.\n");
-                }
-                else
-                {
-                    *engine = SS_HW_ENGINE;
-                    PROV_DMSG("The engine currently operating in MAC processing is the HW engine.\n");
-                }
+                *engine = SS_HW_ENGINE;
+                PROV_DMSG("The engine currently operating in MAC processing is the HW engine.\n");
                 break;
 #endif
 #if defined(CFG_CRYPTO_CMAC)
             case TEE_ALG_AES_CMAC:
-                if (mac_ctx->u.aes_ctx.sw_ctx.ops != NULL)
-                {
-                    *engine = SS_SW_ENGINE;
-                    PROV_DMSG("The engine currently operating in MAC processing is the SW engine.\n");
-                }
-                else
-                {
-                    *engine = SS_HW_ENGINE;
-                    PROV_DMSG("The engine currently operating in MAC processing is the HW engine.\n");
-                }
+                *engine = SS_HW_ENGINE;
+                PROV_DMSG("The engine currently operating in MAC processing is the HW engine.\n");
                 break;
 #endif
 #if defined(CFG_CRYPTO_XCBC_MAC)
             case TEE_ALG_AES_XCBC_MAC:
-                if (mac_ctx->u.aes_ctx.sw_ctx.ops != NULL)
-                {
-                    *engine = SS_SW_ENGINE;
-                    PROV_DMSG("The engine currently operating in MAC processing is the SW engine.\n");
-                }
-                else
-                {
-                    *engine = SS_HW_ENGINE;
-                    PROV_DMSG("The engine currently operating in MAC processing is the HW engine.\n");
-                }
+                *engine = SS_HW_ENGINE;
+                PROV_DMSG("The engine currently operating in MAC processing is the HW engine.\n");
                 break;
 #endif
             default:
