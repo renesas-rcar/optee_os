@@ -5,6 +5,7 @@
 
 #include "tee_api_defines.h"
 #include "tee_provider_common.h"
+#include <mbedtls/bignum.h>
 
 const ErrorTable_t error_tbl[SS_ERROR_LAST_NUM] = {
 	{SS_SUCCESS,			  (TEE_Result)TEE_SUCCESS	   },
@@ -195,8 +196,8 @@ SSError_t ss_bn_bin2bn(const uint8_t *from, size_t fromsize,
 {
 	PROV_INMSG("*from=%p, fromsize=%ld, *to=%p\n",from,fromsize,(void *)to);
 
-	((mpanum)(to))->size = (ROUNDUP(fromsize, 4U) >> 2U);
-	(void)memcpy((((mpanum)(to))->d), from, fromsize);
+	((mbedtls_mpi *)(to))->n = (ROUNDUP(fromsize, 4U) >> 2U);
+	(void)memcpy((((mbedtls_mpi *)(to))->p), from, fromsize);
 
 	return SS_SUCCESS;
 }
