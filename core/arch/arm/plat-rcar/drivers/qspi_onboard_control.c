@@ -32,18 +32,9 @@ static uint32_t qspi_onboard_write_register_data(uint32_t manual_set_addr,
 static uint32_t qspi_onboard_erase_main(uint32_t sector_addr)
 {
 	uint32_t sector_size_bit = BIT1;
-	uint32_t sector_size = SECTOR_SIZE;
 	uint32_t ret;
 
-	switch (sector_size) {
-	/* sector size is 64KB. */
-	case ERASE_SIZE_64KB:
-		sector_size_bit = ~sector_size_bit;
-		break;
-	default:
-		DMSG("SECTOR_SIZE =%x", SECTOR_SIZE);
-		break;
-	}
+	DMSG("SECTOR_SIZE =%x", SECTOR_SIZE);
 
 	ret = qspi_onboard_set_sector_erase_size(sector_size_bit);
 	if (ret == FL_DRV_OK) {
