@@ -10,15 +10,16 @@
 #include <initcall.h>
 #include <drivers/swdt_driver.h>
 #include "rcar_suspend_to_ram.h"
+#include "rcar_common.h"
 
 /******************************************************************************/
 /* Defines                                                                    */
 /******************************************************************************/
 /* Register */
-#define RST_WDTRSTCR		(0xE6160054U)
-#define SWDT_SWTCNT		(0xE6030000U)
-#define SWDT_SWTCSRA		(0xE6030004U)
-#define SWDT_SWTCSRB		(0xE6030008U)
+#define RST_WDTRSTCR		p2v_ioadr(0xE6160054U)
+#define SWDT_SWTCNT		p2v_ioadr(0xE6030000U)
+#define SWDT_SWTCSRA		p2v_ioadr(0xE6030004U)
+#define SWDT_SWTCSRB		p2v_ioadr(0xE6030008U)
 
 #define SWDT_WDTRSTCR_UPPER_BYTE	(0xA55A0000U)
 #define SWDT_WDTRSTCR_LOWER_BYTE	(0x0000FFFFU)

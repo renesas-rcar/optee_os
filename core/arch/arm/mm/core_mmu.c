@@ -708,7 +708,7 @@ static bool __maybe_unused map_is_pgdir(const struct tee_mmap_region *mm)
 {
 	return mm->region_size == CORE_MMU_PGDIR_SIZE;
 }
-#ifndef MMU_DIRECT_MAPPING
+#ifndef MMU_DIRECT_MAPPING /* for RCAR */
 static int cmp_mmap_by_lower_va(const void *a, const void *b)
 {
 	const struct tee_mmap_region *mm_a = a;
@@ -915,11 +915,20 @@ static bool assign_mem_va(vaddr_t tee_ram_va,
 	struct tee_mmap_region *map = NULL;
 	vaddr_t va = tee_ram_va;
 	bool va_is_secure = true;
-#ifdef MMU_DIRECT_MAPPING
+#ifdef MMU_DIRECT_MAPPING /* for RCAR */
+	const paddr_t direct_map_area[][2] = {
+		{ MEMORY5_BASE, MEMORY5_SIZE }, /* TA area for verification */
+		{ MEMORY6_BASE, MEMORY6_SIZE }, /* MaskROM API memory */
+		{ DEVICE0_PA_BASE, DEVICE0_SIZE }, /* Life Cycle address */
+		{ DEVICE1_PA_BASE, DEVICE1_SIZE } /* Crypto Engine address */
+	};
+	const size_t dmnum = sizeof(direct_map_area) / sizeof(paddr_t) / 2;
 	size_t last;
 	size_t n;
-	vaddr_t ram_higher_va = 0;
-	size_t ram_higher_size = 0;
+	paddr_t dmaddr;
+	paddr_t dmsize;
+	paddr_t rd;
+	bool va_is_direct = false;
 #endif
 
 	/* Clear eventual previous assignments */
@@ -945,7 +954,7 @@ static bool assign_mem_va(vaddr_t tee_ram_va,
 	}
 
 	if (core_mmu_place_tee_ram_at_top(tee_ram_va)) {
-#ifdef MMU_DIRECT_MAPPING
+#ifdef MMU_DIRECT_MAPPING /* for RCAR */
 		panic(); /* Direct Mapping is not supported */
 #endif
 		/*
@@ -999,6 +1008,19 @@ static bool assign_mem_va(vaddr_t tee_ram_va,
 
 			if (ROUNDUP_OVERFLOW(va, map->region_size, &va))
 				return false;
+#ifdef MMU_DIRECT_MAPPING /* for RCAR */
+			for (n = 0; n < dmnum; n++) {
+				dmaddr = direct_map_area[n][0];
+				dmsize = direct_map_area[n][1];
+				rd = ROUNDDOWN((dmaddr), CORE_MMU_PGDIR_SIZE);
+ 				if (map->pa == rd) {
+					va_is_direct = true;
+				} else if ((va <= rd) &&
+				  ((va + map->size) >= (rd + dmsize))) {
+					va = rd + dmsize;
+				}
+			}
+#endif
 			/*
 			 * Make sure that va is aligned with pa for
 			 * efficient pgdir mapping. Basically pa &
@@ -1011,37 +1033,24 @@ static bool assign_mem_va(vaddr_t tee_ram_va,
 				if (ADD_OVERFLOW(va, offs, &va))
 					return false;
 			}
-#ifndef MMU_DIRECT_MAPPING
+#ifndef MMU_DIRECT_MAPPING /* for RCAR */
 			map->va = va;
 			if (ADD_OVERFLOW(va, map->size, &va))
 				return false;
 #else
-			map->va = map->pa;	/* 1-to-1 pa = va mapping */
-			if (map->type < MEM_AREA_IO_NSEC) {
-				if (ram_higher_va < map->va) {
-					ram_higher_va = map->va;
-					ram_higher_size = map->size;
-				} else if ((ram_higher_va == map->pa) && 
-					(ram_higher_size < map->size)) {
-					ram_higher_size = map->size;
-				}
+			if (!va_is_direct) {
+				map->va = va;
+				if (ADD_OVERFLOW(va, map->size, &va))
+					return false;
+			} else {
+				map->va = map->pa; /* 1-to-1 pa = va mapping */
+				va_is_direct = false;
 			}
 #endif
 		}
-#ifdef MMU_DIRECT_MAPPING
+#ifdef MMU_DIRECT_MAPPING /* for RCAR */
 		last = 0;
 		for (map = memory_map; !core_mmap_is_end_of_table(map); map++) {
-			switch (map->type) {
-			case MEM_AREA_RES_VASPACE:
-			case MEM_AREA_SHM_VASPACE:
-			case MEM_AREA_TA_VASPACE:
-				map->va = ram_higher_va + ram_higher_size;
-				ram_higher_va = map->va;
-				ram_higher_size = map->size;
-				break;
-			default:
-				break;
-			}
 			last++;
 		}
 		/*
@@ -1192,7 +1201,7 @@ static unsigned long init_mem_map(struct tee_mmap_region *memory_map,
 		panic();
 
 out:
-#ifndef MMU_DIRECT_MAPPING
+#ifndef MMU_DIRECT_MAPPING /* for RCAR */
 	qsort(memory_map, last, sizeof(struct tee_mmap_region),
 	      cmp_mmap_by_lower_va);
 #endif

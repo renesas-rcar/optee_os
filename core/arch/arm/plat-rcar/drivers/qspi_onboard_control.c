@@ -396,7 +396,7 @@ static uint32_t qspi_onboard_write_buffer(uint32_t manual_set_addr,
 
 	for (offset = 0U; offset < WRITE_BUFF_SIZE;
 						offset = offset + WORD_SIZE) {
-		(*(volatile uint32_t *)(0xEE208000U+offset)) =
+		(*(volatile uint32_t *)(RPC_WB_OUT_BASE + offset)) =
 			(*(volatile uint32_t *)(write_data_addr+offset));
 	}
 

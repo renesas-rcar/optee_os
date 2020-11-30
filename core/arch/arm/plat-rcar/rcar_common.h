@@ -13,42 +13,16 @@
 #include <drivers/gic.h>
 #include <arm.h>
 #include <kernel/tee_time.h>
+#include <mm/core_memprot.h>
 
-/* System Timer Register */
-#define CMSSTR			(SYSTIM_BASE + 0x000U)
-#define CMSCSR			(SYSTIM_BASE + 0x040U)
-#define CMSCNT			(SYSTIM_BASE + 0x044U)
-#define CMSCOR			(SYSTIM_BASE + 0x048U)
-
-#define CMSSTR_BIT_STR5		(0x0020U)	/* CMSSTR Bit 5   */
-
-#define CMSCSR_BIT_CMF		(0x8000U)	/* CMSCSR Bit 15  */
-#define CMSCSR_BIT_OVF		(0x4000U)	/* CMSCSR Bit 14  */
-#define CMSCSR_BIT_WRFLG	(0x2000U)	/* CMSCSR Bit 13  */
-#define CMSCSR_BIT_CMS		(0x0200U)	/* CMSCSR Bit 9   */
-#define CMSCSR_BIT_CMM		(0x0100U)	/* CMSCSR Bit 8   */
-#define CMSCSR_BIT_CMR		(0x0030U)	/* CMSCSR Bit 4-5 */
-#define CMSCSR_BIT_DBGIVD	(0x0008U)	/* CMSCSR Bit 3   */
-#define CMSCSR_BIT_CKS		(0x0007U)	/* CMSCSR Bit 0-2 */
-
-#define CKS_DIVISION_RATIO_1	(0x7U)		/* CKS clock/1    */
-#define CKS_DIVISION_RATIO_8	(0x4U)		/* CKS clock/8    */
-#define CKS_DIVISION_RATIO_32	(0x5U)		/* CKS clock/32   */
-#define CKS_DIVISION_RATIO_128	(0x6U)		/* CKS clock/128  */
-#define CMR_INTERRUPT_ENABLE	(0x20U)		/* CMR Interrupt Enable */
-#define CMM_FREE_RUN_OPERATION	(0x100U)	/* CMM Free-running operation */
-#define CMM_ONE_SHOT_OPERATION	(0x000U)	/* CMM One-shot operation     */
-
-#define SYSTIM_PRIORITY		(0x1U)
-
-/* Reset(RST) */
-#define MODEMR			(0xE6160060U)	/* Mode Monitor Register */
-
-#define CHECK_MD13_MD14		(0x6000U)
-#define MD14_L_MD13_H		(0x2000U)
+/*
+ * Convert a physical address to a virtual address with the
+ *  MEM_AREA_IO_SEC attribute.
+ */
+#define p2v_ioadr(r)		((vaddr_t)(phys_to_virt((r), MEM_AREA_IO_SEC)))
+#define p2v_regadr(r)		((phys_to_virt((r), MEM_AREA_IO_SEC)))
 
 /* Interrupt ID */
-#define INTID_SCMT		(134U + 32U)	/* System Timer */
 #define INTID_PKA		(65U  + 32U)	/* Crypto Engine PKA sec */
 #define INTID_CC		(70U  + 32U)	/* Crypto Engine sec */
 
@@ -56,7 +30,7 @@
 #define TEE_RPC_DEBUG_LOG	(0x3F000000U)
 
 /* Product Register */
-#define PRR			(0xFFF00044U)
+#define PRR			p2v_ioadr(0xFFF00044U)
 #define PRR_PRODUCT_MASK	(0x0000FF00U)
 #define PRR_PRODUCT_API_TABLE	(0x00010000U)
 #define PRR_PRODUCT_H3		(0x00004F00U)	/* R-Car H3 */
@@ -69,7 +43,7 @@
 #define PRR_CUT_20		(0x00000010U)
 
 /* Fuse Monitor Register */
-#define FUSE_DUMMY5		(0xE60603E8U)	/* Fuse dummy5 */
+#define FUSE_DUMMY5		p2v_ioadr(0xE60603E8U)	/* Fuse dummy5 */
 #define	FUSE_M3_MASK		(0x1C000000U)	/* Dummy5[28:26] */
 #define	M3_100			(0x00000000U)	/* M3 1.0  */
 #define	M3_105			(0x04000000U)	/* M3 1.05 */

@@ -294,8 +294,6 @@ SECTIONS
 
 		. = ALIGN(8);
 		KEEP(*(SORT(.scattered_array*)));
-		. = ALIGN(8);
-		KEEP(*(exec_attr_section))
 
 		. = ALIGN(8);
 		__rodata_init_end = .;
