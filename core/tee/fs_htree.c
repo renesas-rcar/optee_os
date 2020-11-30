@@ -483,6 +483,7 @@ static TEE_Result authenc_init(void **ctx_ret, TEE_OperationMode mode,
 	if (NULL == aad_data) {
 		EMSG("request memory size %zu failed", aad_len);
 		res = TEE_ERROR_OUT_OF_MEMORY;
+		goto err;
 	} else {
 		copy_dst = aad_data;
 		if (!ni) {
@@ -499,6 +500,8 @@ static TEE_Result authenc_init(void **ctx_ret, TEE_OperationMode mode,
 
         res = crypto_authenc_update_aad(ctx, mode, aad_data, aad_len);
 		free(aad_data);
+		if (res != TEE_SUCCESS)
+			goto err;
 	}
 #else
 	if (!ni) {
@@ -526,9 +529,7 @@ static TEE_Result authenc_init(void **ctx_ret, TEE_OperationMode mode,
 	*ctx_ret = ctx;
 
 	return TEE_SUCCESS;
-#if !defined(CFG_CRYPT_HW_CRYPTOENGINE)
 err:
-#endif
 	crypto_authenc_final(ctx);
 err_free:
 	crypto_authenc_free_ctx(ctx);
