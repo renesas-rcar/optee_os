@@ -16,14 +16,14 @@
 /* Defines                                                                    */
 /******************************************************************************/
 /* Register */
-#define	MFIERRCTLR(a)	((volatile uint32_t *)(0xE6260214U + (uintptr_t)((a) * 4U)))
-#define	MFIERRSTSR(a)	((volatile uint32_t *)(0xE6260254U + (uintptr_t)((a) * 4U)))
-#define	MFIERRTGTR(a)	((volatile uint32_t *)(0xE6260294U + (uintptr_t)((a) * 4U)))
-#define	MFIERRTGTR6	((volatile uint32_t *)(0xE626025CU))
+#define	MFIERRCTLR(a)	((volatile uint32_t *)(p2v_ioadr(0xE6260214U) + (vaddr_t)((a) * 4U)))
+#define	MFIERRSTSR(a)	((volatile uint32_t *)(p2v_ioadr(0xE6260254U) + (vaddr_t)((a) * 4U)))
+#define	MFIERRTGTR(a)	((volatile uint32_t *)(p2v_ioadr(0xE6260294U) + (vaddr_t)((a) * 4U)))
+#define	MFIERRTGTR6	((volatile uint32_t *)(p2v_ioadr(0xE626025CU)))
 
-#define CPGWPR		(0xE6150900U)
-#define SMSTPCR2	(0xE6150138U)
-#define MSTPSR2		(0xE6150040U)
+#define CPGWPR		p2v_ioadr(0xE6150900U)
+#define SMSTPCR2	p2v_ioadr(0xE6150138U)
+#define MSTPSR2		p2v_ioadr(0xE6150040U)
 #define SMSTP_MFISFLG	((uint32_t)1U<<13U)
 
 typedef struct {

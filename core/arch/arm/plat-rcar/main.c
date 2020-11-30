@@ -170,7 +170,6 @@ register_phys_mem_pgdir(MEMORY5_TYPE, MEMORY5_BASE, MEMORY5_SIZE);
 #endif
 #ifdef MEMORY6_BASE
 register_phys_mem_pgdir(MEMORY6_TYPE, MEMORY6_BASE, MEMORY6_SIZE);
-setopt_exec_attr(MEMORY6_BASE); /* MaskROM API memory */
 #endif
 #ifdef MEMORY7_BASE
 register_phys_mem_pgdir(MEMORY7_TYPE, MEMORY7_BASE, MEMORY7_SIZE);

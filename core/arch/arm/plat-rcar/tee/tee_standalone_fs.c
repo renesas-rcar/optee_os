@@ -17,6 +17,7 @@
 
 #include "tee_standalone_fs.h"
 #include "platform_config.h"
+#include "rcar_common.h"
 
 static struct spim_sector_info g_sector[SURFACE_NUM][SAVE_SECTOR_NUM];
 static int32_t g_current_surface[SAVE_SECTOR_NUM];
@@ -213,7 +214,8 @@ static TEE_Result spi_init_sector_info(void)
 
 	(void)memset(g_sector, 0, sizeof(g_sector));
 	(void)memset(g_current_surface, 0, sizeof(g_current_surface));
-	g_work_buf = (uint8_t *)OPTEE_LOG_BASE + 204800U;
+	g_work_buf = (uint8_t *)phys_to_virt(OPTEE_LOG_BASE + 204800U,
+			MEM_AREA_IO_SEC);
 	g_record_data_buf = g_work_buf + SECTOR_SIZE; /* RECORD_DATA_BUF_SIZE */
 	g_record_data_rdesc = NULL;
 	lsector_addr = STANDALONE_FS_SECTOR_ADDR;
