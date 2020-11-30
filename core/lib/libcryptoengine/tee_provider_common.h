@@ -9,7 +9,6 @@
 #include <crypto/crypto.h>
 #include <tee/tee_cryp_utl.h>
 #include <kernel/mutex.h>
-#include <mpalib.h>
 #include <stdlib.h>
 #include <string.h>
 #include <utee_defines.h>
