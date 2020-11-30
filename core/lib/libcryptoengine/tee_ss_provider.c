@@ -1255,6 +1255,7 @@ uint32_t crypto_hw_acipher_check_support(uint32_t algo, uint32_t modSize)
 
 	switch ((int32_t)algo) {
 	case TEE_ALG_RSASSA_PKCS1_V1_5_MD5:
+	case TEE_ALG_RSASSA_PKCS1_V1_5:
 		ret = SS_HW_NOT_SUPPORT_ALG;
 		break;
 	default:
@@ -2344,13 +2345,6 @@ static SSError_t ss_get_rsa_hash(uint32_t algo,
 		*mgf = CRYS_PKCS1_NO_MGF;
 		*version = CRYS_PKCS1_VER15;
 		break;
-    case TEE_ALG_RSASSA_PKCS1_V1_5:
-        PROV_DMSG("algo=TEE_ALG_RSASSA_PKCS1_V1_5");
-        *rsa_hashmode =  CRYS_RSA_After_HASH_NOT_KNOWN_mode;
-        *hashSize = 0U;
-        *mgf = CRYS_PKCS1_NO_MGF;
-        *version = CRYS_PKCS1_VER15;
-        break;
 	case TEE_ALG_RSASSA_PKCS1_V1_5_SHA1:
 		PROV_DMSG("algo=TEE_ALG_RSASSA_PKCS1_V1_5_SHA1");
 		*rsa_hashmode = CRYS_RSA_After_SHA1_mode;
