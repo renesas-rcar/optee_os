@@ -71,6 +71,10 @@
 
 #define START_DLOG_OUTPUT	(1U)
 
+/* Define a constant for the initialization flag */
+#define INIT_FLAG_UNINITIALIZED	(0U)
+#define INIT_FLAG_INITIALIZED	(1U)
+
 /* Declaration of global variables */
 extern uint32_t product_type;
 extern const int8_t *product_name;

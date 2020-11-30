@@ -16,8 +16,8 @@
 #include "rcar_suspend_to_ram.h"
 #include "rcar_common.h"
 
-uint32_t rpc_clock_mode = RPC_CLK_80M;
-uint32_t phycnt_reg;
+uint32_t rpc_clock_mode __nex_data = RPC_CLK_80M;
+uint32_t phycnt_reg __nex_bss;
 
 static void qspi_hyper_flash_backup_cb(enum suspend_to_ram_state state,
 				uint32_t cpu_id);
@@ -29,7 +29,7 @@ static uint32_t write_flash_unsupported(uint32_t buf_addr,
 static uint32_t init_rpc_reg_depends_soc(void);
 static uint32_t init_rpc(void);
 
-static struct flash_control_operations flash_control_ops = {
+static struct flash_control_operations flash_control_ops __nex_data = {
 	.erase = erase_flash_unsupported,
 	.set_ext_addr_read_mode = ext_addr_read_mode_flash_unsupported,
 	.write = write_flash_unsupported,

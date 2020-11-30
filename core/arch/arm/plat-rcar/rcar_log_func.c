@@ -20,16 +20,14 @@
 #include "rcar_common.h"
 #include "rcar_version.h"
 
-struct log_buf_header_t *log_secram_header __data;
-static int8_t *log_nonsec_ptr;
-uint32_t log_spin_lock;
-int32_t is_normal_world_initialized;
+struct log_buf_header_t *log_secram_header __nex_data;
+static int8_t *log_nonsec_ptr __nex_bss;
+uint32_t log_spin_lock __nex_bss;
+int32_t is_normal_world_initialized __nex_bss;
 const int8_t version_of_renesas[] __attribute__((__section__(".version"))) =
 	VERSION_OF_RENESAS;
 
-static TEE_Result log_buf_init(void);
-
-static TEE_Result log_buf_init(void)
+void log_buf_init(void)
 {
 	const int8_t secram_prefix[] = LOG_SEC_PREFIX;
 	int32_t i;
@@ -57,10 +55,7 @@ static TEE_Result log_buf_init(void)
 	}
 
 	IMSG("Logging RAM initialized. (%s)", core_v_str);
-	return TEE_SUCCESS;
 }
-
-service_init(log_buf_init);
 
 void log_buf_write(const struct msg_block_t *msg_block, int32_t msg_block_num)
 {

@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
- * Copyright (c) 2015-2018, Renesas Electronics Corporation
+ * Copyright (c) 2015-2020, Renesas Electronics Corporation
  */
 
 #include "include_pka/crys_error.h"
 #include "include_pka/sa_pkadrvlib.h"
 #include "tee_provider_common.h"
 #include "tee_pka_provider.h"
+#include "rcar_mutex.h"
 
 /******************************************************************************/
 /* Static Function Prototypes                                                 */
@@ -20,7 +21,7 @@ static SSError_t pka_get_ecc_keysize(uint32_t curve,
 static void userProcessCompletedFunc(CRYSError_t opStatus __unused,
 		void* pVerifContext __unused);
 
-static struct mutex pka_ecdsa_mutex = MUTEX_INITIALIZER;
+static struct mutex pka_ecdsa_mutex __nex_data = MUTEX_INITIALIZER;
 
 /*
  * brief:	Translate  CRYS API AES error into SS provider error.
@@ -241,7 +242,7 @@ TEE_Result ss_ecc_verify_pka(struct ecc_public_key *key, const uint8_t *msg,
 		res = pka_get_ecc_digest(messageSizeInBytes, &eccHash);
 	}
 
-	mutex_lock(&pka_ecdsa_mutex);
+	rcar_nex_mutex_lock(&pka_ecdsa_mutex);
 	if (res == SS_SUCCESS) {
 		/* build public key */
 		*publKeyIn_ptr = (uint8_t)CRYS_EC_PointUncompressed;
@@ -277,7 +278,7 @@ TEE_Result ss_ecc_verify_pka(struct ecc_public_key *key, const uint8_t *msg,
 		res = pka_translate_error_pka2ss_ecc(pka_res);
 		PROV_DMSG("Result: res=0x%08x\n", res);
 	}
-	mutex_unlock(&pka_ecdsa_mutex);
+	rcar_nex_mutex_unlock(&pka_ecdsa_mutex);
 
 	ss_free((void *)publKeyX_ptr);
 	ss_free((void *)publKeyY_ptr);

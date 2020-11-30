@@ -138,8 +138,8 @@ clear_bss:
 	 * Clear .nex_bss, this code obviously depends on the linker keeping
 	 * start/end of .bss at least 8 byte aligned.
 	 */
-	adr	x0, __nex_bss_start
-	adr	x1, __nex_bss_end
+	ldr	x0, =__nex_bss_start
+	ldr	x1, =__nex_bss_end
 clear_nex_bss:
 	str	xzr, [x0], #8
 	cmp	x0, x1

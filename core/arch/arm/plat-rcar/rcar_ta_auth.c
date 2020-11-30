@@ -12,6 +12,7 @@
 #include "rcar_maskrom.h"
 #include "rcar_ta_auth.h"
 #include "platform_config.h"
+#include "rcar_mutex.h"
 
 #define TA_KEY_CERT_AREA_SIZE		(4096U)
 #define TA_CONTENT_CERT_AREA_SIZE	(4096U)
@@ -55,7 +56,7 @@ static uint32_t get_auth_mode(void);
 static uint32_t call_maskrom_api(void);
 static uint64_t check_object_addr(const uint32_t *cert_header);
 
-static struct mutex g_rom_api_mutex = MUTEX_INITIALIZER;
+static struct mutex g_rom_api_mutex __nex_data = MUTEX_INITIALIZER;
 
 static uint32_t get_key_cert_size(const uint32_t *cert_header)
 {
@@ -161,9 +162,9 @@ static uint32_t get_auth_mode(void)
 	/* default is Secure boot */
 	auth_mode = SECURE_BOOT_MODE;
 
-    mutex_lock(&g_rom_api_mutex);
+	rcar_nex_mutex_lock(&g_rom_api_mutex);
 	ret = ROM_GetLcs(&lcs);
-    mutex_unlock(&g_rom_api_mutex);
+	rcar_nex_mutex_unlock(&g_rom_api_mutex);
 
 	if (ret == 0U) {
 		if (lcs == LCS_SE) {
@@ -284,11 +285,11 @@ TEE_Result rcar_auth_ta_certificate(const struct shdr *key_cert,
 		if (auth_mode == SECURE_BOOT_MODE) {
 
 			/* call the MaskROM API */
-		    mutex_lock(&g_rom_api_mutex);
+			rcar_nex_mutex_lock(&g_rom_api_mutex);
 			ret = asm_switch_stack_pointer(
 				(uintptr_t)call_maskrom_api,
 				TA_NONCACHE_STACK_ADDR, NULL);
-		    mutex_unlock(&g_rom_api_mutex);
+			rcar_nex_mutex_unlock(&g_rom_api_mutex);
 
 			if (ret == 0U) {
 				DMSG("[%s] Secure boot success!", product_name);

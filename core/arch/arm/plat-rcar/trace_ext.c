@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2014, Linaro Limited
- * Copyright (c) 2015-2017, Renesas Electronics Corporation
+ * Copyright (c) 2015-2020, Renesas Electronics Corporation
  */
 #include <stdio.h>
 #include <string.h>
@@ -10,6 +10,7 @@
 #include <arm.h>
 #include <kernel/tee_time.h>
 #include <kernel/spinlock.h>
+#include <kernel/time_source.h>
 #include "rcar_log_func.h"
 #include "rcar_common.h"
 
@@ -36,7 +37,11 @@ void trace_ext_puts(const char *str)
 	if ((str != NULL) && (log_secram_header != NULL)) {
 		exceptions = cpu_spin_lock_xsave(&log_spin_lock);
 
-		ret = tee_time_get_sys_time(&sys_time);
+		if (_time_source.get_sys_time != NULL) {
+			ret = tee_time_get_sys_time(&sys_time);
+		} else {
+			ret = TEE_SUCCESS;
+		}
 		if (ret == TEE_SUCCESS) {
 			res = snprintf((char *)time_buf, sizeof(time_buf),
 				"[%u.%06u][%d]",

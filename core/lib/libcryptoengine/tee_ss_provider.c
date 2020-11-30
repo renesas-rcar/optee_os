@@ -28,6 +28,8 @@
 #include "include_secure/crys_aes_unwrap_rcar.h"
 #include "include_secure/crys_suspend_to_ram.h"
 #include "include_secure/secure_key_gen.h"
+#include "rcar_mutex.h"
+#include "rcar_common.h"
 
 
 #ifdef CFG_CRYPT_ENABLE_CEPKA
@@ -314,7 +316,7 @@ static SSError_t ss_crys_aesccm_update(void *ctx, uint8_t *dataIn_ptr,
 static void ss_backup_cb(enum suspend_to_ram_state state, uint32_t cpu_id);
 static TEE_Result crypto_hw_init_crypto_engine(void);
 
-static struct mutex secure_asymm_mutex = MUTEX_INITIALIZER;
+static struct mutex secure_asymm_mutex __nex_data = MUTEX_INITIALIZER;
 
 static SSError_t ss_crys_aes_update(void *ctx, uint8_t *dataIn_ptr,
 		uint32_t dataInSize, uint8_t *dataOut_ptr, CRYSError_t *crysRes)
@@ -2181,7 +2183,7 @@ TEE_Result crypto_hw_acipher_rsanopad_encrypt(struct rsa_public_key *key,
 		}
 	}
 
-	mutex_lock(&secure_asymm_mutex);
+	rcar_nex_mutex_lock(&secure_asymm_mutex);
 	if (res == SS_SUCCESS) {
 		PROV_DMSG("CALL: ss_build_pub_key()\n");
 		res = ss_build_pub_key(&userPubKey_ptr, key);
@@ -2202,7 +2204,7 @@ TEE_Result crypto_hw_acipher_rsanopad_encrypt(struct rsa_public_key *key,
 		}
 		PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n",crys_res,res);
 	}
-	mutex_unlock(&secure_asymm_mutex);
+	rcar_nex_mutex_unlock(&secure_asymm_mutex);
 
 	/* Remove the zero-padding (leave one zero if buff is all zeroes) */
 	if (res == SS_SUCCESS) {
@@ -2275,7 +2277,7 @@ TEE_Result crypto_hw_acipher_rsanopad_decrypt(struct rsa_keypair *key,
 		}
 	}
 
-	mutex_lock(&secure_asymm_mutex);
+	rcar_nex_mutex_lock(&secure_asymm_mutex);
 	if (res == SS_SUCCESS) {
 		PROV_DMSG("CALL: ss_build_priv_key()\n");
 		res = ss_build_priv_key(&userPrivKey_ptr, key);
@@ -2297,7 +2299,7 @@ TEE_Result crypto_hw_acipher_rsanopad_decrypt(struct rsa_keypair *key,
 		}
 		PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n",crys_res,res);
 	}
-	mutex_unlock(&secure_asymm_mutex);
+	rcar_nex_mutex_unlock(&secure_asymm_mutex);
 
 	/* Remove the zero-padding (leave one zero if buff is all zeroes) */
 	if (res == SS_SUCCESS) {
@@ -2522,7 +2524,7 @@ TEE_Result crypto_hw_acipher_rsaes_encrypt(uint32_t algo,
 		}
 	}
 
-	mutex_lock(&secure_asymm_mutex);
+	rcar_nex_mutex_lock(&secure_asymm_mutex);
 	if (res == SS_SUCCESS) {
 		res = ss_build_pub_key(&userPubKey_ptr, key);
 		if (res != SS_SUCCESS) {
@@ -2556,7 +2558,7 @@ TEE_Result crypto_hw_acipher_rsaes_encrypt(uint32_t algo,
 		}
 		PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n",crys_res,res);
 	}
-	mutex_unlock(&secure_asymm_mutex);
+	rcar_nex_mutex_unlock(&secure_asymm_mutex);
 
 	ss_free((void *)userPubKey_ptr);
 	ss_free((void *)primeData_ptr);
@@ -2681,7 +2683,7 @@ TEE_Result crypto_hw_acipher_rsaes_decrypt(uint32_t algo, struct rsa_keypair *ke
 		}
 	}
 
-	mutex_lock(&secure_asymm_mutex);
+	rcar_nex_mutex_lock(&secure_asymm_mutex);
 	if (res == SS_SUCCESS) {
 		res = ss_build_priv_key(&userPrivKey_ptr, key);
 		if (res != SS_SUCCESS) {
@@ -2738,7 +2740,7 @@ TEE_Result crypto_hw_acipher_rsaes_decrypt(uint32_t algo, struct rsa_keypair *ke
 			PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n",crys_res,res);
 		}
 	}
-	mutex_unlock(&secure_asymm_mutex);
+	rcar_nex_mutex_unlock(&secure_asymm_mutex);
 
 	if (res == SS_SUCCESS) {
 		*dst_len = (size_t)outputSize;
@@ -2829,7 +2831,7 @@ TEE_Result crypto_hw_acipher_rsassa_sign(uint32_t algo, struct rsa_keypair *key,
 		}
 	}
 
-	mutex_lock(&secure_asymm_mutex);
+	rcar_nex_mutex_lock(&secure_asymm_mutex);
 	if (res == SS_SUCCESS) {
 		res = ss_build_priv_key(&userPrivKey_ptr, key);
 	}
@@ -2858,7 +2860,7 @@ TEE_Result crypto_hw_acipher_rsassa_sign(uint32_t algo, struct rsa_keypair *key,
 		res = ss_translate_error_crys2ss_rsa(crys_res);
 		PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n",crys_res,res);
 	}
-	mutex_unlock(&secure_asymm_mutex);
+	rcar_nex_mutex_unlock(&secure_asymm_mutex);
 
 	if (res == SS_SUCCESS) {
 		*sig_len = (size_t)outputSize;
@@ -2942,7 +2944,7 @@ TEE_Result crypto_hw_acipher_rsassa_verify(uint32_t algo,
 		}
 	}
 
-	mutex_lock(&secure_asymm_mutex);
+	rcar_nex_mutex_lock(&secure_asymm_mutex);
 	if (res == SS_SUCCESS) {
 		res = ss_build_pub_key(&userPubKey_ptr, key);
 		if (res != SS_SUCCESS) {
@@ -2974,7 +2976,7 @@ TEE_Result crypto_hw_acipher_rsassa_verify(uint32_t algo,
 		}
 		PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n",crys_res,res);
 	}
-	mutex_unlock(&secure_asymm_mutex);
+	rcar_nex_mutex_unlock(&secure_asymm_mutex);
 
 	ss_free((void *)userContext_ptr);
 	ss_free((void *)userPubKey_ptr);
@@ -3178,7 +3180,7 @@ TEE_Result crypto_hw_acipher_dh_shared_secret(struct dh_keypair *private_key,
 		secretKey_ptr = (uint8_t *)ss_malloc((size_t)secretKeySize, &res);
 	}
 
-	mutex_lock(&secure_asymm_mutex);
+	rcar_nex_mutex_lock(&secure_asymm_mutex);
 	if (res == SS_SUCCESS) {
 		secretKeySize = primeSize;
 		PROV_DMSG("CALL: CRYS_DH_GetSecretKey()\n");
@@ -3190,7 +3192,7 @@ TEE_Result crypto_hw_acipher_dh_shared_secret(struct dh_keypair *private_key,
 		res = ss_translate_error_crys2ss_dh(crys_res);
 		PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n",crys_res,res);
 	}
-	mutex_unlock(&secure_asymm_mutex);
+	rcar_nex_mutex_unlock(&secure_asymm_mutex);
 
 	if (res == SS_SUCCESS) {
 		res = crypto_bignum_bin2bn(secretKey_ptr,(size_t)secretKeySize, secret);
@@ -3446,7 +3448,7 @@ TEE_Result crypto_hw_acipher_ecc_sign(struct ecc_keypair *key,
 		res = ss_get_ecc_digest(messageSizeInBytes, &eccHashMode);
 	}
 
-	mutex_lock(&secure_asymm_mutex);
+	rcar_nex_mutex_lock(&secure_asymm_mutex);
 	if (res == SS_SUCCESS) {
 		PROV_DMSG("CALL:  CRYS_ECPKI_BuildPrivKey()\n");
 		crys_res = CRYS_ECPKI_BuildPrivKey(domain_id, privKeySizeIn_ptr,
@@ -3464,7 +3466,7 @@ TEE_Result crypto_hw_acipher_ecc_sign(struct ecc_keypair *key,
 		res = ss_translate_error_crys2ss_ecc(crys_res);
 		PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n",crys_res,res);
 	}
-	mutex_unlock(&secure_asymm_mutex);
+	rcar_nex_mutex_unlock(&secure_asymm_mutex);
 
 	ss_free((void *)signUserContext_ptr);
 	ss_free((void *)privKeySizeIn_ptr);
@@ -3551,7 +3553,7 @@ static SSError_t ss_ecc_verify_secure(struct ecc_public_key *key,
 		res = ss_get_ecc_digest(messageSizeInBytes, &eccHashMode);
 	}
 
-	mutex_lock(&secure_asymm_mutex);
+	rcar_nex_mutex_lock(&secure_asymm_mutex);
 	if (res == SS_SUCCESS) {
 		/* build public key */
 		*publKeyIn_ptr = (uint8_t)CRYS_EC_PointUncompressed;
@@ -3576,7 +3578,7 @@ static SSError_t ss_ecc_verify_secure(struct ecc_public_key *key,
 		PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n", crys_res,
 				res);
 	}
-	mutex_unlock(&secure_asymm_mutex);
+	rcar_nex_mutex_unlock(&secure_asymm_mutex);
 
 	ss_free((void *)publKeyX_ptr);
 	ss_free((void *)publKeyY_ptr);
@@ -3698,7 +3700,7 @@ TEE_Result crypto_hw_acipher_ecc_shared_secret(struct ecc_keypair *private_key,
 		publKeyIn_ptr = (uint8_t *)ss_calloc(1,publkeysize_bytes, &res);
 	}
 
-	mutex_lock(&secure_asymm_mutex);
+	rcar_nex_mutex_lock(&secure_asymm_mutex);
 	if (res == SS_SUCCESS) {
 		*publKeyIn_ptr = (uint8_t)CRYS_EC_PointUncompressed;
 		(void)memcpy((((publKeyIn_ptr + 1U) + modulusbytes) - publKeySizeXBytes),
@@ -3730,7 +3732,7 @@ TEE_Result crypto_hw_acipher_ecc_shared_secret(struct ecc_keypair *private_key,
 		res = ss_translate_error_crys2ss_ecc(crys_res);
 		PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n",crys_res,res);
 	}
-	mutex_unlock(&secure_asymm_mutex);
+	rcar_nex_mutex_unlock(&secure_asymm_mutex);
 
 	ss_free((void *)tempBuff_ptr);
 	ss_free((void *)userpriv_key);
@@ -6742,19 +6744,29 @@ static TEE_Result crypto_hw_init_crypto_engine(void)
 	SSError_t res;
 	DX_CclibRetCode_t crys_res;
 	DxUTILError_t util_res;
-	PROV_INMSG("START %s\n", __func__);
-	crys_res = DX_CclibInit();
-	res = ss_translate_error_crys2ss_init(crys_res);
-	PROV_DMSG("crys_res=0x%08x -> res=0x%08x \n",crys_res,res);
-	if (res == SS_SUCCESS) {
-		util_res = DX_UTIL_SetSessionKey();
-		res = ss_translate_error_crys2ss_util(util_res);
+	static uint32_t hwengine_init_flag __nex_bss = INIT_FLAG_UNINITIALIZED;
+
+	rcar_nex_mutex_lock(&secure_asymm_mutex);
+	if (hwengine_init_flag == INIT_FLAG_UNINITIALIZED) {
+		PROV_INMSG("START %s\n", __func__);
+		crys_res = DX_CclibInit();
+		res = ss_translate_error_crys2ss_init(crys_res);
+		PROV_DMSG("crys_res=0x%08x -> res=0x%08x \n",crys_res,res);
+		if (res == SS_SUCCESS) {
+			util_res = DX_UTIL_SetSessionKey();
+			res = ss_translate_error_crys2ss_util(util_res);
 	}
 #if defined(CFG_CRYPT_ENABLE_CEPKA)
-	if (res == SS_SUCCESS) {
-		res = pka_verify_init();
-	}
+		if (res == SS_SUCCESS) {
+			res = pka_verify_init();
+		}
 #endif
+		/* Secure and PKA engines has been initialized */
+		hwengine_init_flag = INIT_FLAG_INITIALIZED;
+	} else {
+		res = SS_SUCCESS;
+	}
+	rcar_nex_mutex_unlock(&secure_asymm_mutex);
 	tee_res = ss_translate_error_ss2tee(res);
 	PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n",res,tee_res);
 

@@ -34,13 +34,13 @@ static unsigned long main_cpu_suspend(unsigned long a0, unsigned long a1);
 static unsigned long main_cpu_resume(unsigned long a0, unsigned long a1);
 static void main_hook_gic_add(struct itr_chip *chip, size_t it, uint32_t flags);
 
-static uint32_t suspend_to_ram_save_flag = 0U;
-static uint32_t main_cpu_lock = (uint32_t)SPINLOCK_UNLOCK;
-static uint32_t cpu_on_core_lock = (uint32_t)SPINLOCK_UNLOCK;
-static uint8_t cpu_on_core_bit = 0U;
+static uint32_t suspend_to_ram_save_flag __nex_bss = 0U;
+static uint32_t main_cpu_lock __nex_bss = (uint32_t)SPINLOCK_UNLOCK;
+static uint32_t cpu_on_core_lock __nex_bss = (uint32_t)SPINLOCK_UNLOCK;
+static uint8_t cpu_on_core_bit __nex_bss = 0U;
 static void (*gic_add_ptr_bk)(struct itr_chip *chip, size_t it,
-				uint32_t flags);
-static struct itr_ops main_itr_ops;
+				uint32_t flags) __nex_bss;
+static struct itr_ops main_itr_ops __nex_bss;
 
 /* Overriding the default __weak tee_entry_fast() */
 void tee_entry_fast(struct thread_smc_args *args)
@@ -148,7 +148,7 @@ static const struct thread_handlers handlers __nex_data = {
 	.system_reset = pm_do_nothing,
 };
 
-struct gic_data gic_data;
+struct gic_data gic_data __nex_bss;
 
 register_phys_mem_pgdir(MEM_AREA_IO_SEC, GICD_BASE, GIC_DIST_REG_SIZE);
 register_phys_mem_pgdir(MEM_AREA_IO_SEC, GICC_BASE, GIC_DIST_REG_SIZE);
@@ -223,6 +223,8 @@ void main_init_gic(void)
 	main_itr_ops = *gic_data.chip.ops;
 	main_itr_ops.add = main_hook_gic_add;
 	gic_data.chip.ops = (const struct itr_ops *)&main_itr_ops;
+
+	log_buf_init();
 }
 
 static void main_hook_gic_add(struct itr_chip *chip, size_t it, uint32_t flags)

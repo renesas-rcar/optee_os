@@ -112,102 +112,52 @@
 #define MEMORY1_BASE		ROUNDDOWN(OPTEE_LOG_BASE, MEM_SECTION_SIZE)
 #define MEMORY1_SIZE		(MEM_SECTION_SIZE)
 #define MEMORY1_TYPE		MEM_AREA_IO_SEC
-#define MEMORY1_SECURE		true
-#define MEMORY1_CACHED		false
-#define MEMORY1_DEVICE		false
-#define MEMORY1_RW		true
-#define MEMORY1_EXEC		false
 
 /* LOG Area for Normal World */
 #define MEMORY2_BASE		(OPTEE_LOG_NS_BASE)
 #define MEMORY2_SIZE		(OPTEE_LOG_NS_SIZE)
 #define MEMORY2_TYPE		MEM_AREA_RAM_NSEC
-#define MEMORY2_SECURE		false
-#define MEMORY2_CACHED		false
-#define MEMORY2_DEVICE		false
-#define MEMORY2_RW		true
-#define MEMORY2_EXEC		false
 
 /* System RAM */
 #define MEMORY3_BASE		ROUNDDOWN(SRAM_BASE, MEM_SECTION_SIZE)
 #define MEMORY3_SIZE		(MEM_SECTION_SIZE)
 #define MEMORY3_TYPE		MEM_AREA_IO_SEC
-#define MEMORY3_SECURE		true
-#define MEMORY3_CACHED		false
-#define MEMORY3_DEVICE		false
-#define MEMORY3_RW		true
-#define MEMORY3_EXEC		true
 
 /* Crypto Engine Work area */
 #define MEMORY4_BASE		ROUNDDOWN(CRYPTOENGINE_WORK_BASE, \
 					MEM_SECTION_SIZE)
 #define MEMORY4_SIZE		(MEM_SECTION_SIZE)
 #define MEMORY4_TYPE		MEM_AREA_RAM_SEC
-#define MEMORY4_SECURE		true
-#define MEMORY4_CACHED		true
-#define MEMORY4_DEVICE		false
-#define MEMORY4_RW		true
-#define MEMORY4_EXEC		false
 
 /* TA area for verification */
 #define MEMORY5_BASE		ROUNDDOWN(TA_VERIFICATION_BASE, \
 					MEM_SECTION_SIZE)
 #define MEMORY5_SIZE		(TA_VERIFICATION_SIZE)
 #define MEMORY5_TYPE		MEM_AREA_IO_SEC
-#define MEMORY5_SECURE		true
-#define MEMORY5_CACHED		false
-#define MEMORY5_DEVICE		false
-#define MEMORY5_RW		true
-#define MEMORY5_EXEC		false
 
 /* MaskROM API */
 #define MEMORY6_BASE		ROUNDDOWN(ROMAPI_BASE, MEM_SECTION_SIZE)
 #define MEMORY6_SIZE		(MEM_SECTION_SIZE)
 #define MEMORY6_TYPE		MEM_AREA_TEE_COHERENT
-#define MEMORY6_SECURE		true
-#define MEMORY6_CACHED		false
-#define MEMORY6_DEVICE		false
-#define MEMORY6_RW		true
-#define MEMORY6_EXEC		true
 
 /* Product Register (PRR) */
 #define MEMORY7_BASE		ROUNDDOWN(PRR_BASE, MEM_SECTION_SIZE)
 #define MEMORY7_SIZE		(MEM_SECTION_SIZE)
 #define MEMORY7_TYPE		MEM_AREA_IO_SEC
-#define MEMORY7_SECURE		true
-#define MEMORY7_CACHED		false
-#define MEMORY7_DEVICE		true
-#define MEMORY7_RW		true
-#define MEMORY7_EXEC		false
 
 /* Non Cache Stack Area */
 #define MEMORY8_BASE		ROUNDDOWN(NONCACHE_WORK_BASE, NONCACHE_WORK_SIZE)
 #define MEMORY8_SIZE		(MEM_SECTION_SIZE)
 #define MEMORY8_TYPE		MEM_AREA_IO_SEC
-#define MEMORY8_SECURE		true
-#define MEMORY8_CACHED		false
-#define MEMORY8_DEVICE		true
-#define MEMORY8_RW		true
-#define MEMORY8_EXEC		false
 
 /* SPI Multi I/O Bus Controller (RPC) */
 #define MEMORY9_BASE		ROUNDDOWN(RPC_BASE, MEM_SECTION_SIZE)
 #define MEMORY9_SIZE		(MEM_SECTION_SIZE)
 #define MEMORY9_TYPE		MEM_AREA_IO_SEC
-#define MEMORY9_SECURE		true
-#define MEMORY9_CACHED		false
-#define MEMORY9_DEVICE		true
-#define MEMORY9_RW		true
-#define MEMORY9_EXEC		false
 
 /* RPC Address Map */
 #define MEMORY10_BASE		ROUNDDOWN(RPC_ADDR_MAP_BASE, MEM_SECTION_SIZE)
 #define MEMORY10_SIZE		(RPC_ADDR_MAP_SIZE)
 #define MEMORY10_TYPE		MEM_AREA_IO_SEC
-#define MEMORY10_SECURE		true
-#define MEMORY10_CACHED		true
-#define MEMORY10_DEVICE		true
-#define MEMORY10_RW		true
-#define MEMORY10_EXEC		false
 
 #endif /*PLATFORM_CONFIG_H*/
