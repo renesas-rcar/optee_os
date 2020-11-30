@@ -310,24 +310,21 @@ static unsigned int get_next_pnum(unsigned int *pnum)
 void crypto_rng_add_event(enum crypto_rng_src sid, unsigned int *pnum,
 			  const void *data, size_t dlen)
 {
-#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
-    (void)sid;
-    (void)pnum;
-
-    crypto_hw_rng_add_entropy((uint8_t *)data, dlen);
-#else
 	unsigned int pn = get_next_pnum(pnum);
 	uint8_t snum = sid >> 1;
 
 	if (CRYPTO_RNG_SRC_IS_QUICK(sid)) {
 		push_ring_buffer(snum, pn, data, dlen);
 	} else {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+		crypto_hw_rng_add_entropy((uint8_t *)data, dlen);
+#else
 		mutex_lock(&state_mu);
 		add_event(snum, pn, data, dlen);
 		drain_ring_buffer();
 		mutex_unlock(&state_mu);
-	}
 #endif
+	}
 }
 
 /* GenerateBlocks */
