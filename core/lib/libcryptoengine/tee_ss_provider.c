@@ -4377,7 +4377,7 @@ TEE_Result crypto_hw_cipher_init(void *ctx, uint32_t algo,
 	case TEE_ALG_DES_CBC_NOPAD:
 	case TEE_ALG_DES3_CBC_NOPAD:
 #endif
-		PROV_DMSG("CALL: ss_aes_init\n");
+		PROV_DMSG("CALL: ss_des_init\n");
 		res = ss_des_init(&(ss_cipher_ctx->u.des_ctx), algo, mode, key1, key1_len, iv, iv_len);
 		PROV_DMSG("Result: 0x%08x\n",res);
 		break;
@@ -5809,7 +5809,6 @@ TEE_Result crypto_hw_aes_ccm_alloc_ctx(void **ctx)
             sizeof(SS_AESCCM_Context_t), &ret);
     if (ret == SS_SUCCESS)
     {
-        PROV_DMSG("algo = 0x%08x\n", algo);
         ss_ctx->sw_ctx.ops = NULL;
         *ctx = ss_ctx;
     }
