@@ -129,13 +129,15 @@ uint32_t set_rpc_clock_mode(uint32_t mode)
 	 bit[4:0]=1'b00011: RPC clock= 80MHz, RPCD2 clock= 40MHz ( 40MHz)
 	 */
 	if (ret == FL_DRV_OK) {
-		*((volatile uint32_t*)CPG_CPGWPR)	= ~dataL;
-		*((volatile uint32_t*)CPG_RPCCKCR)	=  dataL;
+		*((volatile uint32_t*)CPG_CPGWPR)	=
+				*((volatile uint32_t*)CPG_CPGWPR) | (~dataL);
+		*((volatile uint32_t*)CPG_RPCCKCR)	=
+				*((volatile uint32_t*)CPG_RPCCKCR) | dataL;
 
 		ret = FL_DRV_ERR_TIMEOUT;
 		for (i = 0; i < polling_max; i++) {
 			reg = *((volatile uint32_t*)CPG_RPCCKCR);
-			if (reg == dataL) {
+			if ((reg & dataL) == dataL) {
 				ret = FL_DRV_OK;
 				break;
 			}
