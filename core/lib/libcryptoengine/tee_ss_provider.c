@@ -2737,7 +2737,8 @@ TEE_Result crypto_hw_acipher_rsaes_decrypt(uint32_t algo, struct rsa_keypair *ke
 				(crys_res == CRYS_RSA_15_ERROR_IN_DECRYPTED_DATA_SIZE) ||
 				(crys_res == CRYS_RSA_OAEP_DECODE_ERROR) ||
 				(crys_res == CRYS_RSA_DECRYPT_INVALID_OUTPUT_SIZE) ||
-				(crys_res == CRYS_RSA_DATA_POINTER_INVALID_ERROR)) {
+				(crys_res == CRYS_RSA_DATA_POINTER_INVALID_ERROR) ||
+				(crys_res == CRYS_RSA_INVALID_MESSAGE_VAL)) {
 				res = SS_ERROR_BAD_PARAMETERS;
 			} else {
 				res = SS_ERROR_GENERIC;
