@@ -39,6 +39,29 @@ static struct crypto_cbc_mac_ctx *to_cbc_mac_ctx(struct crypto_mac_ctx *ctx)
 	return container_of(ctx, struct crypto_cbc_mac_ctx, ctx);
 }
 
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
+static const struct crypto_cipher_ops *cipher_ops(void *ctx)
+{
+    struct crypto_cipher_ctx *c = ctx;
+
+    assert(c && c->ops);
+
+    return c->ops;
+}
+
+static TEE_Result crypto_cbc_mac_des_init(void *ctx, TEE_OperationMode mode,
+                  const uint8_t *key1, size_t key1_len,
+                  const uint8_t *key2, size_t key2_len,
+                  const uint8_t *iv, size_t iv_len)
+{
+    if (mode != TEE_MODE_DECRYPT && mode != TEE_MODE_ENCRYPT)
+        return TEE_ERROR_BAD_PARAMETERS;
+
+    return cipher_ops(ctx)->init(ctx, mode, key1, key1_len, key2, key2_len,
+                    iv, iv_len);
+}
+#endif
+
 static TEE_Result crypto_cbc_mac_init(struct crypto_mac_ctx *ctx,
 				      const uint8_t *key, size_t len)
 {
@@ -50,9 +73,24 @@ static TEE_Result crypto_cbc_mac_init(struct crypto_mac_ctx *ctx,
 	mc->is_computed = false;
 
 	/* IV should be zero and mc->block happens to be zero at this stage */
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
+    /* When HW-Engine is valid, this function is called only in DES processing of MAC. */
+	return crypto_cbc_mac_des_init(mc->cbc_ctx, TEE_MODE_ENCRYPT, key, len,
+				  NULL, 0, mc->block, mc->block_len);
+#else
 	return crypto_cipher_init(mc->cbc_ctx, TEE_MODE_ENCRYPT, key, len,
 				  NULL, 0, mc->block, mc->block_len);
+#endif
 }
+
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
+static TEE_Result crypto_cbc_mac_des_update(void *ctx, TEE_OperationMode mode __unused,
+                bool last_block, const uint8_t *data,
+                size_t len, uint8_t *dst)
+{
+    return cipher_ops(ctx)->update(ctx, last_block, data, len, dst);
+}
+#endif
 
 static TEE_Result crypto_cbc_mac_update(struct crypto_mac_ctx *ctx,
 					const uint8_t *data, size_t len)
@@ -77,9 +115,16 @@ static TEE_Result crypto_cbc_mac_update(struct crypto_mac_ctx *ctx,
 	}
 
 	while (len >= mc->block_len) {
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
+        /* When HW-Engine is valid, this function is called only in DES processing of MAC. */
+		res = crypto_cbc_mac_des_update(mc->cbc_ctx, TEE_MODE_ENCRYPT,
+					   false, data, mc->block_len,
+					   mc->digest);
+#else
 		res = crypto_cipher_update(mc->cbc_ctx, TEE_MODE_ENCRYPT,
 					   false, data, mc->block_len,
 					   mc->digest);
+#endif
 		if (res)
 			return res;
 		mc->is_computed = 1;
@@ -95,6 +140,13 @@ static TEE_Result crypto_cbc_mac_update(struct crypto_mac_ctx *ctx,
 
 	return TEE_SUCCESS;
 }
+
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
+static void crypto_cbc_mac_des_final(void *ctx)
+{
+    cipher_ops(ctx)->final(ctx);
+}
+#endif
 
 static TEE_Result crypto_cbc_mac_final(struct crypto_mac_ctx *ctx,
 				       uint8_t *digest, size_t digest_len)
@@ -119,7 +171,12 @@ static TEE_Result crypto_cbc_mac_final(struct crypto_mac_ctx *ctx,
 		return TEE_ERROR_BAD_STATE;
 
 	memcpy(digest, mc->digest, MIN(digest_len, mc->block_len));
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
+    /* When HW-Engine is valid, this function is called only in DES processing of MAC. */
+	crypto_cbc_mac_des_final(mc->cbc_ctx);
+#else
 	crypto_cipher_final(mc->cbc_ctx);
+#endif
 
 	return TEE_SUCCESS;
 }
@@ -157,6 +214,38 @@ static const struct crypto_mac_ops crypto_cbc_mac_ops = {
 	.copy_state = crypto_cbc_mac_copy_state,
 };
 
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
+static TEE_Result crypto_cbc_mac_des_alloc_ctx(void **ctx, uint32_t algo)
+{
+    TEE_Result res = TEE_SUCCESS;
+    struct crypto_cipher_ctx *c = NULL;
+
+    switch (algo) {
+         case TEE_ALG_DES_ECB_NOPAD:
+             res = crypto_des_ecb_alloc_ctx(&c);
+             break;
+         case TEE_ALG_DES3_ECB_NOPAD:
+             res = crypto_des3_ecb_alloc_ctx(&c);
+             break;
+         case TEE_ALG_DES_CBC_NOPAD:
+             res = crypto_des_cbc_alloc_ctx(&c);
+             break;
+         case TEE_ALG_DES3_CBC_NOPAD:
+             res = crypto_des3_cbc_alloc_ctx(&c);
+             break;
+         default:
+             return TEE_ERROR_NOT_IMPLEMENTED;
+    }
+
+    if (!res)
+    {
+        *ctx = c;
+    }
+
+    return res;
+}
+#endif
+
 static TEE_Result crypto_cbc_mac_alloc_ctx(struct crypto_mac_ctx **ctx_ret,
 					   uint32_t cbc_algo, bool pkcs5_pad)
 {
@@ -169,7 +258,12 @@ static TEE_Result crypto_cbc_mac_alloc_ctx(struct crypto_mac_ctx **ctx_ret,
 	if (res)
 		return res;
 
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
+    /* When HW-Engine is valid, this function is called only in DES processing of MAC. */
+    res = crypto_cbc_mac_des_alloc_ctx(&cbc_ctx, cbc_algo);
+#else
 	res = crypto_cipher_alloc_ctx(&cbc_ctx, cbc_algo);
+#endif
 	if (res)
 		return res;
 
