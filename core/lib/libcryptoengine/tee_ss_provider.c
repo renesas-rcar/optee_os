@@ -5525,6 +5525,8 @@ static SSError_t ss_hmac_final(void *ctx, uint32_t algo, uint8_t *digest,
 	CRYS_HMACUserContext_t *contextID_ptr;
 	CRYS_HASH_Result_t hmacResultBuff;
 	uint32_t hmacResultLen = 0U;
+	uint32_t i;
+	uint8_t *buf = (uint8_t *)hmacResultBuff;
 
 	PROV_INMSG("START: ss_hmac_final\n");
 
@@ -5583,13 +5585,6 @@ static SSError_t ss_hmac_final(void *ctx, uint32_t algo, uint8_t *digest,
 	}
 
 	if (res == SS_SUCCESS) {
-		if (digest_len < (size_t)hmacResultLen) {
-			PROV_EMSG("BAD_STATE(hmacResultLen)\n");
-			res = SS_ERROR_BAD_STATE;
-		}
-	}
-
-	if (res == SS_SUCCESS) {
 		if(ss_ctx->restBufSize != 0U){
 			crys_res = CRYS_HMAC_Update(contextID_ptr,
 					ss_ctx->restBuf, ss_ctx->restBufSize);
@@ -5606,7 +5601,10 @@ static SSError_t ss_hmac_final(void *ctx, uint32_t algo, uint8_t *digest,
 		PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n",crys_res,res);
 	}
 	if (res == SS_SUCCESS) {
-		(void)memcpy(digest, hmacResultBuff, hmacResultLen);
+		/* copy to output  */
+		for (i = 0; i < hmacResultLen && i < digest_len; i++) {
+			digest[i] = buf[i];
+		}
 	}
 
 	PROV_OUTMSG("return res=0x%08x\n", res);
