@@ -130,14 +130,14 @@ uint32_t set_rpc_clock_mode(uint32_t mode)
 	 */
 	if (ret == FL_DRV_OK) {
 		*((volatile uint32_t*)CPG_CPGWPR)	=
-				*((volatile uint32_t*)CPG_CPGWPR) | (~dataL);
+				(*((volatile uint32_t*)CPG_CPGWPR) & (~CPG_CPGWPR_WPRTCT_MASK)) | (~dataL);
 		*((volatile uint32_t*)CPG_RPCCKCR)	=
-				*((volatile uint32_t*)CPG_RPCCKCR) | dataL;
+				(*((volatile uint32_t*)CPG_RPCCKCR) & (~CPG_RPCCKCR_DIV_MASK)) | dataL;
 
 		ret = FL_DRV_ERR_TIMEOUT;
 		for (i = 0; i < polling_max; i++) {
 			reg = *((volatile uint32_t*)CPG_RPCCKCR);
-			if ((reg & dataL) == dataL) {
+			if ((reg & CPG_RPCCKCR_DIV_MASK) == dataL) {
 				ret = FL_DRV_OK;
 				break;
 			}

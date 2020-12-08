@@ -154,6 +154,13 @@
 #define RPC_CLK_160M			(0x03U)
 #define RPC_CLK_150M			(0x04U)
 
+/* CPG Write Protect Register */
+#define CPG_CPGWPR_WPRTCT_MASK	(0xFFFFFFFFU)
+
+/* RPC-IF Clock Frequency Control Register */
+/* RPC-IF clock (RPC, RPCD2) Frequency Division Ratio */
+#define CPG_RPCCKCR_DIV_MASK	(0x0000001FU)
+
 /*
  * Global variable declaration
  */
