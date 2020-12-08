@@ -57,25 +57,27 @@ static uint32_t		mfis_reg_num __nex_data = MFIS_ERR_DET_MAX;
 static MFIS_REG_T	mfis_reg __nex_bss;
 static MFIS_ERR_SETTING_T	local_setting __nex_bss;
 static void (*user_cb)(MFIS_ERR_FACTOR_T*) __nex_bss = NULL;
+static uint32_t mfis_err_init_flag __nex_bss = INIT_FLAG_UNINITIALIZED;
 
 static void mfis_backup_cb(enum suspend_to_ram_state state,
 			uint32_t cpu_id __unused)
 {
 	static uint32_t mfis_suspend_flag __nex_bss = 0U;
 
-	if ((SUS2RAM_STATE_SUSPEND == state) && (MFIS_STATE_NOACTIVE != mfis_state)) {
-		(void)mfis_error_detection_stop();
-		mfis_suspend_flag = 1U;
-	} else if (SUS2RAM_STATE_RESUME == state) {
+	if (SUS2RAM_STATE_SUSPEND == state) {
+		if (MFIS_STATE_NOACTIVE != mfis_state) {
+			(void)mfis_error_detection_stop();
+			mfis_suspend_flag = 1U;
+		}
+		mfis_err_init_flag = INIT_FLAG_UNINITIALIZED;
+	} else {
+		/* SUS2RAM_STATE_RESUME == state */
 		mfis_err_itr_del();
 		(void)mfis_err_init();
 		if (1U == mfis_suspend_flag) {
 			(void)mfis_error_detection_start(&local_setting, user_cb);
 			mfis_suspend_flag = 0U;
 		}
-	} else {
-		/* Nothing. Because state is a suspend request to the driver but the driver is not running. */
-		;
 	}
 }
 
@@ -220,7 +222,6 @@ static TEE_Result mfis_err_init(void)
 {
 	uint32_t loop;
 	uint32_t exceptions;
-	static uint32_t mfis_err_init_flag __nex_bss = INIT_FLAG_UNINITIALIZED;
 
 	exceptions = cpu_spin_lock_xsave(&thread_global_lock);
 	if (mfis_err_init_flag == INIT_FLAG_UNINITIALIZED) {

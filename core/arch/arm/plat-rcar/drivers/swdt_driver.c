@@ -59,25 +59,27 @@ static uint16_t		swdt_count __nex_bss = 0U;
 static uint8_t		swdt_clk __nex_bss = 0U;
 static uint8_t		swdt_expanded_clk __nex_bss = 0U;
 static void		(*user_cb)(void) __nex_bss = NULL;
+static uint32_t		swdt_init_flag __nex_bss = INIT_FLAG_UNINITIALIZED;
 
 static void swdt_backup_cb(enum suspend_to_ram_state state,
 			uint32_t cpu_id __unused)
 {
 	static uint32_t swdt_suspend_flag __nex_bss = 0U;
 
-	if ((SUS2RAM_STATE_SUSPEND == state) && (SWDT_STATE_NOACTIVE != swdt_state)) {
-		(void)swdt_stop();
-		swdt_suspend_flag = 1U;
-	} else if (SUS2RAM_STATE_RESUME == state) {
+	if (SUS2RAM_STATE_SUSPEND == state) {
+		if (SWDT_STATE_NOACTIVE != swdt_state) {
+			(void)swdt_stop();
+			swdt_suspend_flag = 1U;
+		}
+		swdt_init_flag = INIT_FLAG_UNINITIALIZED;
+	} else {
+		/* SUS2RAM_STATE_RESUME == state */
 		swdt_itr_del();
 		(void)swdt_init();
 		if (1U == swdt_suspend_flag) {
 			(void)swdt_start(swdt_count, swdt_clk, swdt_expanded_clk, user_cb);
 			swdt_suspend_flag = 0U;
 		}
-	} else {
-		/* Nothing. Because state is a suspend request to the driver but the driver is not running. */
-		;
 	}
 }
 
@@ -235,7 +237,6 @@ int32_t swdt_kick(void)
 static TEE_Result swdt_init(void)
 {
 	uint32_t exceptions;
-	static uint32_t swdt_init_flag __nex_bss = INIT_FLAG_UNINITIALIZED;
 
 	exceptions = cpu_spin_lock_xsave(&thread_global_lock);
 	if (swdt_init_flag == INIT_FLAG_UNINITIALIZED) {
