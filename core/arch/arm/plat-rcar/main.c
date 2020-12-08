@@ -195,6 +195,21 @@ register_phys_mem_pgdir(DEVICE2_TYPE, DEVICE2_PA_BASE, DEVICE2_SIZE);
 #ifdef DEVICE3_PA_BASE
 register_phys_mem_pgdir(DEVICE3_TYPE, DEVICE3_PA_BASE, DEVICE3_SIZE);
 #endif
+#ifndef CFG_CORE_RESERVED_SHM
+register_dynamic_shm(TEE_SHMEM_START, TEE_SHMEM_SIZE);
+#ifdef NSEC_DDR_0_BASE
+register_dynamic_shm(NSEC_DDR_0_BASE, NSEC_DDR_0_SIZE);
+#endif
+#ifdef NSEC_DDR_1_BASE
+register_dynamic_shm(NSEC_DDR_1_BASE, NSEC_DDR_1_SIZE);
+#endif
+#ifdef NSEC_DDR_2_BASE
+register_dynamic_shm(NSEC_DDR_2_BASE, NSEC_DDR_2_SIZE);
+#endif
+#ifdef NSEC_DDR_3_BASE
+register_dynamic_shm(NSEC_DDR_3_BASE, NSEC_DDR_3_SIZE);
+#endif
+#endif /* !CFG_CORE_RESERVED_SHM */
 
 const struct thread_handlers *generic_boot_get_handlers(void)
 {

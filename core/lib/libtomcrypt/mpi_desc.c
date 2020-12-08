@@ -19,7 +19,11 @@
 #endif
 
 /* Size needed for xtest to pass reliably on both ARM32 and ARM64 */
+#if defined(PLATFORM_RCAR) && !defined(CFG_CORE_RESERVED_SHM)
+#define MPI_MEMPOOL_SIZE	(84 * 1024)
+#else
 #define MPI_MEMPOOL_SIZE	(42 * 1024)
+#endif
 
 /* From mbedtls/library/bignum.c */
 #define ciL		(sizeof(mbedtls_mpi_uint))	/* chars in limb  */
