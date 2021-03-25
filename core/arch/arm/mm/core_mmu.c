@@ -923,9 +923,7 @@ static bool assign_mem_va(vaddr_t tee_ram_va,
 	const paddr_t direct_map_area[][2] = {
 		{ MEMORY5_BASE, MEMORY5_SIZE }, /* TA area for verification */
 		{ MEMORY6_BASE, MEMORY6_SIZE }, /* MaskROM API memory */
-#ifndef CFG_VIRTUALIZATION
 		{ MEMORY7_BASE, MEMORY7_SIZE }, /* Product Register (PRR) */
-#endif
 		{ DEVICE0_PA_BASE, DEVICE0_SIZE }, /* Life Cycle address */
 		{ DEVICE1_PA_BASE, DEVICE1_SIZE } /* Crypto Engine address */
 	};

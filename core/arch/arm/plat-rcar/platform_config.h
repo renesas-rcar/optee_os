@@ -85,6 +85,8 @@
 
 #define OPTEE_LIMIT		(TEE_RAM_START + 0x00100000)
 
+#define REG_AREA_START		(0xC0000000U)	/* Register Area start address */
+
 /*
  * Dynamic shared memory
  */
