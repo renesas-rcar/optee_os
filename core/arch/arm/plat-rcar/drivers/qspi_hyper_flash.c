@@ -292,16 +292,16 @@ static uint32_t init_rpc(void)
 	if (ret == FL_DRV_OK) {
 		dataL = 0x00020000U;	/* Bit17 RPC reset */
 
-		*((volatile uint32_t *)CPG_CPGWPR)	= ~dataL;
-		*((volatile uint32_t *)CPG_SRCR9)	=  dataL;
+		io_write32((vaddr_t)CPG_CPGWPR, ~dataL);
+		io_write32((vaddr_t)CPG_SRCR9, dataL);
 		udelay(wait_time_us_tRP_margin);
 
-		*((volatile uint32_t *)CPG_CPGWPR)	= ~dataL;
-		*((volatile uint32_t *)CPG_SRSTCLR9)	=  dataL;
+		io_write32((vaddr_t)CPG_CPGWPR, ~dataL);
+		io_write32((vaddr_t)CPG_SRSTCLR9, dataL);
 		udelay(wait_time_us_tRH_margin);
 
 		DMSG("rpc_clock_mode=%d, RPCCKCR=0x%08x",
-			rpc_clock_mode, io_read32(CPG_RPCCKCR));
+			rpc_clock_mode, io_read32((vaddr_t)CPG_RPCCKCR));
 	}
 
 	return ret;

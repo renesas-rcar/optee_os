@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
- * Copyright (c) 2015-2019, Renesas Electronics Corporation
+ * Copyright (c) 2015-2021, Renesas Electronics Corporation
  */
 
 #include <stdint.h>
 #include <trace.h>
+#include <io.h>
 #include <drivers/qspi_hyper_flash.h>
 
 #include "qspi_hyper_flash_common.h"
@@ -79,32 +80,31 @@ static uint32_t qspi_common_erase_sector(uint32_t manual_set_addr)
 	uint32_t ret;
 	uint32_t status = 0U;
 
-	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80030260U |
-		phycnt_reg;
+	io_write32((vaddr_t)RPC_PHYCNT, (0x80030260U | phycnt_reg));
 	/*
 	 * bit31  CAL         =  1 : PHY calibration
 	 * bit1-0 PHYMEM[1:0] = 00 : QSPI-SDR
 	 */
 
-	*((volatile uint32_t *)RPC_CMNCR)	=	0x81FF7300U;
+	io_write32((vaddr_t)RPC_CMNCR, 0x81FF7300U);
 	/*
 	 * bit31  MD       =  1 : Manual mode
 	 * bit1-0 BSZ[1:0] = 00 : QSPI Flash x 1
 	 */
 
-	*((volatile uint32_t *)RPC_SMCMR)	=	0x00DC0000U;
+	io_write32((vaddr_t)RPC_SMCMR, 0x00DC0000U);
 	/*
 	 * bit23-16 CMD[7:0] = 0xDC : Sector Erase 4-byte address command
 	 */
 
-	*((volatile uint32_t *)RPC_SMADR)	=	manual_set_addr;
-	*((volatile uint32_t *)RPC_SMDRENR)	=	0x00000000U;
+	io_write32((vaddr_t)RPC_SMADR, manual_set_addr);
+	io_write32((vaddr_t)RPC_SMDRENR, 0x00000000U);
 	/*
 	 * bit8 ADDRE  = 0 : Address SDR transfer
 	 * bit0 SPIDRE = 0 : DATA SDR transfer
 	 */
 
-	*((volatile uint32_t *)RPC_SMENR)	=	0x00004F00U;
+	io_write32((vaddr_t)RPC_SMENR, 0x00004F00U);
 	/*
 	 * bit31-30 CDB[1:0]   =   00 : 1bit width command (QSPI0_MOSI)
 	 * bit25-24 ADB[1:0]   =   00 : 1bit width address (QSPI0_MOSI)
@@ -115,7 +115,7 @@ static uint32_t qspi_common_erase_sector(uint32_t manual_set_addr)
 	 * bit3-0   SPIDE[3:0] = 0000 : No transfer
 	 */
 
-	*((volatile uint32_t *)RPC_SMCR)	=	0x00000001U;
+	io_write32((vaddr_t)RPC_SMCR, 0x00000001U);
 	/*
 	 * bit2     SPIRE      = 0 : Data read disable
 	 * bit1     SPIWE      = 0 : Data write disable
@@ -136,31 +136,30 @@ static uint32_t qspi_common_read_device_id(uint32_t *read_device_id)
 	uint32_t ret;
 	uint32_t status = 0U;
 
-	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80030260U |
-		phycnt_reg;
+	io_write32((vaddr_t)RPC_PHYCNT, (0x80030260U | phycnt_reg));
 	/*
 	 * bit31  CAL         =  1 : PHY calibration
 	 * bit1-0 PHYMEM[1:0] = 00 : QSPI-SDR
 	 */
 
-	*((volatile uint32_t *)RPC_CMNCR)	=	0x81FF7300U;
+	io_write32((vaddr_t)RPC_CMNCR, 0x81FF7300U);
 	/*
 	 * bit31  MD       =  1 : Manual mode
 	 * bit1-0 BSZ[1:0] = 00 : QSPI Flash x 1
 	 */
 
-	*((volatile uint32_t *)RPC_SMCMR)	=	0x009F0000U;
+	io_write32((vaddr_t)RPC_SMCMR, 0x009F0000U);
 	/*
 	 * bit23-16 CMD[7:0] = 0x9F : Read ID command(for Palladium QSPI model)
 	 */
 
-	*((volatile uint32_t *)RPC_SMDRENR)	=	0x00000000U;
+	io_write32((vaddr_t)RPC_SMDRENR, 0x00000000U);
 	/*
 	 * bit8 ADDRE  = 0 : Address SDR transfer
 	 * bit0 SPIDRE = 0 : DATA SDR transfer
 	 */
 
-	*((volatile uint32_t *)RPC_SMENR)	=	0x0000400FU;
+	io_write32((vaddr_t)RPC_SMENR, 0x0000400FU);
 	/*
 	 * bit31-30 CDB[1:0]   =   00 : 1bit width command (QSPI0_MOSI)
 	 * bit25-24 ADB[1:0]   =   00 : 1bit width address (QSPI0_MOSI)
@@ -171,7 +170,7 @@ static uint32_t qspi_common_read_device_id(uint32_t *read_device_id)
 	 * bit3-0   SPIDE[3:0] = 1111 : 32bit transfer
 	 */
 
-	*((volatile uint32_t *)RPC_SMCR)	=	0x00000005U;
+	io_write32((vaddr_t)RPC_SMCR, 0x00000005U);
 	/*
 	 * bit2     SPIRE      = 1 : Data read enable
 	 * bit1     SPIWE      = 0 : Data write disable
@@ -183,7 +182,7 @@ static uint32_t qspi_common_read_device_id(uint32_t *read_device_id)
 
 	if (ret == FL_DRV_OK) {
 		/* read data[31:0] */
-		*read_device_id = *((volatile uint32_t *)RPC_SMRDR0);
+		*read_device_id = io_read32((vaddr_t)RPC_SMRDR0);
 
 		/* mask : device id 03h */
 		*read_device_id = *read_device_id & 0x00FFFFFFU;
@@ -200,31 +199,30 @@ uint32_t qspi_common_read_device_status(uint32_t *read_status)
 	uint32_t ret;
 	uint32_t status = 0U;
 
-	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80030260U |
-		phycnt_reg;
+	io_write32((vaddr_t)RPC_PHYCNT, (0x80030260U | phycnt_reg));
 	/*
 	 * bit31  CAL         =  1 : PHY calibration
 	 * bit1-0 PHYMEM[1:0] = 00 : QSPI-SDR
 	 */
 
-	*((volatile uint32_t *)RPC_CMNCR)	=	0x81FF7300U;
+	io_write32((vaddr_t)RPC_CMNCR, 0x81FF7300U);
 	/*
 	 * bit31  MD       =  1 : Manual mode
 	 * bit1-0 BSZ[1:0] = 00 : QSPI Flash x 1
 	 */
 
-	*((volatile uint32_t *)RPC_SMCMR)	=	0x00050000U;
+	io_write32((vaddr_t)RPC_SMCMR, 0x00050000U);
 	/*
 	 * bit23-16 CMD[7:0] = 0x05 : StatusReadCommand(for PalladiumQSPImodel)
 	 */
 
-	*((volatile uint32_t *)RPC_SMDRENR)	=	0x00000000U;
+	io_write32((vaddr_t)RPC_SMDRENR, 0x00000000U);
 	/*
 	 * bit8 ADDRE  = 0 : Address SDR transfer
 	 * bit0 SPIDRE = 0 : DATA SDR transfer
 	 */
 
-	*((volatile uint32_t *)RPC_SMENR)	=	0x0000400FU;
+	io_write32((vaddr_t)RPC_SMENR, 0x0000400FU);
 	/*
 	 * bit31-30 CDB[1:0]   =   00 : 1bit width command (QSPI0_MOSI)
 	 * bit25-24 ADB[1:0]   =   00 : 1bit width address (QSPI0_MOSI)
@@ -235,7 +233,7 @@ uint32_t qspi_common_read_device_status(uint32_t *read_status)
 	 * bit3-0   SPIDE[3:0] = 1111 : 32bit transfer
 	 */
 
-	*((volatile uint32_t *)RPC_SMCR)	=	0x00000005U;
+	io_write32((vaddr_t)RPC_SMCR, 0x00000005U);
 	/*
 	 * bit2     SPIRE      = 1 : Data read enable
 	 * bit1     SPIWE      = 0 : Data write disable
@@ -247,7 +245,7 @@ uint32_t qspi_common_read_device_status(uint32_t *read_status)
 
 	if (ret == FL_DRV_OK) {
 		/* read data[31:0] */
-		*read_status = *((volatile uint32_t *)RPC_SMRDR0);
+		*read_status = io_read32((vaddr_t)RPC_SMRDR0);
 
 		if ((*read_status & BIT0) == 0U) {
 			ret = FL_DEVICE_READY;
@@ -273,31 +271,30 @@ uint32_t qspi_common_set_command(uint32_t command)
 	uint32_t ret;
 	uint32_t status = 0U;
 
-	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80030260U |
-		phycnt_reg;
+	io_write32((vaddr_t)RPC_PHYCNT, (0x80030260U | phycnt_reg));
 	/*
 	 * bit31  CAL         =  1 : PHY calibration
 	 * bit1-0 PHYMEM[1:0] = 00 : QSPI-SDR
 	 */
 
-	*((volatile uint32_t *)RPC_CMNCR)	=	0x81FF7300U;
+	io_write32((vaddr_t)RPC_CMNCR, 0x81FF7300U);
 	/*
 	 * bit31  MD       =  1 : Manual mode
 	 * bit1-0 BSZ[1:0] = 00 : QSPI Flash x 1
 	 */
 
-	*((volatile uint32_t *)RPC_SMCMR)	=	command;
+	io_write32((vaddr_t)RPC_SMCMR, command);
 	/*
 	 * bit23-16 CMD[7:0] : command
 	 */
 
-	*((volatile uint32_t *)RPC_SMDRENR)	=	0x00000000U;
+	io_write32((vaddr_t)RPC_SMDRENR, 0x00000000U);
 	/*
 	 * bit8 ADDRE  = 0 : Address SDR transfer
 	 * bit0 SPIDRE = 0 : DATA SDR transfer
 	 */
 
-	*((volatile uint32_t *)RPC_SMENR)	=	0x00004000U;
+	io_write32((vaddr_t)RPC_SMENR, 0x00004000U);
 	/*
 	 * bit31-30 CDB[1:0]   =   00 : 1bit width command (QSPI0_MOSI)
 	 * bit25-24 ADB[1:0]   =   00 : 1bit width address (QSPI0_MOSI)
@@ -308,7 +305,7 @@ uint32_t qspi_common_set_command(uint32_t command)
 	 * bit3-0   SPIDE[3:0] = 0000 : No transfer
 	 */
 
-	*((volatile uint32_t *)RPC_SMCR)	=	0x00000001U;
+	io_write32((vaddr_t)RPC_SMCR, 0x00000001U);
 	/*
 	 * bit2     SPIRE      = 0 : Data read disable
 	 * bit1     SPIWE      = 0 : Data write disable

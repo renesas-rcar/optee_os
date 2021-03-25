@@ -48,7 +48,7 @@ uint32_t hyper_flash_init(struct flash_control_operations *ops)
 			if (ret == FL_DRV_OK) {
 				ret = set_rpc_clock_mode(rpc_clock_mode);
 				DMSG("set_rpc_clock_mode r=%x, RPCCKCR=0x%08x",
-					ret, io_read32(CPG_RPCCKCR));
+					ret, io_read32((vaddr_t)CPG_RPCCKCR));
 			}
 		} else {
 			ret = FL_DRV_ERR_UNSUPPORT_DEV;
@@ -121,22 +121,21 @@ static uint32_t hyper_flash_set_ext_addr_read_mode(uint32_t read_ext_top_addr,
 
 	uint32_t DREAR_value;
 
-	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80070263U |
-		phycnt_reg;
-	*((volatile uint32_t *)RPC_CMNCR)	=	0x01FF7301U;
-	*((volatile uint32_t *)RPC_DRCR)	=	0x001F0100U;
-	*((volatile uint32_t *)RPC_DRCMR)	=	0x00A00000U;
+	io_write32((vaddr_t)RPC_PHYCNT, (0x80070263U | phycnt_reg));
+	io_write32((vaddr_t)RPC_CMNCR, 0x01FF7301U);
+	io_write32((vaddr_t)RPC_DRCR, 0x001F0100U);
+	io_write32((vaddr_t)RPC_DRCMR, 0x00A00000U);
 	DREAR_value = (read_ext_top_addr >> EXT_ADDR_BIT_SHIFT_9);
-	*((volatile uint32_t *)RPC_DREAR)   =	(DREAR_value | 0x00000001U);
+	io_write32((vaddr_t)RPC_DREAR, (DREAR_value | 0x00000001U));
 	/*
 	 * bit23-16 EAV[7:0]   = ADR[32:26]      : set
 	 * bit2-0   EAC[2:0]   = 001  : ADR[25:0 ] Enable
 	 */
-	*((volatile uint32_t *)RPC_DRENR)	=	0xA222D400U;
-	*((volatile uint32_t *)RPC_DRDMCR)	=	0x0000000EU;
-	*((volatile uint32_t *)RPC_DRDRENR)	=	0x00005101U;
-	*((volatile uint32_t *)RPC_OFFSET1)	=	0x21511144U;
-	*((volatile uint32_t *)RPC_PHYINT)	=	0x07070002U;
+	io_write32((vaddr_t)RPC_DRENR, 0xA222D400U);
+	io_write32((vaddr_t)RPC_DRDMCR, 0x0000000EU);
+	io_write32((vaddr_t)RPC_DRDRENR, 0x00005101U);
+	io_write32((vaddr_t)RPC_OFFSET1, 0x21511144U);
+	io_write32((vaddr_t)RPC_PHYINT, 0x07070002U);
 	/*
 	 * bit18 RSTEN = 1 : RPC_RESET# pin is enabled
 	 * bit17 WPEN  = 1 : RPC_WP# pin is enabled
@@ -238,39 +237,38 @@ static uint32_t hyper_flash_set_command(uint32_t manual_set_addr,
 	uint32_t ret;
 	uint32_t status = 0U;
 
-	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80030263U |
-		phycnt_reg;
+	io_write32((vaddr_t)RPC_PHYCNT, (0x80030263U | phycnt_reg));
 	/*
 	 * bit31  CAL         =  1 : PHY calibration
 	 * bit1-0 PHYMEM[1:0] = 11 : HyperFlash
 	 */
 
-	*((volatile uint32_t *)RPC_CMNCR)	=	0x81FF7301U;
+	io_write32((vaddr_t)RPC_CMNCR, 0x81FF7301U);
 	/*
 	 * bit31  MD       =  1 : Manual mode
 	 * bit1-0 BSZ[1:0] = 01 : QSPI Flash x 2 or HyperFlash
 	 */
 
-	*((volatile uint32_t *)RPC_SMCMR)	=	0x00000000U;
+	io_write32((vaddr_t)RPC_SMCMR, 0x00000000U);
 	/*
 	 * bit23-21 CMD[7:5] = 000 : CA47-45 = 000 =>
 	 *                                      Write/memory space/WrrapedBrst
 	 */
 
-	*((volatile uint32_t *)RPC_SMADR)	=	manual_set_addr;
-	*((volatile uint32_t *)RPC_SMOPR)	=	0x00000000U;
+	io_write32((vaddr_t)RPC_SMADR, manual_set_addr);
+	io_write32((vaddr_t)RPC_SMOPR, 0x00000000U);
 	/*
 	 * CA15-3(Reserved) = all 0
 	 */
 
-	*((volatile uint32_t *)RPC_SMDRENR)	=	0x00005101U;
+	io_write32((vaddr_t)RPC_SMDRENR, 0x00005101U);
 	/*
 	 * bit14-12 HYPE =101:Hyperflash mode
 	 * bit8 ADDRE  = 1 : Address DDR transfer
 	 * bit0 SPIDRE = 1 : DATA DDR transfer
 	 */
 
-	*((volatile uint32_t *)RPC_SMENR)	=	0xA2225408U;
+	io_write32((vaddr_t)RPC_SMENR, 0xA2225408U);
 	/*
 	 * bit31-30 CDB[1:0]   =   10 : 4bit width command
 	 * bit25-24 ADB[1:0]   =   10 : 4bit width address
@@ -283,9 +281,9 @@ static uint32_t hyper_flash_set_command(uint32_t manual_set_addr,
 	 * bit3-0   SPIDE[3:0] = 1000 : 16bit transfer
 	 */
 
-	*((volatile uint32_t *)RPC_SMWDR0)	=	command;
+	io_write32((vaddr_t)RPC_SMWDR0, command);
 
-	*((volatile uint32_t *)RPC_SMCR)	=	0x00000003U;
+	io_write32((vaddr_t)RPC_SMCR, 0x00000003U);
 	/*
 	 * bit2     SPIRE      = 0 : Data read disable
 	 * bit1     SPIWE      = 1 : Data write enable
@@ -301,14 +299,14 @@ static void hyper_flash_set_disable_write_protect(void)
 {
 	uint32_t dataL;
 
-	dataL = *((volatile uint32_t *)RPC_PHYINT);
+	dataL = io_read32((vaddr_t)RPC_PHYINT);
 
 	/*
 	 * bit1:WPVAL(0:RPC_WP#=H(Protect Disable),1:RPC_WP#=L(Protect Enable))
 	 */
 	if ((dataL & BIT1) != 0U) {
 		dataL &= ~BIT1;
-		*((volatile uint32_t *)RPC_PHYINT) = dataL;
+		io_write32((vaddr_t)RPC_PHYINT, dataL);
 	}
 }
 
@@ -328,41 +326,40 @@ static uint32_t hyper_flash_read_register_data(uint32_t manual_set_addr,
 	uint32_t status = 0U;
 	uint32_t ret;
 
-	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80030263U |
-		phycnt_reg;
+	io_write32((vaddr_t)RPC_PHYCNT, (0x80030263U | phycnt_reg));
 	/*
 	 * bit31  CAL         =  1 : PHY calibration
 	 * bit1-0 PHYMEM[1:0] = 11 : HyperFlash
 	 */
 
-	*((volatile uint32_t *)RPC_CMNCR)	=	0x81FF7301U;
+	io_write32((vaddr_t)RPC_CMNCR, 0x81FF7301U);
 	/*
 	 * bit31  MD       =  1 : Manual mode
 	 * bit1-0 BSZ[1:0] = 01 : QSPI Flash x 2 or HyperFlash
 	 */
 
-	*((volatile uint32_t *)RPC_SMCMR)	=	0x00800000U;
+	io_write32((vaddr_t)RPC_SMCMR, 0x00800000U);
 	/*
 	 * bit23-21 CMD[7:5] = 100 : CA47-45 = 100 =>
 	 *                                      Read/memory space/WrrapedBrst
 	 */
 
-	*((volatile uint32_t *)RPC_SMADR)	=	(manual_set_addr>>1U);
+	io_write32((vaddr_t)RPC_SMADR, (manual_set_addr>>1U));
 	/*
 	 * ByteAddress(8bit) => WordAddress(16bit)
 	 */
 
-	*((volatile uint32_t *)RPC_SMOPR)	=	0x00000000U;
+	io_write32((vaddr_t)RPC_SMOPR, 0x00000000U);
 	/*
 	 * CA15-3(Reserved) = all 0
 	 */
 
-	*((volatile uint32_t *)RPC_SMDMCR)	=	0x0000000EU;
+	io_write32((vaddr_t)RPC_SMDMCR, 0x0000000EU);
 	/*
 	 *                           15 cycle dummy wait
 	 */
 
-	*((volatile uint32_t *)RPC_SMDRENR)	=	0x00005101U;
+	io_write32((vaddr_t)RPC_SMDRENR, 0x00005101U);
 	/*
 	 * bit8 ADDRE  = 1 : Address DDR transfer
 	 * bit0 SPIDRE = 1 : DATA DDR transfer
@@ -371,17 +368,17 @@ static uint32_t hyper_flash_read_register_data(uint32_t manual_set_addr,
 	switch (byte_count) {
 	/* 2byte Read */
 	case FLASH_DATA_READ_BYTE_COUNT_2:
-		*((volatile uint32_t *)RPC_SMENR)	= 0xA222D408U;
+		io_write32((vaddr_t)RPC_SMENR, 0xA222D408U);
 		/* bit3-0   SPIDE[3:0] = 1000 : 16bit transfer*/
 		break;
 	/* 4byte Read */
 	case FLASH_DATA_READ_BYTE_COUNT_4:
-		*((volatile uint32_t *)RPC_SMENR)	= 0xA222D40CU;
+		io_write32((vaddr_t)RPC_SMENR, 0xA222D40CU);
 		/* bit3-0   SPIDE[3:0] = 1100 : 32bit transfer */
 		break;
 	/* 8byte Read */
 	case FLASH_DATA_READ_BYTE_COUNT_8:
-		*((volatile uint32_t *)RPC_SMENR)	= 0xA222D40FU;
+		io_write32((vaddr_t)RPC_SMENR, 0xA222D40FU);
 	/*
 	 * bit31-30 CDB[1:0]   =   10 : 4bit width command
 	 * bit25-24 ADB[1:0]   =   10 : 4bit width address
@@ -399,7 +396,7 @@ static uint32_t hyper_flash_read_register_data(uint32_t manual_set_addr,
 		break;
 	}
 
-	*((volatile uint32_t *)RPC_SMCR)	=	0x00000005U;
+	io_write32((vaddr_t)RPC_SMCR, 0x00000005U);
 	/*
 	 * bit2     SPIRE      = 1 : Data read enable
 	 * bit1     SPIWE      = 0 : Data write disable
@@ -411,11 +408,11 @@ static uint32_t hyper_flash_read_register_data(uint32_t manual_set_addr,
 
 	if (ret == FL_DRV_OK) {
 		if (byte_count == FLASH_DATA_READ_BYTE_COUNT_8) {
-			read_data[1] = *((volatile uint32_t *)RPC_SMRDR0);
+			read_data[1] = io_read32((vaddr_t)RPC_SMRDR0);
 			/* read data[63:32] */
 		}
 
-		read_data[0] = *((volatile uint32_t *)RPC_SMRDR1);
+		read_data[0] = io_read32((vaddr_t)RPC_SMRDR1);
 		/* read data[31:0] */
 	}
 
@@ -523,13 +520,12 @@ static uint32_t hyper_flash_write_buffer(uint32_t manual_set_addr,
 	uint32_t ret;
 	uint32_t status = 0U;
 
-	*((volatile uint32_t *)RPC_DRCR)	=	0x011F0301U;
+	io_write32((vaddr_t)RPC_DRCR, 0x011F0301U);
 	/*
 	 * bit9   RCF         =  1 : Read Cache Clear
 	 */
 
-	*((volatile uint32_t *)RPC_PHYCNT)	=	0x80030277U |
-		phycnt_reg;
+	io_write32((vaddr_t)RPC_PHYCNT, (0x80030277U | phycnt_reg));
 	/*
 	 * bit31  CAL         =  1 : PHY calibration
 	 * bit2   WBUF        =  1 : Write Buffer Enable
@@ -538,35 +534,35 @@ static uint32_t hyper_flash_write_buffer(uint32_t manual_set_addr,
 
 	for (offset = 0U; offset < WRITE_BUFF_SIZE;
 						offset = offset + WORD_SIZE) {
-		(*(volatile uint32_t *)(RPC_WB_OUT_BASE + offset)) =
-			(*(volatile uint32_t *)(write_data_addr+offset));
+		io_write32((vaddr_t)(RPC_WB_OUT_BASE + offset),
+			io_read32((vaddr_t)write_data_addr+offset));
 	}
 
-	*((volatile uint32_t *)RPC_CMNCR)	=	0x81FF7301U;
+	io_write32((vaddr_t)RPC_CMNCR, 0x81FF7301U);
 	/*
 	 * bit31  MD       =  1 : Manual mode
 	 * bit1-0 BSZ[1:0] = 01 : QSPI Flash x 2 or HyperFlash
 	 */
 
-	*((volatile uint32_t *)RPC_SMCMR)	=	0x00000000U;
+	io_write32((vaddr_t)RPC_SMCMR, 0x00000000U);
 	/*
 	 * bit23-21 CMD[7:5] = 000 : CA47-45 = 000 =>
 	 *                                      Write/memory space/WrrapedBrst
 	 */
 
-	*((volatile uint32_t *)RPC_SMADR)	=	manual_set_addr;
-	*((volatile uint32_t *)RPC_SMOPR)	=	0x00000000U;
+	io_write32((vaddr_t)RPC_SMADR, manual_set_addr);
+	io_write32((vaddr_t)RPC_SMOPR, 0x00000000U);
 	/*
 	 * CA15-3(Reserved) = all 0
 	 */
 
-	*((volatile uint32_t *)RPC_SMDRENR)	=	0x00005101U;
+	io_write32((vaddr_t)RPC_SMDRENR, 0x00005101U);
 	/*
 	 * bit8 ADDRE  = 1 : Address DDR transfer
 	 * bit0 SPIDRE = 1 : DATA DDR transfer
 	 */
 
-	*((volatile uint32_t *)RPC_SMENR)	=	0xA222540FU;
+	io_write32((vaddr_t)RPC_SMENR, 0xA222540FU);
 	/*
 	 * bit31-30 CDB[1:0]   =   10 : 4bit width command
 	 * bit25-24 ADB[1:0]   =   10 : 4bit width address
@@ -579,7 +575,7 @@ static uint32_t hyper_flash_write_buffer(uint32_t manual_set_addr,
 	 * bit3-0   SPIDE[3:0] = 1111 : 64bit transfer
 	 */
 
-	*((volatile uint32_t *)RPC_SMCR)	=	0x00000003U;
+	io_write32((vaddr_t)RPC_SMCR, 0x00000003U);
 	/*
 	 * bit2     SPIRE      = 0 : Data read disable
 	 * bit1     SPIWE      = 1 : Data write enable
@@ -590,14 +586,14 @@ static uint32_t hyper_flash_write_buffer(uint32_t manual_set_addr,
 					HF_WRITE_TIMEOUT, HF_WRITE_WAIT);
 
 	if (ret == FL_DRV_OK) {
-		*((volatile uint32_t *)RPC_PHYCNT)	=	0x00030273U;
+		io_write32((vaddr_t)RPC_PHYCNT, 0x00030273U);
 		/*
 		 * bit31  CAL         =  0 : No PHY calibration
 		 * bit2   WBUF        =  0 : Write Buffer Disable
 		 * bit1-0 PHYMEM[1:0] = 11 : HyperFlash
 		 */
 
-		*((volatile uint32_t *)RPC_DRCR)	=	0x011F0301U;
+		io_write32((vaddr_t)RPC_DRCR, 0x011F0301U);
 		/*
 		 * bit9   RCF         =  1 : Read Cache Clear
 		 */

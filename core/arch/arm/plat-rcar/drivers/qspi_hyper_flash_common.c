@@ -3,6 +3,7 @@
  * Copyright (c) 2015-2021, Renesas Electronics Corporation
  */
 
+#include <io.h>
 #include <kernel/tee_time.h>
 #include <kernel/delay.h>
 #include <kernel/thread.h>
@@ -19,7 +20,7 @@ uint32_t common_wait_spi_transfer(uint32_t *dataL)
 	uint32_t ret = FL_DEVICE_BUSY;
 
 	/* Wait for TEND = 1 */
-	*dataL = *((volatile uint32_t *)RPC_CMNSR);
+	*dataL = io_read32((vaddr_t)RPC_CMNSR);
 	if ((*dataL & BIT0) != 0U) {
 		ret = FL_DEVICE_READY;
 	}
@@ -130,14 +131,16 @@ uint32_t set_rpc_clock_mode(uint32_t mode)
 	 bit[4:0]=1'b00011: RPC clock= 80MHz, RPCD2 clock= 40MHz ( 40MHz)
 	 */
 	if (ret == FL_DRV_OK) {
-		*((volatile uint32_t*)CPG_CPGWPR)	=
-				(*((volatile uint32_t*)CPG_CPGWPR) & (~CPG_CPGWPR_WPRTCT_MASK)) | (~dataL);
-		*((volatile uint32_t*)CPG_RPCCKCR)	=
-				(*((volatile uint32_t*)CPG_RPCCKCR) & (~CPG_RPCCKCR_DIV_MASK)) | dataL;
+		io_write32((vaddr_t)CPG_CPGWPR, 
+				(io_read32((vaddr_t)CPG_CPGWPR) &
+				(~CPG_CPGWPR_WPRTCT_MASK)) | (~dataL));
+		io_write32((vaddr_t)CPG_RPCCKCR, 
+				(io_read32((vaddr_t)CPG_RPCCKCR) & 
+				(~CPG_RPCCKCR_DIV_MASK)) | dataL);
 
 		ret = FL_DRV_ERR_TIMEOUT;
 		for (i = 0; i < polling_max; i++) {
-			reg = *((volatile uint32_t*)CPG_RPCCKCR);
+			reg = io_read32((vaddr_t)CPG_RPCCKCR);
 			if ((reg & CPG_RPCCKCR_DIV_MASK) == dataL) {
 				ret = FL_DRV_OK;
 				break;
