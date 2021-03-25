@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
- * Copyright (c) 2015-2018, Renesas Electronics Corporation
+ * Copyright (c) 2015-2021, Renesas Electronics Corporation
  */
 
 #include <kernel/tee_time.h>
@@ -99,6 +99,7 @@ uint32_t set_rpc_clock_mode(uint32_t mode)
 		}
 		break;
 	case PRR_PRODUCT_E3:
+	case PRR_PRODUCT_D3:
 		if (mode == RPC_CLK_40M) {
 			dataL = 0x00000003U;	/* RPC clock 40MHz */
 		} else if (mode == RPC_CLK_80M) {
@@ -119,11 +120,11 @@ uint32_t set_rpc_clock_mode(uint32_t mode)
 	/*
 	 bit[9]=1'b0: RPCD2 clock supply
 	 bit[8]=1'b0: RPC clock supply
-	 In the case other than E3,
+	 In the case other than E3 or D3,
 	 bit[4:0]=1'b10001: RPC clock=320MHz, RPCD2 clock=160MHz (160MHz)
 	 bit[4:0]=1'b10011: RPC clock=160MHz, RPCD2 clock= 80MHz ( 80MHz)
 	 bit[4:0]=1'b10111: RPC clock= 80MHz, RPCD2 clock= 40MHz ( 40MHz)
-	 In the case than E3,
+	 In the case than E3 or D3,
 	 bit[4:0]=1'b10001: RPC clock=300MHz, RPCD2 clock=150MHz (150MHz)
 	 bit[4:0]=1'b00001: RPC clock=160MHz, RPCD2 clock= 80MHz ( 80MHz)
 	 bit[4:0]=1'b00011: RPC clock= 80MHz, RPCD2 clock= 40MHz ( 40MHz)

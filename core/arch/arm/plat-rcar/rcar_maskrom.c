@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
- * Copyright (c) 2015-2020, Renesas Electronics Corporation
+ * Copyright (c) 2015-2021, Renesas Electronics Corporation
  */
 
 #include <string.h>
@@ -95,7 +95,7 @@ static TEE_Result product_setup(void)
 		}
 		break;
 	default:
-		new_api_table = 1;	/* assume that M3N and E3 */
+		new_api_table = 1;	/* assume that M3N, E3 and D3 */
 		break;
 	}
 

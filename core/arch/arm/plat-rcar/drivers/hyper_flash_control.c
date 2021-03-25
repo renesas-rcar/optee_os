@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
- * Copyright (c) 2015-2020, Renesas Electronics Corporation
+ * Copyright (c) 2015-2021, Renesas Electronics Corporation
  */
 
 #include <stdint.h>
@@ -674,6 +674,10 @@ static uint32_t hyper_flash_get_rpc_clock_mode(uint32_t *mode)
 	case PRR_PRODUCT_E3:
 		*mode = RPC_CLK_150M;
 		DMSG("E3: RPC 150MHz, mode=%d", *mode);
+		break;
+	case PRR_PRODUCT_D3:
+		*mode = RPC_CLK_150M;
+		DMSG("D3: RPC 150MHz, mode=%d", *mode);
 		break;
 	default:
 		ret = FL_DRV_ERR_UNSUPPORT_DEV;

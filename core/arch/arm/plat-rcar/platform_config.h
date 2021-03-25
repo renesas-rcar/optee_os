@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2014, Linaro Limited
- * Copyright (c) 2015-2020, Renesas Electronics Corporation
+ * Copyright (c) 2015-2021, Renesas Electronics Corporation
  */
 
 #ifndef PLATFORM_CONFIG_H
@@ -134,6 +134,10 @@
 #elif defined(PLATFORM_FLAVOR_ebisu_4d_e3)
 #define NSEC_DDR_0_BASE		(0x48000000U)
 #define NSEC_DDR_0_SIZE		(0x78000000U)
+
+#elif defined(PLATFORM_FLAVOR_draak_d3)
+#define NSEC_DDR_0_BASE		(0x48000000U)
+#define NSEC_DDR_0_SIZE		(0x18000000U)
 
 #endif
 #endif /* !CFG_CORE_RESERVED_SHM */

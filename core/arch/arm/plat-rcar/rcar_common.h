@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
- * Copyright (c) 2015-2020, Renesas Electronics Corporation
+ * Copyright (c) 2015-2021, Renesas Electronics Corporation
  */
 
 #ifndef RCAR_COMMON_H
@@ -37,6 +37,7 @@
 #define PRR_PRODUCT_M3		(0x00005200U)	/* R-Car M3 */
 #define PRR_PRODUCT_M3N		(0x00005500U)	/* R-Car M3N */
 #define PRR_PRODUCT_E3		(0x00005700U)	/* R-Car E3 */
+#define PRR_PRODUCT_D3		(0x00005800U)	/* R-Car D3 */
 #define PRR_CUT_MASK		(0x000000FFU)
 #define PRR_CUT_10		(0x00000000U)
 #define PRR_CUT_11		(0x00000001U)

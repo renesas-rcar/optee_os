@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
- * Copyright (c) 2015-2020, Renesas Electronics Corporation
+ * Copyright (c) 2015-2021, Renesas Electronics Corporation
  */
 
 #include <stdint.h>
@@ -250,7 +250,7 @@ static uint32_t init_rpc_reg_depends_soc(void)
 	/*
 	 *  When PHYCNT Bit31 (CAL) is set to 1,
 	 *  if SoC type is M3, STRTIM [2:0] should be set to 110.
-	 *  If SoC type is H3, M3N, E3, STRTIM [2:0] should be set to 111.
+	 *  If SoC type is H3, M3N, E3, D3 STRTIM [2:0] should be set to 111.
 	 */
 
 	phycnt_reg = 0;
@@ -259,6 +259,7 @@ static uint32_t init_rpc_reg_depends_soc(void)
 	case PRR_PRODUCT_H3:
 	case PRR_PRODUCT_M3N:
 	case PRR_PRODUCT_E3:
+	case PRR_PRODUCT_D3:
 		/* Set PHYCNT Bit15 (STRTIM[0]) */
 		phycnt_reg = 0x00008000U;
 		break;
