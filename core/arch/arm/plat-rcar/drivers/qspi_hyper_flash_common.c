@@ -136,12 +136,12 @@ uint32_t set_rpc_clock_mode(uint32_t mode)
 				(~CPG_CPGWPR_WPRTCT_MASK)) | (~dataL));
 		io_write32((vaddr_t)CPG_RPCCKCR, 
 				(io_read32((vaddr_t)CPG_RPCCKCR) & 
-				(~CPG_RPCCKCR_DIV_MASK)) | dataL);
+				(~CPG_RPCCKCR_MASK_BIT)) | dataL);
 
 		ret = FL_DRV_ERR_TIMEOUT;
 		for (i = 0; i < polling_max; i++) {
 			reg = io_read32((vaddr_t)CPG_RPCCKCR);
-			if ((reg & CPG_RPCCKCR_DIV_MASK) == dataL) {
+			if ((reg & CPG_RPCCKCR_MASK_BIT) == dataL) {
 				ret = FL_DRV_OK;
 				break;
 			}

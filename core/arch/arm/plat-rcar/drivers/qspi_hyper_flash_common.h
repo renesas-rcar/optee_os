@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
- * Copyright (c) 2015-2019, Renesas Electronics Corporation
+ * Copyright (c) 2015-2021, Renesas Electronics Corporation
  */
 
 #ifndef QSPI_HYPER_FLASH_COMMON_H
@@ -160,7 +160,13 @@
 /* RPC-IF Clock Frequency Control Register */
 /* RPC-IF clock (RPC, RPCD2) Frequency Division Ratio */
 #define CPG_RPCCKCR_DIV_MASK	(0x0000001FU)
-
+/* RPC Clock Stop */
+#define CPG_RPCCKCR_CKSTP_MASK	(0x00000100U)
+/* RPCD2 Clock Stop */
+#define CPG_RPCCKCR_CKSTP2_MASK	(0x00000200U)
+/* RPC-IF Clock Frequency Control Register Mask bit */
+#define CPG_RPCCKCR_MASK_BIT	(CPG_RPCCKCR_DIV_MASK | CPG_RPCCKCR_CKSTP_MASK \
+	 | CPG_RPCCKCR_CKSTP2_MASK)
 /*
  * Global variable declaration
  */
