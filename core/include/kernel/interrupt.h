@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2016-2019, Linaro Limited
+ * Copyright (c) 2017-2021, Renesas Electronics Corporation
  */
 #ifndef __KERNEL_INTERRUPT_H
 #define __KERNEL_INTERRUPT_H
@@ -65,6 +66,7 @@ struct itr_handler *itr_alloc_add(size_t it, itr_handler_t handler,
 				  uint32_t flags, void *data);
 void itr_free(struct itr_handler *hdl);
 void itr_add(struct itr_handler *handler);
+void itr_del(struct itr_handler *handler);
 void itr_enable(size_t it);
 void itr_disable(size_t it);
 /* raise the Peripheral Interrupt corresponding to the interrupt ID */
@@ -86,5 +88,7 @@ void itr_set_affinity(size_t it, uint8_t cpu_mask);
  * expects to receive secure interrupts should override this function.
  */
 void itr_core_handler(void);
+
+void itr_set_all_cpu_mask(uint8_t cpu_mask);
 
 #endif /*__KERNEL_INTERRUPT_H*/

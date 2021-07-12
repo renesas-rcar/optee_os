@@ -3,6 +3,7 @@
  * Copyright (c) 2016-2021, Linaro Limited
  * Copyright (c) 2014, STMicroelectronics International N.V.
  * Copyright (c) 2020-2021, Arm Limited
+ * Copyright (c) 2016-2021, Renesas Electronics Corporation
  */
 
 #include <platform_config.h>
@@ -75,7 +76,9 @@ struct thread_core_local thread_core_local[CFG_TEE_CORE_NB_CORE] __nex_bss;
 #endif /*ARM32*/
 
 #ifdef ARM64
-#if defined(__clang__) && !defined(__OPTIMIZE_SIZE__)
+#if defined(ENABLE_CRYPTOENGINE)
+#define STACK_TMP_SIZE		((2048 * 4) + STACK_TMP_OFFS)
+#elif defined(__clang__) && !defined(__OPTIMIZE_SIZE__)
 #define STACK_TMP_SIZE		(4096 + STACK_TMP_OFFS)
 #else
 #define STACK_TMP_SIZE		(2048 + STACK_TMP_OFFS)

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2015, Linaro Limited
+ * Copyright (c) 2017-2021, Renesas Electronics Corporation
  */
 
 #include <platform_config.h>

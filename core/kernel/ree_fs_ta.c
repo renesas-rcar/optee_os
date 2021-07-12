@@ -2,6 +2,7 @@
 /*
  * Copyright (c) 2017, 2019, Linaro Limited
  * Copyright (c) 2020, Arm Limited.
+ * Copyright (c) 2017-2021, Renesas Electronics Corporation
  */
 
 /*
@@ -55,6 +56,10 @@
 #include <tee/uuid.h>
 #include <utee_defines.h>
 
+#ifdef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
+#include "rcar_ta_auth.h"
+#endif
+
 struct ree_fs_ta_handle {
 	struct shdr *nw_ta; /* Non-secure (shared memory) */
 	size_t nw_ta_size;
@@ -71,10 +76,10 @@ struct ta_ver_db_hdr {
 	uint32_t db_version;
 	uint32_t nb_entries;
 };
-
+#ifndef CFG_RCAR_UNSUPPORT_TA_VER_DB
 static const char ta_ver_db_obj_id[] = "ta_ver.db";
 static struct mutex ta_ver_db_mutex = MUTEX_INITIALIZER;
-
+#endif
 /*
  * Load a TA via RPC with UUID defined by input param @uuid. The virtual
  * address of the raw TA binary is received in out parameter @ta.
@@ -148,6 +153,12 @@ static TEE_Result ree_fs_ta_open(const TEE_UUID *uuid,
 	if (res != TEE_SUCCESS)
 		goto error;
 
+#ifdef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
+	res = rcar_auth_ta_certificate(ta, &ta);
+	if (res != TEE_SUCCESS) {
+		goto error_free_payload;
+	}
+#endif
 	/* Make secure copy of signed header */
 	shdr = shdr_alloc_and_copy(ta, ta_size);
 	if (!shdr) {
@@ -169,6 +180,7 @@ static TEE_Result ree_fs_ta_open(const TEE_UUID *uuid,
 	 * Initialize a hash context and run the algorithm over the signed
 	 * header (less the final file hash and its signature of course)
 	 */
+#ifndef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
 	res = crypto_hash_alloc_ctx(&hash_ctx,
 				    TEE_DIGEST_HASH_TO_ALGO(shdr->algo));
 	if (res != TEE_SUCCESS)
@@ -179,6 +191,7 @@ static TEE_Result ree_fs_ta_open(const TEE_UUID *uuid,
 	res = crypto_hash_update(hash_ctx, (uint8_t *)shdr, sizeof(*shdr));
 	if (res != TEE_SUCCESS)
 		goto error_free_hash;
+#endif
 	offs = SHDR_GET_SIZE(shdr);
 
 	if (shdr->img_type == SHDR_BOOTSTRAP_TA ||
@@ -209,15 +222,16 @@ static TEE_Result ree_fs_ta_open(const TEE_UUID *uuid,
 			res = TEE_ERROR_SECURITY;
 			goto error_free_hash;
 		}
-
+#ifndef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
 		res = crypto_hash_update(hash_ctx, (uint8_t *)bs_hdr,
 					 sizeof(*bs_hdr));
 		if (res != TEE_SUCCESS)
 			goto error_free_hash;
+#endif
 		offs += sizeof(*bs_hdr);
 		handle->bs_hdr = bs_hdr;
 	}
-
+#ifndef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
 	if (shdr->img_type == SHDR_ENCRYPTED_TA) {
 		struct shdr_encrypted_ta img_ehdr;
 
@@ -256,7 +270,7 @@ static TEE_Result ree_fs_ta_open(const TEE_UUID *uuid,
 		res = TEE_ERROR_SECURITY;
 		goto error_free_hash;
 	}
-
+#endif
 	handle->nw_ta = ta;
 	handle->nw_ta_size = ta_size;
 	handle->offs = offs;
@@ -303,6 +317,7 @@ static TEE_Result ree_fs_ta_get_tag(const struct ts_store_handle *h,
 	return TEE_SUCCESS;
 }
 
+#ifndef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
 static TEE_Result check_digest(struct ree_fs_ta_handle *h)
 {
 	void *digest = NULL;
@@ -322,7 +337,8 @@ out:
 	free(digest);
 	return res;
 }
-
+#endif
+#ifndef CFG_RCAR_UNSUPPORT_TA_VER_DB
 static TEE_Result check_update_version(struct shdr_bootstrap_ta *hdr)
 {
 	struct shdr_bootstrap_ta hdr_entry = { };
@@ -412,7 +428,7 @@ out:
 	mutex_unlock(&ta_ver_db_mutex);
 	return res;
 }
-
+#endif /* CFG_RCAR_UNSUPPORT_TA_VER_DB */
 static TEE_Result ree_fs_ta_read(struct ts_store_handle *h, void *data,
 				 size_t len)
 {
@@ -466,14 +482,17 @@ static TEE_Result ree_fs_ta_read(struct ts_store_handle *h, void *data,
 		dst = data; /* Hash secure buffer (shm might be modified) */
 		memcpy(dst, src, len);
 	}
-
+#ifdef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
+	res = TEE_SUCCESS;
+#else
 	if (dst) {
 		res = crypto_hash_update(handle->hash_ctx, dst, len);
 		if (res != TEE_SUCCESS)
 			return TEE_ERROR_SECURITY;
 	}
-
+#endif
 	handle->offs = next_offs;
+#ifndef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
 	if (handle->offs == handle->nw_ta_size) {
 		if (handle->shdr->img_type == SHDR_ENCRYPTED_TA) {
 			/*
@@ -492,10 +511,12 @@ static TEE_Result ree_fs_ta_read(struct ts_store_handle *h, void *data,
 		res = check_digest(handle);
 		if (res != TEE_SUCCESS)
 			return res;
-
+#ifndef CFG_RCAR_UNSUPPORT_TA_VER_DB
 		if (handle->bs_hdr)
 			res = check_update_version(handle->bs_hdr);
+#endif
 	}
+#endif
 	return res;
 }
 

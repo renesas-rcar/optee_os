@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2014-2019, Linaro Limited
+ * Copyright (c) 2020-2021, Renesas Electronics Corporation
  */
 
 #include <config.h>
@@ -122,6 +123,15 @@ static TEE_Result _ltc_ecc_generate_keypair(struct ecc_keypair *key,
 	int ltc_res;
 	size_t key_size_bytes = 0;
 	size_t key_size_bits = 0;
+
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    if (crypto_hw_acipher_ecc_check_support_key(
+            key->curve) == SS_HW_SUPPORT_ALG)
+    {
+        res = crypto_hw_acipher_gen_ecc_key(key);
+        return res;
+    }
+#endif
 
 	res = ecc_get_curve_info(key->curve, 0, &key_size_bytes, &key_size_bits,
 				 NULL);
@@ -252,6 +262,16 @@ static TEE_Result _ltc_ecc_sign(uint32_t algo, struct ecc_keypair *key,
 	ecc_key ltc_key = { };
 	unsigned long ltc_sig_len = 0;
 
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    if (crypto_hw_acipher_ecc_check_support(key->curve,
+            msg_len) == SS_HW_SUPPORT_ALG)
+    {
+        res = crypto_hw_acipher_ecc_sign(key, msg, msg_len, sig,
+                 sig_len);
+        return res;
+    }
+#endif
+
 	if (algo == 0)
 		return TEE_ERROR_BAD_PARAMETERS;
 
@@ -291,6 +311,16 @@ static TEE_Result _ltc_ecc_verify(uint32_t algo, struct ecc_public_key *key,
 	size_t key_size_bytes = 0;
 	ecc_key ltc_key = { };
 
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    if (crypto_hw_acipher_ecc_check_support(key->curve,
+            msg_len) == SS_HW_SUPPORT_ALG)
+    {
+        res = crypto_hw_acipher_ecc_verify(key, msg, msg_len, sig,
+                 sig_len);
+        return res;
+    }
+#endif
+
 	if (algo == 0)
 		return TEE_ERROR_BAD_PARAMETERS;
 
@@ -322,6 +352,16 @@ static TEE_Result _ltc_ecc_shared_secret(struct ecc_keypair *private_key,
 	ecc_key ltc_private_key = { };
 	ecc_key ltc_public_key = { };
 	size_t key_size_bytes = 0;
+
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    if (crypto_hw_acipher_ecc_check_support_key(
+            private_key->curve) == SS_HW_SUPPORT_ALG)
+    {
+        res = crypto_hw_acipher_ecc_shared_secret(private_key,
+                 public_key, secret, secret_len);
+        return res;
+    }
+#endif
 
 	/* Check the curves are the same */
 	if (private_key->curve != public_key->curve)

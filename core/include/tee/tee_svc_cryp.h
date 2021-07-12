@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
 * Copyright (c) 2014, STMicroelectronics International N.V.
+* Copyright (c) 2016-2021, Renesas Electronics Corporation
 */
 #ifndef TEE_SVC_CRYP_H
 #define TEE_SVC_CRYP_H
@@ -92,4 +93,12 @@ TEE_Result tee_obj_attr_from_binary(struct tee_obj *o, const void *data,
 				    size_t data_len);
 TEE_Result tee_obj_attr_copy_from(struct tee_obj *o, const struct tee_obj *src);
 
+TEE_Result syscall_rcar_aes_unwrap(void *srcData, uint32_t srcLen,
+		const void *keyData, uint32_t keySize, uint32_t isSecretKey, void *destData,
+		uint32_t *dstLen);
+TEE_Result syscall_rcar_gen_skey_package(RCAR_SkeyParams_t *skeyParams,
+		uint8_t *skeyPackageBuf, uint32_t skeyPackageSize);
+TEE_Result syscall_rcar_asset_unpack(uint32_t assetId, uint8_t *pAssetPackage,
+		uint32_t assetPackagLen, uint8_t *pAssetData,
+		uint32_t *pAssetDataLen, uint32_t *pUserData);
 #endif /* TEE_SVC_CRYP_H */
