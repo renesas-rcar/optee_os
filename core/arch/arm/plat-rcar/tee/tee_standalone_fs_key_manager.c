@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2015, Linaro Limited
- * Copyright (c) 2016-2020, Renesas Electronics Corporation
+ * Copyright (c) 2016-2021, Renesas Electronics Corporation
  */
 
 
@@ -87,7 +87,7 @@ static TEE_Result generate_ssk(uint8_t *ssk, uint32_t ssk_size,
 
 TEE_Result tee_sfkm_init_key_manager(void)
 {
-	int res;
+	TEE_Result res;
 	struct tee_hw_unique_key huk;
 	uint8_t chip_id[TEE_FS_KM_CHIP_ID_LENGTH];
 	uint8_t message[sizeof(chip_id) + sizeof(string_for_ssk_gen)];

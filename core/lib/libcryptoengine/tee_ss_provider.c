@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
- * Copyright (c) 2015-2020, Renesas Electronics Corporation
+ * Copyright (c) 2015-2021, Renesas Electronics Corporation
  */
 
 #include <initcall.h>
@@ -1074,7 +1074,7 @@ static SSError_t ss_buffer_update(void *ctx, uint32_t algo,
 			/* There is not yet input data in context. */
 			copySize = updateBlockSize - *restBufferSize;
 			(void)memcpy(restBuffer + *restBufferSize,
-					srcUpdateData, copySize);
+					srcUpdateData, (size_t)copySize);
 			PROV_DMSG("CALL CRYS Update [algo=%d]\n", crysAlgo);
 			PROV_DMSG("context=%p restBuffer=%p\n", context,
 					restBuffer);
@@ -1147,7 +1147,7 @@ static SSError_t ss_buffer_update(void *ctx, uint32_t algo,
 				}
 				/* Copy rest gamma blocks */
 				restBuffer -= srcLen;
-				for (; *restBufferSize < updateBlockSize - srcLen; (*restBufferSize)++) {
+				for (; *restBufferSize < (updateBlockSize - srcLen); (*restBufferSize)++) {
 					*restBuffer = *(restBuffer + updateBlockSize + srcLen);
 					restBuffer++;
 				}
@@ -2494,17 +2494,25 @@ TEE_Result crypto_hw_acipher_rsaes_encrypt(uint32_t algo,
 
 	output_ptr = dst;
 	l = (uint8_t *)label;
-	llen = (uint16_t)label_len;
 	dataIn_ptr = (uint8_t *)src;
 	dataInSize = (uint16_t)src_len;
 
-	if (NULL == key) {
-		res = SS_ERROR_GENERIC;
-		PROV_EMSG("GENERIC key is NULL\n");
+	if (label_len < 0xFFFFU) {
+		llen = (uint16_t)label_len;
 	} else {
-		if((NULL == key->e) || (NULL == key->n)) {
+		res = SS_ERROR_OVERFLOW;
+		PROV_EMSG("OVERFLOW(label_len)\n");
+	}
+	
+	if (res == SS_SUCCESS) {
+		if (NULL == key) {
 			res = SS_ERROR_GENERIC;
-			PROV_EMSG("GENERIC key menbers are NULL\n");
+			PROV_EMSG("GENERIC key is NULL\n");
+		} else {
+			if((NULL == key->e) || (NULL == key->n)) {
+				res = SS_ERROR_GENERIC;
+				PROV_EMSG("GENERIC key menbers are NULL\n");
+			}
 		}
 	}
 
@@ -5366,13 +5374,21 @@ static SSError_t ss_hmac_update(void *ctx, uint32_t algo, const uint8_t *data, s
 	SSError_t res = SS_SUCCESS;
 	SS_HMAC_Context_t *ss_ctx;
 	uint8_t *nullBuf = NULL;
+	uint32_t srcLen;
 
 	PROV_INMSG("START: ss_hmac_update\n");
 
 	CHECK_CONTEXT(res, ss_ctx, SS_HMAC_Context_t, ctx);
 
+	if (len < 0xFFFFFFFFU) {
+		srcLen = (uint32_t)len;
+	} else {
+		res = SS_ERROR_OVERFLOW;
+		PROV_EMSG("OVERFLOW(len)\n");
+	}
+
 	if(SS_SUCCESS == res){
-		res = ss_buffer_update(ctx, algo, data, len, &nullBuf);
+		res = ss_buffer_update(ctx, algo, data, srcLen, &nullBuf);
 	}
 
 	PROV_OUTMSG("return res=0x%08x\n", res);
@@ -5394,13 +5410,21 @@ static SSError_t ss_aesmac_update(void *ctx, uint32_t algo, const uint8_t *data,
 	SSError_t res = SS_SUCCESS;
 	SS_AES_Context2_t *ss_ctx;
 	uint8_t *nullBuf = NULL;
+	uint32_t srcLen;
 
 	PROV_INMSG("START: ss_aesmac_update\n");
 
 	CHECK_CONTEXT(res, ss_ctx, SS_AES_Context2_t, ctx);
 
+	if (len < 0xFFFFFFFFU) {
+		srcLen = (uint32_t)len;
+	} else {
+		res = SS_ERROR_OVERFLOW;
+		PROV_EMSG("OVERFLOW(len)\n");
+	}
+
 	if(SS_SUCCESS == res){
-		res = ss_buffer_update(ctx, algo, data, len, &nullBuf);
+		res = ss_buffer_update(ctx, algo, data, srcLen, &nullBuf);
 	}
 
 	PROV_OUTMSG("return res=0x%08x\n", res);
@@ -5564,7 +5588,7 @@ static SSError_t ss_hmac_final(void *ctx, uint32_t algo, uint8_t *digest,
 	}
 	if (res == SS_SUCCESS) {
 		/* copy to output  */
-		for (i = 0; i < hmacResultLen && i < digest_len; i++) {
+		for (i = 0; (i < hmacResultLen) && (i < digest_len); i++) {
 			digest[i] = buf[i];
 		}
 	}
@@ -5905,7 +5929,7 @@ TEE_Result crypto_hw_aes_ccm_init(void *ctx, TEE_OperationMode mode,
 	if (res == SS_SUCCESS) {
 		if ((sizeOfT > TEE_CCM_TAG_MAX_LENGTH)
 				|| (sizeOfT < TEE_CCM_TAG_MIN_LENGTH)
-				|| (sizeOfT % 2U != 0U)) {
+				|| ((sizeOfT % 2U) != 0U)) {
 			PROV_EMSG("NOT_SUPPORTED(sizeOfT) size\n");
 			res = SS_ERROR_NOT_SUPPORTED;
 		}
@@ -6018,7 +6042,7 @@ TEE_Result crypto_hw_aes_ccm_update_payload(void *ctx, const uint8_t *src_data,
 		PROV_DMSG("src_data=%p len=%ld dst_data=%p\n",
 				src_data, len, dst_data);
 		res = ss_buffer_update(ctx, TEE_ALG_AES_CCM, src_data,
-				len, &dst_data);
+				(uint32_t)len, &dst_data);
 	}
 
 	/* dst_len not used for SS provider*/
@@ -6429,7 +6453,7 @@ TEE_Result crypto_hw_rpmb_signframes(uint64_t *in, uint32_t listSize, uint8_t *o
 	PROV_INMSG("in=%p listSize=%d out=%p outSize=%d\n", in, listSize, out,
 			outSize);
 	hmacSize = (uint32_t)DX_UTIL_HMAC_SHA256_DIGEST_SIZE_IN_WORDS
-			* sizeof(uint32_t);
+			* (uint32_t)(sizeof(uint32_t));
 	if (in == NULL) {
 		PROV_EMSG("But Parameters in=%p",in);
 		res = SS_ERROR_BAD_PARAMETERS;
