@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2016-2019, Linaro Limited
+ * Copyright (c) 2016-2021, Renesas Electronics Corporation
  */
 
 #include <kernel/dt.h>
@@ -98,6 +99,82 @@ int dt_get_irq_type_prio(const void *fdt, int node, uint32_t *type,
 					 prio);
 }
 #endif
+
+// void itr_handle(size_t it)
+// {
+// 	interrupt_call_handlers(itr_main_chip, it);
+// }
+
+struct itr_handler *itr_alloc_add_type_prio(size_t it, itr_handler_t handler,
+					    uint32_t flags, void *data,
+					    uint32_t type, uint32_t prio)
+{
+	struct itr_handler *hdl = calloc(1, sizeof(*hdl));
+
+	if (hdl) {
+		hdl->it = it;
+		hdl->handler = handler;
+		hdl->flags = flags;
+		hdl->data = data;
+		itr_add_type_prio(hdl, type, prio);
+	}
+
+	return hdl;
+}
+
+void itr_free(struct itr_handler *hdl)
+{
+	if (!hdl)
+		return;
+
+	itr_main_chip->ops->disable(itr_main_chip, hdl->it);
+
+	SLIST_REMOVE(&itr_main_chip->handlers, hdl, itr_handler, link);
+	free(hdl);
+}
+
+void itr_add_type_prio(struct itr_handler *h, uint32_t type, uint32_t prio)
+{
+	struct itr_handler __maybe_unused *hdl = NULL;
+
+	SLIST_FOREACH(hdl, &itr_main_chip->handlers, link)
+		if (hdl->it == h->it)
+			assert((hdl->flags & ITRF_SHARED) &&
+			       (h->flags & ITRF_SHARED));
+
+	itr_main_chip->ops->add(itr_main_chip, h->it, type, prio);
+	SLIST_INSERT_HEAD(&itr_main_chip->handlers, h, link);
+}
+
+void itr_del(struct itr_handler *h)
+{
+	SLIST_REMOVE(&itr_main_chip->handlers, h, itr_handler, link);
+}
+
+void itr_enable(size_t it)
+{
+	itr_main_chip->ops->enable(itr_main_chip, it);
+}
+
+void itr_disable(size_t it)
+{
+	itr_main_chip->ops->disable(itr_main_chip, it);
+}
+
+void itr_raise_pi(size_t it)
+{
+	itr_main_chip->ops->raise_pi(itr_main_chip, it);
+}
+
+void itr_raise_sgi(size_t it, uint8_t cpu_mask)
+{
+	itr_main_chip->ops->raise_sgi(itr_main_chip, it, cpu_mask);
+}
+
+void itr_set_affinity(size_t it, uint8_t cpu_mask)
+{
+	itr_main_chip->ops->set_affinity(itr_main_chip, it, cpu_mask);
+}
 
 /* This function is supposed to be overridden in platform specific code */
 void __weak __noreturn interrupt_main_handler(void)
@@ -388,3 +465,11 @@ TEE_Result interrupt_dt_get_by_name(const void *fdt, int node, const char *name,
 	return interrupt_dt_get_by_index(fdt, node, idx, chip, itr_num);
 }
 #endif /*CFG_DT*/
+void itr_set_all_cpu_mask(uint8_t cpu_mask)
+{
+	struct itr_handler *h;
+
+	SLIST_FOREACH(h, &itr_main_chip->handlers, link) {
+		itr_set_affinity(h->it, cpu_mask);
+	}
+}

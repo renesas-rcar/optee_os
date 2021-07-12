@@ -2,6 +2,7 @@
 /*
  * Copyright (c) 2018, EPAM Systems. All rights reserved.
  * Copyright (c) 2023-2024, Linaro Limited
+ * Copyright (c) 2023-2026, Renesas Electronics Corporation
  */
 
 #include <bitstring.h>

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2016-2019, Linaro Limited
+ * Copyright (c) 2017-2021, Renesas Electronics Corporation
  */
 #ifndef __KERNEL_INTERRUPT_H
 #define __KERNEL_INTERRUPT_H
@@ -185,6 +186,29 @@ static inline int dt_get_irq(const void *fdt, int node)
 	return dt_get_irq_type_prio(fdt, node, NULL, NULL);
 }
 #endif
+
+struct itr_handler *itr_alloc_add_type_prio(size_t it, itr_handler_t handler,
+					    uint32_t flags, void *data,
+					    uint32_t type, uint32_t prio);
+void itr_free(struct itr_handler *hdl);
+
+void itr_add_type_prio(struct itr_handler *handler, uint32_t type,
+		       uint32_t prio);
+void itr_del(struct itr_handler *handler);
+void itr_enable(size_t it);
+void itr_disable(size_t it);
+/* raise the Peripheral Interrupt corresponding to the interrupt ID */
+void itr_raise_pi(size_t it);
+/*
+ * raise the Software Generated Interrupt corresponding to the interrupt ID,
+ * the cpu_mask represents which cpu interface to forward.
+ */
+void itr_raise_sgi(size_t it, uint8_t cpu_mask);
+/*
+ * let corresponding interrupt forward to the cpu interface
+ * according to the cpu_mask.
+ */
+void itr_set_affinity(size_t it, uint8_t cpu_mask);
 
 /*
  * __weak overridable function which is called when a secure interrupt is
@@ -570,4 +594,6 @@ static inline TEE_Result interrupt_dt_get(const void *fdt, int node,
 {
 	return interrupt_dt_get_by_index(fdt, node, 0, chip, itr_num);
 }
+void itr_set_all_cpu_mask(uint8_t cpu_mask);
+
 #endif /*__KERNEL_INTERRUPT_H*/

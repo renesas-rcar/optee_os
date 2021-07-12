@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2014-2019, 2022 Linaro Limited
+ * Copyright (c) 2020-2023, Renesas Electronics Corporation
  */
 
 #include <crypto/crypto.h>
@@ -183,6 +184,13 @@ TEE_Result sw_crypto_acipher_gen_rsa_key(struct rsa_keypair *key,
 	TEE_Result res;
 	rsa_key ltc_tmp_key;
 	int ltc_res;
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    if (crypto_hw_acipher_check_support_key(key_size) == SS_HW_SUPPORT_ALG)
+    {
+        res = crypto_hw_acipher_gen_rsa_key(key, key_size);
+        return res;
+    }
+#endif
 
 	/* Generate a temporary RSA key */
 	ltc_res = rsa_make_key_bn_e(NULL, find_prng("prng_crypto"),
@@ -283,6 +291,18 @@ TEE_Result sw_crypto_acipher_rsanopad_encrypt(struct rsa_public_key *key,
 {
 	TEE_Result res;
 	rsa_key ltc_key = { 0, };
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    uint32_t modSize;
+
+    modSize = crypto_bignum_num_bits(key->n);
+    if (crypto_hw_acipher_check_support(TEE_ALG_RSA_NOPAD,
+            modSize) == SS_HW_SUPPORT_ALG)
+    {
+        res = crypto_hw_acipher_rsanopad_encrypt(key, src, src_len, dst,
+                 dst_len);
+        return res;
+    }
+#endif
 
 	ltc_key.type = PK_PUBLIC;
 	ltc_key.e = key->e;
@@ -305,6 +325,18 @@ TEE_Result sw_crypto_acipher_rsanopad_decrypt(struct rsa_keypair *key,
 {
 	TEE_Result res;
 	rsa_key ltc_key = { 0, };
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    uint32_t modSize;
+
+    modSize = crypto_bignum_num_bits(key->n);
+    if (crypto_hw_acipher_check_support(TEE_ALG_RSA_NOPAD,
+            modSize) == SS_HW_SUPPORT_ALG)
+    {
+        res = crypto_hw_acipher_rsanopad_decrypt(key, src, src_len, dst,
+                 dst_len);
+        return res;
+    }
+#endif
 
 	ltc_key.type = PK_PRIVATE;
 	ltc_key.e = key->e;
@@ -347,6 +379,17 @@ TEE_Result sw_crypto_acipher_rsaes_decrypt(uint32_t algo,
 	int ltc_hashindex, ltc_mgfindex, ltc_res, ltc_stat, ltc_rsa_algo;
 	size_t mod_size;
 	rsa_key ltc_key = { 0, };
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    uint32_t modSize;
+
+    modSize = crypto_bignum_num_bits(key->n);
+    if (crypto_hw_acipher_check_support(algo, modSize) == SS_HW_SUPPORT_ALG)
+    {
+        res = crypto_hw_acipher_rsaes_decrypt(algo, key, label,
+                 label_len, src, src_len, dst, dst_len);
+        return res;
+    }
+#endif
 
 	ltc_key.type = PK_PRIVATE;
 	ltc_key.e = key->e;
@@ -468,6 +511,17 @@ TEE_Result sw_crypto_acipher_rsaes_encrypt(uint32_t algo,
 		.e = key->e,
 		.N = key->n
 	};
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    uint32_t modSize;
+
+    modSize = crypto_bignum_num_bits(key->n);
+    if (crypto_hw_acipher_check_support(algo, modSize) == SS_HW_SUPPORT_ALG)
+    {
+        res = crypto_hw_acipher_rsaes_encrypt(algo, key, label,
+                 label_len, src, src_len, dst, dst_len);
+        return res;
+    }
+#endif
 
 	mod_size =  ltc_mp.unsigned_size((void *)(ltc_key.N));
 	if (*dst_len < mod_size) {
@@ -536,6 +590,17 @@ TEE_Result sw_crypto_acipher_rsassa_sign(uint32_t algo, struct rsa_keypair *key,
 	int ltc_res, ltc_rsa_algo, ltc_hashindex;
 	unsigned long ltc_sig_len;
 	rsa_key ltc_key = { 0, };
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    uint32_t modSize;
+
+    modSize = crypto_bignum_num_bits(key->n);
+    if (crypto_hw_acipher_check_support(algo, modSize) == SS_HW_SUPPORT_ALG)
+    {
+        res = crypto_hw_acipher_rsassa_sign(algo, key, salt_len, msg,
+                 msg_len, sig, sig_len);
+        return res;
+    }
+#endif
 
 	ltc_key.type = PK_PRIVATE;
 	ltc_key.e = key->e;
@@ -640,8 +705,20 @@ TEE_Result sw_crypto_acipher_rsassa_verify(uint32_t algo,
 		.e = key->e,
 		.N = key->n
 	};
+
 	struct ftmn   ftmn = { };
 
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    uint32_t modSize;
+
+    modSize = crypto_bignum_num_bits(key->n);
+    if (crypto_hw_acipher_check_support(algo, modSize) == SS_HW_SUPPORT_ALG)
+    {
+        res = crypto_hw_acipher_rsassa_verify(algo, key, salt_len, msg,
+                 msg_len, sig);
+        return res;
+    }
+#endif
 	/*
 	 * The caller expects to call crypto_acipher_rsassa_verify(),
 	 * update the hash as needed.

@@ -2,6 +2,7 @@
 /*
  * Copyright (c) 2014-2021, Linaro Limited
  * Copyright (c) 2021, SumUp Services GmbH
+ * Copyright (c) 2016-2021, Renesas Electronics Corporation
  */
 
 #ifndef TEE_API_DEFINES_EXTENSIONS_H
@@ -113,6 +114,8 @@
 #define TEE_STORAGE_PRIVATE_RPMB 0x80000100
 /* Was TEE_STORAGE_PRIVATE_SQL, which isn't supported any longer */
 #define TEE_STORAGE_PRIVATE_SQL_RESERVED  0x80000200
+/* Storage is provided by the QSPI/Hyper Flash */
+#define TEE_STORAGE_PRIVATE_STANDALONE 0x80001000
 
 /*
  * Extension of "Memory Access Rights Constants"

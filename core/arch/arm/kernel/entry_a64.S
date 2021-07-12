@@ -2,6 +2,7 @@
 /*
  * Copyright (c) 2015-2025, Linaro Limited
  * Copyright (c) 2021-2023, Arm Limited
+ * Copyright (c) 2017-2026, Renesas Electronics Corporation
  */
 
 #include <platform_config.h>

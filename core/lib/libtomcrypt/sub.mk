@@ -2,7 +2,13 @@ global-incdirs-y += include
 global-incdirs-y += src/headers
 
 cppflags-lib-y += -DARGTYPE=4  # Make LTC_ARGCHK() return on error
+
+ifeq ($(CFG_CRYPT_HW_CRYPTOENGINE),y)
+cppflags-lib-y += -DLTC_NO_TEST
+else
 cppflags-lib-y += -DLTC_NO_TEST -DLTC_NO_PROTOTYPES
+endif
+
 cppflags-lib-y += -DLTC_NO_TABLES -DLTC_HASH_HELPERS
 cppflags-lib-y += -DLTC_NO_MISC
 cppflags-lib-y += -DLTC_HMAC
