@@ -120,7 +120,7 @@ void crypto_hash_copy_state(void *dst_ctx, void *src_ctx)
             res = crypto_hw_hash_get_ctx_size(algo, &ctx_size);
             if(res == TEE_SUCCESS)
             {
-                memcpy(dst_ctx, src_ctx, ctx_size);
+            	(void)memcpy(dst_ctx, src_ctx, ctx_size);
             }
             return;
         }
@@ -325,7 +325,7 @@ void crypto_cipher_copy_state(void *dst_ctx, void *src_ctx)
             res = crypto_hw_cipher_get_ctx_size(algo, &ctx_size);
             if(res == TEE_SUCCESS)
             {
-                memcpy(dst_ctx, src_ctx, ctx_size);
+            	(void)memcpy(dst_ctx, src_ctx, ctx_size);
             }
             return;
         }
@@ -576,7 +576,7 @@ void crypto_mac_copy_state(void *dst_ctx, void *src_ctx)
             res = crypto_hw_mac_get_ctx_size(algo, &ctx_size);
             if(res == TEE_SUCCESS)
             {
-                memcpy(dst_ctx, src_ctx, ctx_size);
+            	(void)memcpy(dst_ctx, src_ctx, ctx_size);
             }
             return;
         }

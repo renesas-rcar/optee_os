@@ -55,7 +55,7 @@ static TEE_Result crypto_cbc_mac_des_init(void *ctx, TEE_OperationMode mode,
                   const uint8_t *key2, size_t key2_len,
                   const uint8_t *iv, size_t iv_len)
 {
-    if (mode != TEE_MODE_DECRYPT && mode != TEE_MODE_ENCRYPT)
+    if ((mode != TEE_MODE_DECRYPT) && (mode != TEE_MODE_ENCRYPT))
         return TEE_ERROR_BAD_PARAMETERS;
 
     return cipher_ops(ctx)->init(ctx, mode, key1, key1_len, key2, key2_len,
@@ -77,7 +77,7 @@ static TEE_Result crypto_cbc_mac_init(struct crypto_mac_ctx *ctx,
 #ifdef CFG_CRYPT_HW_CRYPTOENGINE
     /* When HW-Engine is valid, this function is called only in DES processing of MAC. */
 	return crypto_cbc_mac_des_init(mc->cbc_ctx, TEE_MODE_ENCRYPT, key, len,
-				  NULL, 0, mc->block, mc->block_len);
+				  NULL, 0, mc->block, (size_t)(mc->block_len));
 #else
 	return crypto_cipher_init(mc->cbc_ctx, TEE_MODE_ENCRYPT, key, len,
 				  NULL, 0, mc->block, mc->block_len);
@@ -119,7 +119,7 @@ static TEE_Result crypto_cbc_mac_update(struct crypto_mac_ctx *ctx,
 #ifdef CFG_CRYPT_HW_CRYPTOENGINE
         /* When HW-Engine is valid, this function is called only in DES processing of MAC. */
 		res = crypto_cbc_mac_des_update(mc->cbc_ctx, TEE_MODE_ENCRYPT,
-					   false, data, mc->block_len,
+					   false, data, (size_t)(mc->block_len),
 					   mc->digest);
 #else
 		res = crypto_cipher_update(mc->cbc_ctx, TEE_MODE_ENCRYPT,
@@ -235,7 +235,8 @@ static TEE_Result crypto_cbc_mac_des_alloc_ctx(void **ctx, uint32_t algo)
              res = crypto_des3_cbc_alloc_ctx(&c);
              break;
          default:
-             return TEE_ERROR_NOT_IMPLEMENTED;
+             res = TEE_ERROR_NOT_IMPLEMENTED;
+             break;
     }
 
     if (!res)
