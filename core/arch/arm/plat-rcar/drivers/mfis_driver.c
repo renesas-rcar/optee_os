@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
- * Copyright (c) 2015-2020, Renesas Electronics Corporation
+ * Copyright (c) 2015-2021, Renesas Electronics Corporation
  */
 
 #include <io.h>
@@ -20,11 +20,6 @@
 #define	MFIERRSTSR(a)	((volatile uint32_t *)(p2v_ioadr(0xE6260254U) + (vaddr_t)((a) * 4U)))
 #define	MFIERRTGTR(a)	((volatile uint32_t *)(p2v_ioadr(0xE6260294U) + (vaddr_t)((a) * 4U)))
 #define	MFIERRTGTR6	((volatile uint32_t *)(p2v_ioadr(0xE626025CU)))
-
-#define CPGWPR		p2v_ioadr(0xE6150900U)
-#define SMSTPCR2	p2v_ioadr(0xE6150138U)
-#define MSTPSR2		p2v_ioadr(0xE6150040U)
-#define SMSTP_MFISFLG	((uint32_t)1U<<13U)
 
 typedef struct {
 	struct {
@@ -168,15 +163,6 @@ int32_t mfis_error_detection_start(MFIS_ERR_SETTING_T *err,
 			local_setting = *err;
 			user_cb = cb;
 			mfis_state = MFIS_STATE_ACTIVE;
-			
-			reg = io_read32(SMSTPCR2);
-			reg &= ~SMSTP_MFISFLG;
-			io_write32(CPGWPR, (~reg));
-			io_write32(SMSTPCR2, reg);
-			while (0U != (io_read32(MSTPSR2) & SMSTP_MFISFLG)) {
-				;
-			}
-
 		} else {
 			ret = MFIS_ERR_PARAMETER;
 		}
@@ -206,11 +192,6 @@ int32_t mfis_error_detection_stop(void)
 				*(mfis_reg.array[loop].MFIERRCTLR) = 0U;
 			}
 		}
-		
-		reg = io_read32(SMSTPCR2);
-		reg |= SMSTP_MFISFLG;
-		io_write32(CPGWPR, (~reg));
-		io_write32(SMSTPCR2, reg);
 
 		mfis_state = MFIS_STATE_NOACTIVE;
 	}
