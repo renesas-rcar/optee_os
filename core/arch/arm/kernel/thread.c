@@ -3,6 +3,7 @@
  * Copyright (c) 2016-2022, Linaro Limited
  * Copyright (c) 2014, STMicroelectronics International N.V.
  * Copyright (c) 2020-2021, Arm Limited
+ * Copyright (c) 2016-2021, Renesas Electronics Corporation
  */
 
 #include <platform_config.h>

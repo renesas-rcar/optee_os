@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 /compile_commands.json
 /cscope.*
 /tags
@@ -12,3 +13,16 @@
 !.gitattributes
 !.gitignore
 !.github
+=======
+.cproject
+cscope.*
+tags
+TAGS
+out
+.project
+*.swp
+/core/lib/libcryptoengine/libcrypto_engine_pka.a
+/core/lib/libcryptoengine/libcrypto_engine_secure.a
+/core/lib/libcryptoengine/include_secure
+/core/lib/libcryptoengine/include_pka
+>>>>>>> e6cdc17f9 (plat-rcar: Version up the base version of OP-TEE from 3.8.0 to 3.22.0)

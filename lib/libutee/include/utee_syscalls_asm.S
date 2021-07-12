@@ -2,6 +2,7 @@
 /*
  * Copyright (c) 2015, Linaro Limited
  * Copyright (c) 2014, STMicroelectronics International N.V.
+ * Copyright (c) 2016-2021, Renesas Electronics Corporation
  */
 
 
@@ -122,3 +123,9 @@
                      TEE_SCN_CRYP_OBJ_GENERATE_KEY, 4
 
         UTEE_SYSCALL _utee_cache_operation, TEE_SCN_CACHE_OPERATION, 3
+
+        UTEE_SYSCALL urcar_aes_unwrap, RCAR_SCN_AES_UNWRAP, 7
+
+        UTEE_SYSCALL urcar_gen_skey_package, RCAR_SCN_GEN_SKEY_PACKAGE, 3
+
+        UTEE_SYSCALL urcar_gen_asset_unpack, RCAR_SCN_ASSET_UNPACK, 6
