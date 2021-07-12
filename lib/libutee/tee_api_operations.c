@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
  * Copyright (c) 2021, SumUp Services GmbH
- * Copyright (c) 2017-2020, Renesas Electronics Corporation
+ * Copyright (c) 2017-2021, Renesas Electronics Corporation
  */
 #include <assert.h>
 #include <config.h>
@@ -851,16 +851,6 @@ void TEE_CopyOperation(TEE_OperationHandle dst_op, TEE_OperationHandle src_op)
 	dst_op->info.keySize = src_op->info.keySize;
 	dst_op->info.digestLength = src_op->info.digestLength;
 	dst_op->operationState = src_op->operationState;
-
-	if ((src_op->info.operationClass == (uint32_t)TEE_OPERATION_AE)
-		&& ((src_op->info.handleState
-			& (uint32_t)TEE_HANDLE_FLAG_INITIALIZED) != 0U)) {
-		dst_op->ae_tag_len = src_op->ae_tag_len;
-		DMSG("Copy a value of %d byte AE tag length.\n",
-				dst_op->ae_tag_len);
-	} else {
-		DMSG("It is not necessary to copy a Tag length.\n");
-	}
 
 	if (dst_op->buffer_two_blocks != src_op->buffer_two_blocks ||
 	    dst_op->block_size != src_op->block_size)
