@@ -387,7 +387,7 @@ static TEE_Result tee_rpmb_mac_calc(uint8_t *mac, uint32_t macsize,
 #endif
 {
 	TEE_Result res = TEE_ERROR_GENERIC;
-	int i;
+	uint16_t i;
 #ifndef PLATFORM_RCAR
 	void *ctx = NULL;
 #endif

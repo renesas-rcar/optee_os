@@ -317,7 +317,7 @@ void crypto_rng_add_event(enum crypto_rng_src sid, unsigned int *pnum,
 		push_ring_buffer(snum, pn, data, dlen);
 	} else {
 #if defined(CFG_CRYPT_HW_CRYPTOENGINE)
-		crypto_hw_rng_add_entropy((uint8_t *)data, dlen);
+		crypto_hw_rng_add_entropy((const uint8_t *)data, dlen);
 #else
 		mutex_lock(&state_mu);
 		add_event(snum, pn, data, dlen);

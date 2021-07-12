@@ -1204,6 +1204,8 @@ static bool assign_mem_va_dir(vaddr_t tee_ram_va,
 				} else if ((va <= rd) &&
 				  ((va + map->size) >= (rd + dmsize))) {
 					va = rd + dmsize;
+				} else {
+					/* no operation */
 				}
 			}
 #endif
@@ -1251,7 +1253,8 @@ static bool assign_mem_va_dir(vaddr_t tee_ram_va,
 			size_t o;
 			size_t min;
 
-			for (min = n, o = n + 1; o < last; o++) {
+			min = n;
+			for (o = n + 1U; o < last; o++) {
 				if (memory_map[min].va > memory_map[o].va) {
 					min = o;
 				}
