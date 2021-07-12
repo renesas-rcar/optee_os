@@ -1210,6 +1210,7 @@ uint32_t crypto_hw_mac_check_support(uint32_t algo)
 	case TEE_ALG_DES3_CBC_MAC_NOPAD:
 	case TEE_ALG_DES3_CBC_MAC_PKCS5:
 	case TEE_ALG_HMAC_SM3:
+	case TEE_ALG_DES3_CMAC:
 		ret = SS_HW_NOT_SUPPORT_ALG;
 		break;
 	default:
