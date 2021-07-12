@@ -556,6 +556,16 @@ TEE_Result crypto_hw_acipher_ecc_shared_secret(struct ecc_keypair *private_key,
 		unsigned long *secret_len);
 
 /*
+ * brief: Get key size of ECC.
+ *
+ * param[in]	curve           - Elliptic Curve Cryptography
+ * size_t[out]	*key_size_bits  - Bit size of ECC key
+ * return	void
+ *
+ */
+void crypto_hw_acipher_ecc_get_key_size(uint32_t curve,	size_t *key_size_bits);
+
+/*
  * brief:   Allocate a context for HASH algorithm.
  *
  * param[in]    **ctx     - Pointer to the HASH context.
