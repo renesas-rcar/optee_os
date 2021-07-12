@@ -25,7 +25,7 @@
 		cmp	x0, #CFG_TEE_CORE_NB_CORE
 		/* Unsupported CPU, park it before it breaks something */
 		bge	unhandled_cpu
-		adr	x1, stack_tmp_stride
+		adr_l	x1, stack_tmp_stride
 		ldr	w1, [x1]
 		mul	x1, x0, x1
 		adrp	x0, stack_tmp_export
@@ -138,8 +138,8 @@ clear_bss:
 	 * Clear .nex_bss, this code obviously depends on the linker keeping
 	 * start/end of .bss at least 8 byte aligned.
 	 */
-	adr	x0, __nex_bss_start
-	adr	x1, __nex_bss_end
+	adr_l	x0, __nex_bss_start
+	adr_l	x1, __nex_bss_end
 clear_nex_bss:
 	str	xzr, [x0], #8
 	cmp	x0, x1
