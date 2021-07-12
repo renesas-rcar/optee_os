@@ -1386,6 +1386,35 @@ uint32_t crypto_hw_acipher_ecc_check_support(uint32_t curve,
 	return ret;
 }
 
+void crypto_hw_acipher_ecc_get_key_size(uint32_t curve, size_t *key_size_bits)
+{
+	size_t size_bits = 0;
+
+	switch (curve) {
+	case TEE_ECC_CURVE_NIST_P192:
+		size_bits = 192;
+		break;
+	case TEE_ECC_CURVE_NIST_P224:
+		size_bits = 224;
+		break;
+	case TEE_ECC_CURVE_NIST_P256:
+		size_bits = 256;
+		break;
+	case TEE_ECC_CURVE_NIST_P384:
+		size_bits = 384;
+		break;
+	case TEE_ECC_CURVE_NIST_P521:
+		size_bits = 521;
+		break;
+	default:
+		/* nothing to do */
+		break;
+	}
+
+	*key_size_bits = size_bits;
+
+}
+
 /*
  * brief: Check if SS6.3-Secure Driver supports a DH key size.
  *
@@ -2503,8 +2532,9 @@ TEE_Result crypto_hw_acipher_rsaes_encrypt(uint32_t algo,
 	} else {
 		res = SS_ERROR_OVERFLOW;
 		PROV_EMSG("OVERFLOW(label_len)\n");
+		goto out;
 	}
-	
+
 	if (res == SS_SUCCESS) {
 		if (NULL == key) {
 			res = SS_ERROR_GENERIC;
@@ -2576,6 +2606,7 @@ TEE_Result crypto_hw_acipher_rsaes_encrypt(uint32_t algo,
 
 	ss_free((void *)userPubKey_ptr);
 	ss_free((void *)primeData_ptr);
+out:
 	PROV_DHEXDUMP(dst,*dst_len);
 	tee_res = ss_translate_error_ss2tee(res);
 	PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n",res,tee_res);
