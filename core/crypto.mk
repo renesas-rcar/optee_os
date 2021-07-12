@@ -24,6 +24,7 @@ CFG_CRYPTO_CBC ?= y
 CFG_CRYPTO_CTR ?= y
 CFG_CRYPTO_CTS ?= y
 CFG_CRYPTO_XTS ?= y
+CFG_CRYPTO_OFB ?= y
 
 # Message authentication codes
 CFG_CRYPTO_HMAC ?= y
@@ -34,6 +35,7 @@ CFG_CRYPTO_CBC_MAC ?= y
 # temporary data are allocated on the heap.
 # Minimum value is 1.
 CFG_CRYPTO_CBC_MAC_BUNDLE_BLOCKS ?= 64
+CFG_CRYPTO_XCBC_MAC ?= y
 
 # Hashes
 CFG_CRYPTO_MD5 ?= y
@@ -301,4 +303,21 @@ _CFG_CORE_LTC_EC25519 := $(call ltc-one-enabled, ED25519 X25519)
 # without ASN.1 around the hash.
 ifeq ($(CFG_CRYPTOLIB_NAME),tomcrypt)
 CFG_CRYPTO_RSASSA_NA1 ?= y
+endif
+
+###############################################################
+# crypt specifics
+###############################################################
+ifeq ($(CFG_CRYPT_HW_CRYPTOENGINE),y)
+cryp-one-enabled = $(call cfg-one-enabled,$(foreach v,$(1),CFG_CRYPTO_$(v)))
+cryp-all-enabled = $(call cfg-all-enabled,$(foreach v,$(1),CFG_CRYPTO_$(v)))
+
+_CFG_CRYPTO_WITH_ACIPHER := $(call cryp-one-enabled, RSA DSA DH ECC)
+_CFG_CRYPTO_WITH_AUTHENC := $(and $(filter y,$(CFG_CRYPTO_AES)), $(call cryp-one-enabled, CCM GCM))
+_CFG_CRYPTO_WITH_CIPHER := $(call cryp-one-enabled, AES DES)
+_CFG_CRYPTO_WITH_HASH := $(call cryp-one-enabled, MD5 SHA1 SHA224 SHA256 SHA384 SHA512)
+_CFG_CRYPTO_WITH_MAC := $(call cryp-one-enabled, HMAC CMAC CBC_MAC)
+_CFG_CRYPTO_WITH_CBC := $(call cryp-one-enabled, CBC CBC_MAC)
+_CFG_CRYPTO_WITH_ASN1 := $(call cryp-one-enabled, RSA DSA ECC)
+_CFG_CRYPTO_WITH_FORTUNA_PRNG := $(call cryp-all-enabled, AES SHA256)
 endif

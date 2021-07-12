@@ -3,6 +3,7 @@
  * Copyright (c) 2016, 2022 Linaro Limited
  * Copyright (c) 2014, STMicroelectronics International N.V.
  * Copyright (c) 2022, Arm Limited and Contributors. All rights reserved.
+ * Copyright (c) 2017-2023, Renesas Electronics Corporation
  */
 
 #include <assert.h>
@@ -749,7 +750,11 @@ uint32_t core_mmu_type_to_attr(enum teecore_memtypes t)
 	case MEM_AREA_TEE_ASAN:
 		return attr | TEE_MATTR_SECURE | TEE_MATTR_PRW | tagged;
 	case MEM_AREA_TEE_COHERENT:
+#ifdef PLATFORM_RCAR
+		return attr | TEE_MATTR_SECURE | TEE_MATTR_PRX | noncache;
+#else
 		return attr | TEE_MATTR_SECURE | TEE_MATTR_PRWX | noncache;
+#endif /* PLATFORM_RCAR */
 	case MEM_AREA_TA_RAM:
 		return attr | TEE_MATTR_SECURE | TEE_MATTR_PRW | tagged;
 	case MEM_AREA_NSEC_SHM:
@@ -812,6 +817,7 @@ static bool __maybe_unused map_is_pgdir(const struct tee_mmap_region *mm)
 	return mm->region_size == CORE_MMU_PGDIR_SIZE;
 }
 
+#ifndef MMU_DIRECT_MAPPING /* for RCAR */
 static int cmp_mmap_by_lower_va(const void *a, const void *b)
 {
 	const struct tee_mmap_region *mm_a = a;
@@ -819,6 +825,7 @@ static int cmp_mmap_by_lower_va(const void *a, const void *b)
 
 	return CMP_TRILEAN(mm_a->va, mm_b->va);
 }
+#endif
 
 static void dump_mmap_table(struct tee_mmap_region *memory_map)
 {
@@ -1084,7 +1091,22 @@ static bool assign_mem_va_dir(vaddr_t tee_ram_va,
 	struct tee_mmap_region *map = NULL;
 	vaddr_t va = 0;
 	bool va_is_secure = true;
-
+#ifdef MMU_DIRECT_MAPPING /* for RCAR */
+	const paddr_t direct_map_area[][2] = {
+		{ MEMORY5_BASE, MEMORY5_SIZE }, /* TA area for verification */
+		{ MEMORY6_BASE, MEMORY6_SIZE }, /* MaskROM API memory */
+		{ MEMORY7_BASE, MEMORY7_SIZE }, /* Product Register (PRR) */
+		{ DEVICE0_PA_BASE, DEVICE0_SIZE }, /* Life Cycle address */
+		{ DEVICE1_PA_BASE, DEVICE1_SIZE } /* Crypto Engine address */
+	};
+	const size_t dmnum = sizeof(direct_map_area) / sizeof(paddr_t) / 2;
+	size_t last;
+	size_t n;
+	paddr_t dmaddr;
+	paddr_t dmsize;
+	paddr_t rd;
+	bool va_is_direct = false;
+#endif
 	/*
 	 * tee_ram_va might equals 0 when CFG_CORE_ASLR=y.
 	 * 0 is by design an invalid va, so return false directly.
@@ -1118,6 +1140,9 @@ static bool assign_mem_va_dir(vaddr_t tee_ram_va,
 	}
 
 	if (tee_ram_at_top) {
+#ifdef MMU_DIRECT_MAPPING /* for RCAR */
+		panic(); /* Direct Mapping is not supported */
+#endif
 		/*
 		 * Map non-tee ram regions at addresses lower than the tee
 		 * ram region.
@@ -1169,6 +1194,19 @@ static bool assign_mem_va_dir(vaddr_t tee_ram_va,
 
 			if (ROUNDUP_OVERFLOW(va, map->region_size, &va))
 				return false;
+#ifdef MMU_DIRECT_MAPPING /* for RCAR */
+			for (n = 0; n < dmnum; n++) {
+				dmaddr = direct_map_area[n][0];
+				dmsize = direct_map_area[n][1];
+				rd = ROUNDDOWN((dmaddr), CORE_MMU_PGDIR_SIZE);
+				if (map->pa == rd) {
+					va_is_direct = true;
+				} else if ((va <= rd) &&
+				  ((va + map->size) >= (rd + dmsize))) {
+					va = rd + dmsize;
+				}
+			}
+#endif
 			/*
 			 * Make sure that va is aligned with pa for
 			 * efficient pgdir mapping. Basically pa &
@@ -1182,12 +1220,51 @@ static bool assign_mem_va_dir(vaddr_t tee_ram_va,
 					return false;
 			}
 
+#ifdef MMU_DIRECT_MAPPING /* for RCAR */
+			if (!va_is_direct) {
+				map->va = va;
+				if (ADD_OVERFLOW(va, map->size, &va))
+					return false;
+			} else {
+				map->va = map->pa; /* 1-to-1 pa = va mapping */
+				va_is_direct = false;
+			}
+#else
 			map->va = va;
 			if (ADD_OVERFLOW(va, map->size, &va))
 				return false;
+#endif
 			if (va >= BIT64(core_mmu_get_va_width()))
 				return false;
 		}
+#ifdef MMU_DIRECT_MAPPING /* for RCAR */
+		last = 0;
+		for (map = memory_map; !core_mmap_is_end_of_table(map); map++) {
+			last++;
+		}
+		/*
+		 * The memory map should be sorted by virtual address
+		 * when this function returns. As we're assigning va in
+		 * the oposite direction we need to reverse the list.
+		 */
+		for (n = 0; n < last; n++) {
+			size_t o;
+			size_t min;
+
+			for (min = n, o = n + 1; o < last; o++) {
+				if (memory_map[min].va > memory_map[o].va) {
+					min = o;
+				}
+			}
+			if (n != min) {
+				struct tee_mmap_region r;
+
+				r = memory_map[n];
+				memory_map[n] = memory_map[min];
+				memory_map[min] = r;
+			}
+		}
+#endif
 	}
 
 	return true;
@@ -1343,9 +1420,10 @@ static unsigned long init_mem_map(struct tee_mmap_region *memory_map,
 		panic();
 
 out:
+#ifndef MMU_DIRECT_MAPPING /* for RCAR */
 	qsort(memory_map, last, sizeof(struct tee_mmap_region),
 	      cmp_mmap_by_lower_va);
-
+#endif
 	dump_mmap_table(memory_map);
 
 	return offs;

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /* Copyright (c) 2018, EPAM Systems. All rights reserved. */
+/* Copyright (c) 2021, Renesas Electronics Corporation */
 
 #include <compiler.h>
 #include <platform_config.h>
@@ -95,6 +96,17 @@ static struct tee_mmap_region *prepare_memory_map(paddr_t tee_data,
 	int i, entries;
 	vaddr_t max_va = 0;
 	struct tee_mmap_region *map;
+
+#ifdef PLATFORM_RCAR
+	int32_t direct_reg_idx = -1;
+	int32_t ta_ram_index;
+	int32_t entry_size = (int32_t)sizeof(struct tee_mmap_region);
+	vaddr_t tmp_va;
+	size_t avail_space;
+	size_t req_sz;
+	const void *mret;
+#endif
+
 	/*
 	 * This function assumes that at time of operation,
 	 * kmemory_map (aka static_memory_map from core_mmu.c)
@@ -123,12 +135,56 @@ static struct tee_mmap_region *prepare_memory_map(paddr_t tee_data,
 			map[i].attr = core_mmu_type_to_attr(map[i].type);
 			map[i].pa = tee_data;
 		}
+
+#ifdef PLATFORM_RCAR
+		/*
+		 * "max_va" shall be immediately before
+		 * the directly mapped register area.
+		 */
+		if (map[i].va >= REG_AREA_START) {
+			direct_reg_idx = i;
+			avail_space = (size_t)(map[i].va - max_va);
+			break;
+		}
+#endif
+
 		if (map[i].va + map[i].size > max_va)
 			max_va = map[i].va + map[i].size;
 	}
 
 	/* Map TA_RAM */
 	assert(map[entries - 1].type == MEM_AREA_END);
+
+#ifdef PLATFORM_RCAR
+	tmp_va = ROUNDUP(max_va, SMALL_PAGE_SIZE);
+	tmp_va += (ta_ram - tmp_va) & CORE_MMU_PGDIR_MASK;
+	if (direct_reg_idx >= 0) {
+		ta_ram_index = direct_reg_idx;
+		req_sz = get_ta_ram_size() + (tmp_va - max_va);
+		if (req_sz > avail_space) {
+			EMSG("Error case : size over");
+			nex_free((void*)map);
+			map = NULL;
+			goto err;
+		}
+		mret = memmove(&(map[ta_ram_index + 1]), &(map[ta_ram_index]),
+		     (size_t)(entry_size * (entries - ta_ram_index)));
+		if(mret != &(map[ta_ram_index + 1])) {
+			EMSG("Impossible case : memmove returns ERROR");
+			nex_free((void*)map);
+			map = NULL;
+			goto err;
+		}
+	} else {
+		ta_ram_index = entries - 1;
+	}
+	map[ta_ram_index].region_size = SMALL_PAGE_SIZE;
+	map[ta_ram_index].va = tmp_va;
+	map[ta_ram_index].pa = ta_ram;
+	map[ta_ram_index].size = get_ta_ram_size();
+	map[ta_ram_index].type = MEM_AREA_TA_RAM;
+	map[ta_ram_index].attr = core_mmu_type_to_attr(map[ta_ram_index].type);
+#else
 	map[entries] = map[entries - 1];
 	map[entries - 1].region_size = SMALL_PAGE_SIZE;
 	map[entries - 1].va = ROUNDUP(max_va, map[entries - 1].region_size);
@@ -138,6 +194,7 @@ static struct tee_mmap_region *prepare_memory_map(paddr_t tee_data,
 	map[entries - 1].size = get_ta_ram_size();
 	map[entries - 1].type = MEM_AREA_TA_RAM;
 	map[entries - 1].attr = core_mmu_type_to_attr(map[entries - 1].type);
+#endif
 
 	DMSG("New map (%08lx):",  (vaddr_t)(VCORE_UNPG_RW_PA));
 
@@ -146,6 +203,9 @@ static struct tee_mmap_region *prepare_memory_map(paddr_t tee_data,
 		     teecore_memtype_name(map[i].type),
 		     map[i].region_size, map[i].pa, map[i].va,
 		     map[i].size, map[i].attr);
+#ifdef PLATFORM_RCAR
+err:
+#endif
 	return map;
 }
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2016-2019, Linaro Limited
+ * Copyright (c) 2016-2021, Renesas Electronics Corporation
  */
 
 #include <kernel/dt.h>
@@ -109,6 +110,11 @@ void itr_add_type_prio(struct itr_handler *h, uint32_t type, uint32_t prio)
 
 	itr_main_chip->ops->add(itr_main_chip, h->it, type, prio);
 	SLIST_INSERT_HEAD(&itr_main_chip->handlers, h, link);
+}
+
+void itr_del(struct itr_handler *h)
+{
+	SLIST_REMOVE(&itr_main_chip->handlers, h, itr_handler, link);
 }
 
 void itr_enable(size_t it)
@@ -262,5 +268,14 @@ void interrupt_remove_free_handler(struct itr_handler *hdl)
 	if (hdl) {
 		interrupt_remove_handler(hdl);
 		free(hdl);
+	}
+}
+
+void itr_set_all_cpu_mask(uint8_t cpu_mask)
+{
+	struct itr_handler *h;
+
+	SLIST_FOREACH(h, &itr_main_chip->handlers, link) {
+		itr_set_affinity(h->it, cpu_mask);
 	}
 }

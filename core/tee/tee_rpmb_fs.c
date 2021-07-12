@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
+ * Copyright (c) 2016-2021, Renesas Electronics Corporation
  */
 
 #include <assert.h>
@@ -45,6 +46,9 @@
 
 #define TEE_RPMB_FS_FILENAME_LENGTH 224
 
+#if !defined(CFG_CRYPT_HW_CRYPTOENGINE) || (CFG_CRYPT_HW_CRYPTOENGINE == 0)
+#error "RPMB requires Crypto Engine."
+#endif
 #define TMP_BLOCK_SIZE			4096U
 
 #define RPMB_MAX_RETRIES		10
@@ -311,13 +315,16 @@ out:
 static TEE_Result tee_rpmb_key_gen(uint16_t dev_id __unused,
 				   uint8_t *key, uint32_t len)
 {
+#ifndef PLATFORM_RCAR
 	uint8_t message[RPMB_EMMC_CID_SIZE];
-
+#endif
 	if (!key || RPMB_KEY_MAC_SIZE != len)
 		return TEE_ERROR_BAD_PARAMETERS;
 
 	IMSG("RPMB: Using generated key");
-
+#ifdef PLATFORM_RCAR
+	return crypto_hw_rpmb_derivekey(key, len);
+#else
 	/*
 	 * PRV/CRC would be changed when doing eMMC FFU
 	 * The following fields should be masked off when deriving RPMB key
@@ -331,6 +338,7 @@ static TEE_Result tee_rpmb_key_gen(uint16_t dev_id __unused,
 	memset(message + RPMB_CID_CRC_OFFSET, 0, 1);
 	return huk_subkey_derive(HUK_SUBKEY_RPMB, message, sizeof(message),
 				 key, len);
+#endif /* PLATFORM_RCAR */
 }
 
 #endif /* !CFG_RPMB_TESTKEY */
@@ -366,15 +374,46 @@ static void get_op_result_bits(uint8_t *bytes, uint8_t *res)
 	*res = *(bytes + 1) & RPMB_RESULT_MASK;
 }
 
+#ifdef PLATFORM_RCAR
+static TEE_Result tee_rpmb_mac_calc(uint8_t *mac, uint32_t macsize,
+				    uint8_t *key __unused, uint32_t keysize __unused,
+				    struct rpmb_data_frame *datafrms,
+				    uint16_t blkcnt)
+#else
 static TEE_Result tee_rpmb_mac_calc(uint8_t *mac, uint32_t macsize,
 				    uint8_t *key, uint32_t keysize,
 				    struct rpmb_data_frame *datafrms,
 				    uint16_t blkcnt)
+#endif
 {
 	TEE_Result res = TEE_ERROR_GENERIC;
 	int i;
+#ifndef PLATFORM_RCAR
 	void *ctx = NULL;
+#endif
+#ifdef PLATFORM_RCAR
+	size_t listsize;
+	uint64_t *listfrm = NULL;
 
+	if ((mac == NULL) || (datafrms == NULL) || (blkcnt == 0U)) {
+		return TEE_ERROR_BAD_PARAMETERS;
+	}
+
+	listsize = sizeof(void *) * (size_t)blkcnt;
+	listfrm = malloc(listsize);
+
+	if (listfrm == NULL) {
+		return TEE_ERROR_OUT_OF_MEMORY;
+	}
+
+	for (i = 0; i < blkcnt; i++) {
+		/* Add list */
+		listfrm[i] = (uint64_t)&datafrms[i].data;
+	}
+	res = crypto_hw_rpmb_signframes(listfrm, (uint32_t)blkcnt, mac, macsize);
+
+	free(listfrm);
+#else
 	if (!mac || !key || !datafrms)
 		return TEE_ERROR_BAD_PARAMETERS;
 
@@ -401,6 +440,7 @@ static TEE_Result tee_rpmb_mac_calc(uint8_t *mac, uint32_t macsize,
 
 func_exit:
 	crypto_mac_free_ctx(ctx);
+#endif
 	return res;
 }
 
@@ -679,12 +719,18 @@ static TEE_Result tee_rpmb_data_cpy_mac_calc(struct rpmb_data_frame *datafrm,
 {
 	TEE_Result res = TEE_ERROR_GENERIC;
 	int i;
+#ifndef PLATFORM_RCAR
 	void *ctx = NULL;
+#endif
 	uint16_t offset;
 	uint32_t size;
 	uint8_t *data;
 	uint16_t start_idx;
 	struct rpmb_data_frame localfrm;
+#ifdef PLATFORM_RCAR
+	size_t listsize;
+	uint64_t *listfrm = NULL;
+#endif
 
 	if (!datafrm || !rawdata || !nbr_frms || !lastfrm)
 		return TEE_ERROR_BAD_PARAMETERS;
@@ -696,6 +742,14 @@ static TEE_Result tee_rpmb_data_cpy_mac_calc(struct rpmb_data_frame *datafrm,
 
 	data = rawdata->data;
 
+#ifdef PLATFORM_RCAR
+	listsize = sizeof(void *) * (size_t)nbr_frms;
+	listfrm = malloc(listsize);
+
+	if (listfrm == NULL) {
+		return TEE_ERROR_OUT_OF_MEMORY;
+	}
+#else
 	res = crypto_mac_alloc_ctx(&ctx, TEE_ALG_HMAC_SHA256);
 	if (res)
 		goto func_exit;
@@ -703,7 +757,7 @@ static TEE_Result tee_rpmb_data_cpy_mac_calc(struct rpmb_data_frame *datafrm,
 	res = crypto_mac_init(ctx, rpmb_ctx->key, RPMB_KEY_MAC_SIZE);
 	if (res != TEE_SUCCESS)
 		goto func_exit;
-
+#endif /* PLATFORM_RCAR */
 	/*
 	 * Note: JEDEC JESD84-B51: "In every packet the address is the start
 	 * address of the full access (not address of the individual half a
@@ -720,11 +774,15 @@ static TEE_Result tee_rpmb_data_cpy_mac_calc(struct rpmb_data_frame *datafrm,
 		 */
 		memcpy(&localfrm, &datafrm[i], RPMB_DATA_FRAME_SIZE);
 
+#ifdef PLATFORM_RCAR
+		/* Add list */
+		listfrm[i] = (uint64_t)&datafrm[i].data;
+#else
 		res = crypto_mac_update(ctx, localfrm.data,
 					RPMB_MAC_PROTECT_DATA_SIZE);
 		if (res != TEE_SUCCESS)
 			goto func_exit;
-
+#endif /* PLATFORM_RCAR */
 		if (i == 0) {
 			/* First block */
 			offset = rawdata->byte_offset;
@@ -752,6 +810,15 @@ static TEE_Result tee_rpmb_data_cpy_mac_calc(struct rpmb_data_frame *datafrm,
 	if (res != TEE_SUCCESS)
 		goto func_exit;
 
+#ifdef PLATFORM_RCAR
+	/* Add list against the last block */
+	listfrm[nbr_frms -1U] = (uint64_t)lastfrm->data;
+	res = crypto_hw_rpmb_signframes(listfrm, (uint32_t)nbr_frms,
+						rawdata->key_mac,
+						RPMB_KEY_MAC_SIZE);
+func_exit:
+	free(listfrm);
+#else
 	/* Update MAC against the last block */
 	res = crypto_mac_update(ctx, lastfrm->data, RPMB_MAC_PROTECT_DATA_SIZE);
 	if (res != TEE_SUCCESS)
@@ -765,6 +832,7 @@ static TEE_Result tee_rpmb_data_cpy_mac_calc(struct rpmb_data_frame *datafrm,
 
 func_exit:
 	crypto_mac_free_ctx(ctx);
+#endif /* PLATFORM_RCAR */
 	return res;
 }
 

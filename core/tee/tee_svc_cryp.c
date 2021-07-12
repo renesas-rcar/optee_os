@@ -3,6 +3,7 @@
  * Copyright (c) 2014, STMicroelectronics International N.V.
  * Copyright (c) 2020, 2022 Linaro Limited
  * Copyright (c) 2022, Technology Innovation Institute (TII)
+ * Copyright (c) 2017-2023, Renesas Electronics Corporation.
  */
 
 #include <assert.h>
@@ -4486,3 +4487,53 @@ out:
 	free_wipe(params);
 	return res;
 }
+
+TEE_Result syscall_rcar_aes_unwrap(void *srcData __maybe_unused,
+		uint32_t srcLen __maybe_unused,
+		const void *keyData __maybe_unused,
+		uint32_t keySize __maybe_unused,
+		uint32_t isSecretKey __maybe_unused,
+		void *destData __maybe_unused, uint32_t *dstLen __maybe_unused)
+{
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	TEE_Result ret;
+	ret = crypto_hw_cipher_unwrap(srcData, srcLen, keyData,
+			keySize, isSecretKey, destData, dstLen);
+	return ret;
+#else
+	return TEE_ERROR_NOT_IMPLEMENTED;
+#endif
+}
+
+TEE_Result syscall_rcar_gen_skey_package(
+		RCAR_SkeyParams_t *skeyParams __maybe_unused,
+		uint8_t *skeyPackageBuf __maybe_unused,
+		uint32_t skeyPackageSize __maybe_unused)
+{
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	TEE_Result ret;
+	ret = crypto_hw_gen_skey_package(skeyParams, skeyPackageBuf,
+			skeyPackageSize);
+	return ret;
+#else
+	return TEE_ERROR_NOT_IMPLEMENTED;
+#endif
+}
+
+TEE_Result syscall_rcar_asset_unpack(uint32_t assetId __maybe_unused,
+		uint8_t *pAssetPackage __maybe_unused,
+		uint32_t assetPackagLen __maybe_unused,
+		uint8_t *pAssetData __maybe_unused,
+		uint32_t *pAssetDataLen __maybe_unused,
+		uint32_t *pUserData __maybe_unused)
+{
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	TEE_Result ret;
+	ret = crypto_hw_asset_unpack(assetId, pAssetPackage, assetPackagLen,
+			pAssetData, pAssetDataLen, pUserData);
+	return ret;
+#else
+	return TEE_ERROR_NOT_IMPLEMENTED;
+#endif
+}
+

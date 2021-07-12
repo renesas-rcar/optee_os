@@ -3,6 +3,7 @@
  * Copyright (c) 2017, Linaro Limited
  * Copyright 2020 NXP
  * Copyright 2021, SumUp Service GmbH
+ * Copyright (c) 2020-2021, Renesas Electronics Corporation
  */
 
 #include <assert.h>
@@ -18,6 +19,19 @@ TEE_Result crypto_hash_alloc_ctx(void **ctx, uint32_t algo)
 {
 	TEE_Result res = TEE_ERROR_NOT_IMPLEMENTED;
 	struct crypto_hash_ctx *c = NULL;
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    void *ss_ctx = NULL;
+
+    if (crypto_hw_hash_check_support(algo) == SS_HW_SUPPORT_ALG)
+    {
+        res = crypto_hw_hash_alloc_ctx(&ss_ctx, algo);
+        if (TEE_SUCCESS == res)
+        {
+            *ctx = ss_ctx;
+        }
+        return res;
+    }
+#endif
 
 	/*
 	 * Use default cryptographic implementation if no matching
@@ -88,27 +102,124 @@ static const struct crypto_hash_ops *hash_ops(void *ctx)
 
 void crypto_hash_free_ctx(void *ctx)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    uint32_t engine = 0;
+
+    if (crypto_hw_hash_check_current_engine(ctx, &engine) == TEE_SUCCESS)
+    {
+        if (engine == SS_HW_ENGINE)
+        {
+            free(ctx);
+            return;
+        }
+    }
+    else
+    {
+        return;
+    }
+#endif
 	if (ctx)
 		hash_ops(ctx)->free_ctx(ctx);
 }
 
 void crypto_hash_copy_state(void *dst_ctx, void *src_ctx)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    size_t ctx_size = 0;
+    uint32_t algo = 0;
+    uint32_t engine = 0;
+    TEE_Result res = TEE_SUCCESS;
+
+    if (crypto_hw_hash_check_current_engine(src_ctx, &engine) == TEE_SUCCESS)
+    {
+        if (engine == SS_HW_ENGINE)
+        {
+            crypto_hw_hash_get_current_algo(src_ctx, &algo);
+            res = crypto_hw_hash_get_ctx_size(algo, &ctx_size);
+            if(res == TEE_SUCCESS)
+            {
+                memcpy(dst_ctx, src_ctx, ctx_size);
+            }
+            return;
+        }
+    }
+    else
+    {
+        return;
+    }
+#endif
 	hash_ops(dst_ctx)->copy_state(dst_ctx, src_ctx);
 }
 
 TEE_Result crypto_hash_init(void *ctx)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    uint32_t algo = 0;
+    uint32_t engine = 0;
+    TEE_Result ret = TEE_SUCCESS;
+
+    ret = crypto_hw_hash_check_current_engine(ctx, &engine);
+    if (ret == TEE_SUCCESS)
+    {
+        if (engine == SS_HW_ENGINE)
+        {
+            crypto_hw_hash_get_current_algo(ctx, &algo);
+            return crypto_hw_hash_init(ctx, algo);
+        }
+    }
+    else
+    {
+        return ret;
+    }
+#endif
 	return hash_ops(ctx)->init(ctx);
 }
 
 TEE_Result crypto_hash_update(void *ctx, const uint8_t *data, size_t len)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    uint32_t algo = 0;
+    uint32_t engine = 0;
+    TEE_Result ret = TEE_SUCCESS;
+
+    ret = crypto_hw_hash_check_current_engine(ctx, &engine);
+    if (ret == TEE_SUCCESS)
+    {
+        if (engine == SS_HW_ENGINE)
+        {
+            crypto_hw_hash_get_current_algo(ctx, &algo);
+            return crypto_hw_hash_update(ctx, algo, data, len);
+        }
+    }
+    else
+    {
+        return ret;
+    }
+#endif
 	return hash_ops(ctx)->update(ctx, data, len);
 }
 
 TEE_Result crypto_hash_final(void *ctx, uint8_t *digest, size_t len)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    uint32_t algo = 0;
+    uint32_t engine = 0;
+    TEE_Result ret = TEE_SUCCESS;
+
+    ret = crypto_hw_hash_check_current_engine(ctx, &engine);
+    if (ret == TEE_SUCCESS)
+    {
+        if (engine == SS_HW_ENGINE)
+        {
+            crypto_hw_hash_get_current_algo(ctx, &algo);
+            return crypto_hw_hash_final(ctx, algo, digest, len);
+        }
+    }
+    else
+    {
+        return ret;
+    }
+#endif
 	return hash_ops(ctx)->final(ctx, digest, len);
 }
 
@@ -116,6 +227,19 @@ TEE_Result crypto_cipher_alloc_ctx(void **ctx, uint32_t algo)
 {
 	TEE_Result res = TEE_ERROR_NOT_IMPLEMENTED;
 	struct crypto_cipher_ctx *c = NULL;
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	void *ss_ctx = NULL;
+
+	if (crypto_hw_cipher_check_support(algo) == SS_HW_SUPPORT_ALG)
+	{
+		res = crypto_hw_cipher_alloc_ctx(&ss_ctx, algo);
+		if (TEE_SUCCESS == res)
+		{
+			*ctx = ss_ctx;
+		}
+		return res;
+	}
+#endif
 
 	/*
 	 * Use default cryptographic implementation if no matching
@@ -186,12 +310,52 @@ static const struct crypto_cipher_ops *cipher_ops(void *ctx)
 
 void crypto_cipher_free_ctx(void *ctx)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    uint32_t engine = 0;
+
+    if (crypto_hw_cipher_check_current_engine(ctx, &engine) == TEE_SUCCESS)
+    {
+        if (engine == SS_HW_ENGINE)
+        {
+            free(ctx);
+            return;
+        }
+    }
+    else
+    {
+        return;
+    }
+#endif
 	if (ctx)
 		cipher_ops(ctx)->free_ctx(ctx);
 }
 
 void crypto_cipher_copy_state(void *dst_ctx, void *src_ctx)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    size_t ctx_size = 0;
+    uint32_t algo = 0;
+    uint32_t engine = 0;
+    TEE_Result res = TEE_SUCCESS;
+
+    if (crypto_hw_cipher_check_current_engine(src_ctx, &engine) == TEE_SUCCESS)
+    {
+        if (engine == SS_HW_ENGINE)
+        {
+            crypto_hw_cipher_get_current_algo(src_ctx, &algo);
+            res = crypto_hw_cipher_get_ctx_size(algo, &ctx_size);
+            if(res == TEE_SUCCESS)
+            {
+                memcpy(dst_ctx, src_ctx, ctx_size);
+            }
+            return;
+        }
+    }
+    else
+    {
+        return;
+    }
+#endif
 	cipher_ops(dst_ctx)->copy_state(dst_ctx, src_ctx);
 }
 
@@ -200,8 +364,31 @@ TEE_Result crypto_cipher_init(void *ctx, TEE_OperationMode mode,
 			      const uint8_t *key2, size_t key2_len,
 			      const uint8_t *iv, size_t iv_len)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    uint32_t algo = 0;
+    uint32_t engine = 0;
+    TEE_Result ret = TEE_SUCCESS;
+#endif
+
 	if (mode != TEE_MODE_DECRYPT && mode != TEE_MODE_ENCRYPT)
 		return TEE_ERROR_BAD_PARAMETERS;
+
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    ret = crypto_hw_cipher_check_current_engine(ctx, &engine);
+    if (ret == TEE_SUCCESS)
+    {
+        if (engine == SS_HW_ENGINE)
+        {
+            crypto_hw_cipher_get_current_algo(ctx, &algo);
+            return crypto_hw_cipher_init(ctx, algo, mode, key1, key1_len, iv,
+                    iv_len);
+        }
+    }
+    else
+    {
+        return ret;
+    }
+#endif
 
 	return cipher_ops(ctx)->init(ctx, mode, key1, key1_len, key2, key2_len,
 				     iv, iv_len);
@@ -211,11 +398,49 @@ TEE_Result crypto_cipher_update(void *ctx, TEE_OperationMode mode __unused,
 				bool last_block, const uint8_t *data,
 				size_t len, uint8_t *dst)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    uint32_t algo = 0;
+    uint32_t engine = 0;
+    TEE_Result ret = TEE_SUCCESS;
+
+    ret = crypto_hw_cipher_check_current_engine(ctx, &engine);
+    if (ret == TEE_SUCCESS)
+    {
+        if (engine == SS_HW_ENGINE)
+        {
+            crypto_hw_cipher_get_current_algo(ctx, &algo);
+            return crypto_hw_cipher_update(ctx, algo, mode, last_block, data,
+                    len, dst);
+        }
+    }
+    else
+    {
+        return ret;
+    }
+#endif
 	return cipher_ops(ctx)->update(ctx, last_block, data, len, dst);
 }
 
 void crypto_cipher_final(void *ctx)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    uint32_t algo = 0;
+    uint32_t engine = 0;
+
+    if (crypto_hw_cipher_check_current_engine(ctx, &engine) == TEE_SUCCESS)
+    {
+        if (engine == SS_HW_ENGINE)
+        {
+            crypto_hw_cipher_get_current_algo(ctx, &algo);
+            crypto_hw_cipher_final(ctx, algo);
+            return;
+        }
+    }
+    else
+    {
+        return;
+    }
+#endif
 	cipher_ops(ctx)->final(ctx);
 }
 
@@ -247,6 +472,19 @@ TEE_Result crypto_mac_alloc_ctx(void **ctx, uint32_t algo)
 {
 	TEE_Result res = TEE_SUCCESS;
 	struct crypto_mac_ctx *c = NULL;
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	void *ss_ctx = NULL;
+
+	if (crypto_hw_mac_check_support(algo) == SS_HW_SUPPORT_ALG)
+	{
+		res = crypto_hw_mac_alloc_ctx(&ss_ctx, algo);
+		if (TEE_SUCCESS == res)
+		{
+			*ctx = ss_ctx;
+		}
+		return res;
+	}
+#endif
 
 	/*
 	 * Use default cryptographic implementation if no matching
@@ -335,22 +573,100 @@ static const struct crypto_mac_ops *mac_ops(void *ctx)
 
 void crypto_mac_free_ctx(void *ctx)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    uint32_t engine = 0;
+
+    if (crypto_hw_mac_check_current_engine(ctx, &engine) == TEE_SUCCESS)
+    {
+        if (engine == SS_HW_ENGINE)
+        {
+            free(ctx);
+            return;
+        }
+    }
+    else
+    {
+        return;
+    }
+#endif
 	if (ctx)
 		mac_ops(ctx)->free_ctx(ctx);
 }
 
 void crypto_mac_copy_state(void *dst_ctx, void *src_ctx)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    size_t ctx_size = 0;
+    uint32_t algo = 0;
+    uint32_t engine = 0;
+    TEE_Result res = TEE_SUCCESS;
+
+    if (crypto_hw_mac_check_current_engine(src_ctx, &engine) == TEE_SUCCESS)
+    {
+        if (engine == SS_HW_ENGINE)
+        {
+            crypto_hw_mac_get_current_algo(src_ctx, &algo);
+            res = crypto_hw_mac_get_ctx_size(algo, &ctx_size);
+            if(res == TEE_SUCCESS)
+            {
+                memcpy(dst_ctx, src_ctx, ctx_size);
+            }
+            return;
+        }
+    }
+    else
+    {
+        return;
+    }
+#endif
 	mac_ops(dst_ctx)->copy_state(dst_ctx, src_ctx);
 }
 
 TEE_Result crypto_mac_init(void *ctx, const uint8_t *key, size_t len)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    uint32_t algo = 0;
+    uint32_t engine = 0;
+    TEE_Result ret = TEE_SUCCESS;
+
+    ret = crypto_hw_mac_check_current_engine(ctx, &engine);
+    if (ret == TEE_SUCCESS)
+    {
+        if (engine == SS_HW_ENGINE)
+        {
+            crypto_hw_mac_get_current_algo(ctx, &algo);
+            return crypto_hw_mac_init(ctx, algo, key, len);
+        }
+    }
+    else
+    {
+        return ret;
+    }
+#endif
 	return mac_ops(ctx)->init(ctx, key, len);
 }
 
 TEE_Result crypto_mac_update(void *ctx, const uint8_t *data, size_t len)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    uint32_t algo = 0;
+    uint32_t engine = 0;
+    TEE_Result ret = TEE_SUCCESS;
+
+    ret = crypto_hw_mac_check_current_engine(ctx, &engine);
+    if (ret == TEE_SUCCESS)
+    {
+        if (engine == SS_HW_ENGINE)
+        {
+            crypto_hw_mac_get_current_algo(ctx, &algo);
+            return crypto_hw_mac_update(ctx, algo, data, len);
+        }
+    }
+    else
+    {
+        return ret;
+    }
+#endif
 	if (!len)
 		return TEE_SUCCESS;
 
@@ -359,6 +675,25 @@ TEE_Result crypto_mac_update(void *ctx, const uint8_t *data, size_t len)
 
 TEE_Result crypto_mac_final(void *ctx, uint8_t *digest, size_t digest_len)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    uint32_t algo = 0;
+    uint32_t engine = 0;
+    TEE_Result ret = TEE_SUCCESS;
+
+    ret = crypto_hw_mac_check_current_engine(ctx, &engine);
+    if (ret == TEE_SUCCESS)
+    {
+        if (engine == SS_HW_ENGINE)
+        {
+            crypto_hw_mac_get_current_algo(ctx, &algo);
+            return crypto_hw_mac_final(ctx, algo, digest, digest_len);
+        }
+    }
+    else
+    {
+        return ret;
+    }
+#endif
 	return mac_ops(ctx)->final(ctx, digest, digest_len);
 }
 
@@ -366,6 +701,9 @@ TEE_Result crypto_authenc_alloc_ctx(void **ctx, uint32_t algo)
 {
 	TEE_Result res = TEE_ERROR_NOT_IMPLEMENTED;
 	struct crypto_authenc_ctx *c = NULL;
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    void *ss_ctx = NULL;
+#endif
 
 	/*
 	 * Use default authenc implementation if no matching
@@ -377,8 +715,17 @@ TEE_Result crypto_authenc_alloc_ctx(void **ctx, uint32_t algo)
 		switch (algo) {
 #if defined(CFG_CRYPTO_CCM)
 		case TEE_ALG_AES_CCM:
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+			res = crypto_hw_aes_ccm_alloc_ctx(&ss_ctx);
+			if (TEE_SUCCESS == res)
+			{
+				*ctx = ss_ctx;
+			}
+			return res;
+#else
 			res = crypto_aes_ccm_alloc_ctx(&c);
 			break;
+#endif /* CFG_CRYPT_HW_CRYPTOENGINE */
 #endif
 #if defined(CFG_CRYPTO_GCM)
 		case TEE_ALG_AES_GCM:
@@ -411,6 +758,24 @@ TEE_Result crypto_authenc_init(void *ctx, TEE_OperationMode mode,
 			       size_t tag_len, size_t aad_len,
 			       size_t payload_len)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    uint32_t engine = 0;
+    TEE_Result ret = TEE_SUCCESS;
+
+    ret = crypto_hw_aes_ccm_check_current_engine(ctx, &engine);
+    if (ret == TEE_SUCCESS)
+    {
+        if(engine == SS_HW_ENGINE)
+        {
+            return crypto_hw_aes_ccm_init(ctx, mode, key, key_len, nonce, nonce_len,
+                     tag_len, aad_len, payload_len);
+        }
+    }
+    else
+    {
+        return ret;
+    }
+#endif
 	return ae_ops(ctx)->init(ctx, mode, key, key_len, nonce, nonce_len,
 				 tag_len, aad_len, payload_len);
 }
@@ -418,6 +783,23 @@ TEE_Result crypto_authenc_init(void *ctx, TEE_OperationMode mode,
 TEE_Result crypto_authenc_update_aad(void *ctx, TEE_OperationMode mode __unused,
 				     const uint8_t *data, size_t len)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    uint32_t engine = 0;
+    TEE_Result ret = TEE_SUCCESS;
+
+    ret = crypto_hw_aes_ccm_check_current_engine(ctx, &engine);
+    if (ret == TEE_SUCCESS)
+    {
+        if(engine == SS_HW_ENGINE)
+        {
+            return crypto_hw_aes_ccm_update_aad(ctx, data, len);
+        }
+    }
+    else
+    {
+        return ret;
+    }
+#endif
 	return ae_ops(ctx)->update_aad(ctx, data, len);
 }
 
@@ -427,10 +809,30 @@ TEE_Result crypto_authenc_update_payload(void *ctx, TEE_OperationMode mode,
 					 size_t src_len, uint8_t *dst_data,
 					 size_t *dst_len)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    uint32_t engine = 0;
+    TEE_Result ret = TEE_SUCCESS;
+#endif
+
 	if (*dst_len < src_len)
 		return TEE_ERROR_SHORT_BUFFER;
 	*dst_len = src_len;
 
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    ret = crypto_hw_aes_ccm_check_current_engine(ctx, &engine);
+    if (ret == TEE_SUCCESS)
+    {
+        if(engine == SS_HW_ENGINE)
+        {
+            return crypto_hw_aes_ccm_update_payload(ctx, src_data, src_len,
+                     dst_data);
+        }
+    }
+    else
+    {
+        return ret;
+    }
+#endif
 	return ae_ops(ctx)->update_payload(ctx, mode, src_data, src_len,
 					   dst_data);
 }
@@ -440,10 +842,30 @@ TEE_Result crypto_authenc_enc_final(void *ctx, const uint8_t *src_data,
 				    size_t *dst_len, uint8_t *dst_tag,
 				    size_t *dst_tag_len)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    uint32_t engine = 0;
+    TEE_Result ret = TEE_SUCCESS;
+#endif
+
 	if (*dst_len < src_len)
 		return TEE_ERROR_SHORT_BUFFER;
 	*dst_len = src_len;
 
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    ret = crypto_hw_aes_ccm_check_current_engine(ctx, &engine);
+    if (ret == TEE_SUCCESS)
+    {
+        if(engine == SS_HW_ENGINE)
+        {
+            return crypto_hw_aes_ccm_enc_final(ctx, src_data, src_len, dst_data,
+                     dst_tag, dst_tag_len);
+        }
+    }
+    else
+    {
+        return ret;
+    }
+#endif
 	return ae_ops(ctx)->enc_final(ctx, src_data, src_len, dst_data,
 				      dst_tag, dst_tag_len);
 }
@@ -453,27 +875,95 @@ TEE_Result crypto_authenc_dec_final(void *ctx, const uint8_t *src_data,
 				    size_t *dst_len, const uint8_t *tag,
 				    size_t tag_len)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    uint32_t engine = 0;
+    TEE_Result ret = TEE_SUCCESS;
+#endif
+
 	if (*dst_len < src_len)
 		return TEE_ERROR_SHORT_BUFFER;
 	*dst_len = src_len;
 
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    ret = crypto_hw_aes_ccm_check_current_engine(ctx, &engine);
+    if (ret == TEE_SUCCESS)
+    {
+        if(engine == SS_HW_ENGINE)
+        {
+            return crypto_hw_aes_ccm_dec_final(ctx, src_data, src_len, dst_data, tag,
+                     tag_len);
+        }
+    }
+    else
+    {
+        return ret;
+    }
+#endif
 	return ae_ops(ctx)->dec_final(ctx, src_data, src_len, dst_data, tag,
 				      tag_len);
 }
 
 void crypto_authenc_final(void *ctx)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    uint32_t engine = 0;
+
+    if (crypto_hw_aes_ccm_check_current_engine(ctx, &engine) == TEE_SUCCESS)
+    {
+        if(engine == SS_HW_ENGINE)
+        {
+            crypto_hw_aes_ccm_final();
+            return;
+        }
+    }
+    else
+    {
+        return;
+    }
+#endif
 	ae_ops(ctx)->final(ctx);
 }
 
 void crypto_authenc_free_ctx(void *ctx)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    uint32_t engine = 0;
+
+	if (crypto_hw_aes_ccm_check_current_engine(ctx, &engine) == TEE_SUCCESS)
+    {
+        if(engine == SS_HW_ENGINE)
+        {
+            free(ctx);
+            return;
+        }
+    }
+    else
+    {
+        return;
+    }
+#endif
 	if (ctx)
 		ae_ops(ctx)->free_ctx(ctx);
 }
 
 void crypto_authenc_copy_state(void *dst_ctx, void *src_ctx)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    uint32_t engine = 0;
+
+    if (crypto_hw_aes_ccm_check_current_engine(src_ctx, &engine) == TEE_SUCCESS)
+    {
+        if(engine == SS_HW_ENGINE)
+        {
+            crypto_hw_aes_ccm_copy_state(dst_ctx, src_ctx);
+            return;
+        }
+    }
+    else
+    {
+        return;
+    }
+#endif
 	ae_ops(dst_ctx)->copy_state(dst_ctx, src_ctx);
 }
 

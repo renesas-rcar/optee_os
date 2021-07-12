@@ -18,6 +18,7 @@
 #include <mm/core_mmu.h>
 #include <mm/mobj.h>
 #include <optee_msg.h>
+#include <sm/optee_smc.h>
 #include <string.h>
 #include <tee/entry_std.h>
 #include <tee/tee_cryp_utl.h>

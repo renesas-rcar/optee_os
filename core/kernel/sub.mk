@@ -18,7 +18,8 @@ ifneq ($(CFG_CORE_FFA),y)
 srcs-$(CFG_CORE_DYN_SHM) += msg_param.c
 endif
 srcs-y += panic.c
-srcs-y += trace_ext.c
+WITH_TRACE_EXT ?= y
+srcs-$(WITH_TRACE_EXT) += trace_ext.c
 srcs-y += refcount.c
 srcs-y += delay.c
 srcs-y += tee_time.c

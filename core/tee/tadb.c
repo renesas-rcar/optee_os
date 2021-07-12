@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2017, Linaro Limited
+ * Copyright (c) 2018-2021, Renesas Electronics Corporation
  */
 
 #include <assert.h>
@@ -222,7 +223,7 @@ static TEE_Result tadb_open(struct tee_tadb_dir **db_ret)
 	if (!db)
 		return TEE_ERROR_OUT_OF_MEMORY;
 
-	db->ops = tee_svc_storage_file_ops(TEE_STORAGE_PRIVATE);
+	db->ops = tee_svc_storage_file_ops(TEE_STORAGE_PRIVATE_REE);
 
 	res = db->ops->open(&po, NULL, &db->fh);
 	if (res == TEE_ERROR_ITEM_NOT_FOUND)

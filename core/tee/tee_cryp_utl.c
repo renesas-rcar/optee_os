@@ -2,6 +2,7 @@
 /*
  * Copyright (c) 2014-2021, Linaro Limited
  * Copyright (c) 2021, SumUp Services GmbH
+ * Copyright (c) 2018-2021, Renesas Electronics Corporation
  */
 
 #include <crypto/crypto.h>
@@ -63,6 +64,7 @@ TEE_Result tee_cipher_get_block_size(uint32_t algo, size_t *size)
 	case TEE_ALG_AES_CBC_MAC_NOPAD:
 	case TEE_ALG_AES_CBC_MAC_PKCS5:
 	case TEE_ALG_AES_CMAC:
+	case TEE_ALG_AES_XCBC_MAC:
 	case TEE_ALG_AES_ECB_NOPAD:
 	case TEE_ALG_AES_CBC_NOPAD:
 	case TEE_ALG_AES_CTR:
@@ -70,6 +72,7 @@ TEE_Result tee_cipher_get_block_size(uint32_t algo, size_t *size)
 	case TEE_ALG_AES_XTS:
 	case TEE_ALG_AES_CCM:
 	case TEE_ALG_AES_GCM:
+	case TEE_ALG_AES_OFB:
 	case TEE_ALG_SM4_ECB_NOPAD:
 	case TEE_ALG_SM4_CBC_NOPAD:
 	case TEE_ALG_SM4_XTS:
@@ -132,6 +135,7 @@ TEE_Result tee_do_cipher_update(void *ctx, uint32_t algo,
 		case TEE_ALG_AES_XTS:
 		case TEE_ALG_AES_CTS:
 		case TEE_ALG_SM4_XTS:
+		case TEE_ALG_AES_OFB:
 			/*
 			 * These modes doesn't require padding for the last
 			 * block.
@@ -209,7 +213,9 @@ static TEE_Result tee_cryp_init(void)
 		EMSG("Failed to initialize crypto API: %#" PRIx32, res);
 		panic();
 	}
+#ifndef CFG_CRYPT_HW_CRYPTOENGINE
 	plat_rng_init();
+#endif
 
 	dt_driver_crypt_init_complete();
 

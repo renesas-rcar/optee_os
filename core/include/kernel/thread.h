@@ -3,6 +3,7 @@
  * Copyright (c) 2014, STMicroelectronics International N.V.
  * Copyright (c) 2016-2017, Linaro Limited
  * Copyright (c) 2020-2021, Arm Limited
+ * Copyright (c) 2018-2021, Renesas Electronics Corporation
  */
 
 #ifndef KERNEL_THREAD_H
@@ -393,6 +394,11 @@ enum thread_shm_cache_user {
 void *thread_rpc_shm_cache_alloc(enum thread_shm_cache_user user,
 				 enum thread_shm_type shm_type,
 				 size_t size, struct mobj **mobj);
+
+#if defined(PLATFORM_RCAR)
+TEE_Result thread_hw_wait_cmd(const TEE_Time *base_time, uint32_t timeout,
+			uint32_t wait, uint32_t delay);
+#endif /* PLATFORM_RCAR */
 
 #endif /*__ASSEMBLER__*/
 

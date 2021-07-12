@@ -28,7 +28,7 @@ srcs-y += tee_obj.c
 srcs-y += tee_svc.c
 srcs-y += tee_svc_cryp.c
 srcs-y += tee_svc_storage.c
-cppflags-tee_svc.c-y += -DTEE_IMPL_VERSION=$(TEE_IMPL_VERSION)
+cppflags-tee_svc.c-y += -DTEE_IMPL_VERSION='$(TEE_IMPL_VERSION)'
 srcs-y += tee_time_generic.c
 srcs-$(CFG_SECSTOR_TA) += tadb.c
 srcs-$(CFG_GP_SOCKETS) += socket.c

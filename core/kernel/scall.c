@@ -2,6 +2,7 @@
 /*
  * Copyright (c) 2014-2022, Linaro Limited
  * Copyright (c) 2020, Arm Limited
+ * Copyright (c) 2016-2021, Renesas Electronics Corporation
  */
 
 #include <assert.h>
@@ -26,6 +27,10 @@
 #include <tee/tee_svc_storage.h>
 #include <trace.h>
 #include <util.h>
+
+#ifdef PLATFORM_RCAR
+#include <rcar_maskrom.h>
+#endif
 
 #if (TRACE_LEVEL == TRACE_FLOW) && defined(CFG_TEE_CORE_TA_TRACE)
 #define TRACE_SYSCALLS
@@ -119,6 +124,11 @@ static const struct syscall_entry tee_syscall_table[] = {
 	SYSCALL_ENTRY(syscall_not_supported),
 	SYSCALL_ENTRY(syscall_not_supported),
 	SYSCALL_ENTRY(syscall_cache_operation),
+#ifdef PLATFORM_RCAR
+	SYSCALL_ENTRY(syscall_rcar_aes_unwrap),
+	SYSCALL_ENTRY(syscall_rcar_gen_skey_package),
+	SYSCALL_ENTRY(syscall_rcar_asset_unpack),
+#endif
 };
 
 /*

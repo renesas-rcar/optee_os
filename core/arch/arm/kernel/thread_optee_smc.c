@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2019-2021, Linaro Limited
+ * Copyright (c) 2020-2023, Renesas Electronics Corporation
  */
 
 #include <assert.h>
@@ -23,6 +24,10 @@
 #include <tee/entry_std.h>
 #include <tee/tee_cryp_utl.h>
 #include <tee/tee_fs_rpc.h>
+
+#if defined(PLATFORM_RCAR)
+#include <kernel/tee_time.h>
+#endif /* PLATFORM_RCAR */
 
 static bool thread_prealloc_rpc_cache;
 static unsigned int thread_rpc_pnum;
@@ -713,3 +718,41 @@ void thread_rpc_free_global_payload(struct mobj *mobj)
 	thread_rpc_free(OPTEE_RPC_SHM_TYPE_GLOBAL, mobj_get_cookie(mobj),
 			mobj);
 }
+
+#if defined(PLATFORM_RCAR)
+TEE_Result thread_hw_wait_cmd(const TEE_Time *base_time, uint32_t timeout,
+			uint32_t wait, uint32_t delay)
+{
+	uint32_t res;
+	uint32_t mytime;
+	TEE_Time current_time;
+	struct thread_param params;
+	uint32_t rpc_args[THREAD_RPC_NUM_ARGS] = {OPTEE_SMC_RETURN_RPC_CMD};
+	void *arg = NULL;
+	uint64_t carg;
+
+	res = tee_time_get_sys_time(&current_time);
+	if (res == TEE_SUCCESS) {
+		mytime = (current_time.seconds - base_time->seconds) * 1000
+				+ (int32_t)current_time.millis
+				- (int32_t)base_time->millis;
+		if (mytime >= timeout) {
+			res = TEE_ERROR_OVERFLOW;
+		} else if (mytime > delay) {
+			(void)memset(&params, 0, sizeof(params));
+			params.attr = OPTEE_MSG_ATTR_TYPE_VALUE_INPUT;
+			params.u.value.a = wait;
+			if (get_rpc_arg(OPTEE_RPC_CMD_SUSPEND, 1, 
+					&params, &arg, &carg) == TEE_SUCCESS) {
+				reg_pair_from_64(carg, rpc_args + 1, rpc_args + 2);
+				thread_rpc(rpc_args);
+			} else {
+				res = TEE_ERROR_OUT_OF_MEMORY;
+			}
+		} else {
+			/* NOP. return TEE_SUCCESS */
+		}
+	}
+	return res;
+}
+#endif /* PLATFORM_RCAR */

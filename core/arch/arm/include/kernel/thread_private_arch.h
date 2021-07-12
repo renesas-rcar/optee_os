@@ -2,6 +2,7 @@
 /*
  * Copyright (c) 2016, Linaro Limited
  * Copyright (c) 2014, STMicroelectronics International N.V.
+ * Copyright (c) 2016-2023, Renesas Electronics Corporation
  */
 
 #ifndef __KERNEL_THREAD_PRIVATE_ARCH_H
@@ -37,7 +38,9 @@
 #endif /*ARM32*/
 
 #ifdef ARM64
-#if defined(__clang__) && !defined(__OPTIMIZE_SIZE__)
+#if defined(ENABLE_CRYPTOENGINE)
+#define STACK_TMP_SIZE		((2048 * 4) + STACK_TMP_OFFS + CFG_STACK_TMP_EXTRA)
+#elif defined(__clang__) && !defined(__OPTIMIZE_SIZE__)
 #define STACK_TMP_SIZE		(4096 + STACK_TMP_OFFS + CFG_STACK_TMP_EXTRA)
 #else
 #define STACK_TMP_SIZE		(2048 + STACK_TMP_OFFS + CFG_STACK_TMP_EXTRA)

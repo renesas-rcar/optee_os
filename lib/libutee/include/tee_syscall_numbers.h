@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
+ * Copyright (c) 2016-2021, Renesas Electronics Corporation
  */
 
 #ifndef TEE_SYSCALL_NUMBERS_H
@@ -79,8 +80,15 @@
 #define TEE_SCN_SE_CHANNEL_CLOSE__DEPRECATED		69
 /* End of deprecated Secure Element API syscalls */
 #define TEE_SCN_CACHE_OPERATION			70
+#define RCAR_SCN_AES_UNWRAP			71
+#define RCAR_SCN_GEN_SKEY_PACKAGE		72
+#define RCAR_SCN_ASSET_UNPACK			73
 
+#ifdef PLATFORM_RCAR
+#define TEE_SCN_MAX				73
+#else
 #define TEE_SCN_MAX				70
+#endif
 
 /* Maximum number of allowed arguments for a syscall */
 #define TEE_SVC_MAX_ARGS			8
