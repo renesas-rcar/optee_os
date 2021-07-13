@@ -1,8 +1,14 @@
 
-CC$(sm)		:= $(CROSS_COMPILE_$(sm))gcc
-CXX$(sm)	:= $(CROSS_COMPILE_$(sm))g++
+ifdef PKG_CONFIG_SYSROOT_DIR
+CC$(sm)        := $(CROSS_COMPILE_$(sm))gcc --sysroot=$(PKG_CONFIG_SYSROOT_DIR)
+CXX$(sm)       := $(CROSS_COMPILE_$(sm))g++ --sysroot=$(PKG_CONFIG_SYSROOT_DIR)
+LD$(sm)        := $(CROSS_COMPILE_$(sm))ld.bfd --sysroot=$(PKG_CONFIG_SYSROOT_DIR)
+else
+CC$(sm)        := $(CROSS_COMPILE_$(sm))gcc
+CXX$(sm)       := $(CROSS_COMPILE_$(sm))g++
+LD$(sm)        := $(CROSS_COMPILE_$(sm))ld.bfd
+endif
 CPP$(sm)	:= $(CROSS_COMPILE_$(sm))cpp
-LD$(sm)		:= $(CROSS_COMPILE_$(sm))ld.bfd
 AR$(sm)		:= $(CROSS_COMPILE_$(sm))ar
 NM$(sm)		:= $(CROSS_COMPILE_$(sm))nm
 OBJCOPY$(sm)	:= $(CROSS_COMPILE_$(sm))objcopy
