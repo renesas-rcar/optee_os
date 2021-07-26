@@ -2527,7 +2527,7 @@ TEE_Result crypto_hw_acipher_rsaes_encrypt(uint32_t algo,
 	dataIn_ptr = (uint8_t *)src;
 	dataInSize = (uint16_t)src_len;
 
-	if (label_len < 0xFFFFU) {
+	if (label_len <= UINT16_MAX) {
 		llen = (uint16_t)label_len;
 	} else {
 		res = SS_ERROR_OVERFLOW;
@@ -5412,7 +5412,7 @@ static SSError_t ss_hmac_update(void *ctx, uint32_t algo, const uint8_t *data, s
 
 	CHECK_CONTEXT(res, ss_ctx, SS_HMAC_Context_t, ctx);
 
-	if (len < 0xFFFFFFFFU) {
+	if (len <= UINT32_MAX) {
 		srcLen = (uint32_t)len;
 	} else {
 		res = SS_ERROR_OVERFLOW;
@@ -5448,7 +5448,7 @@ static SSError_t ss_aesmac_update(void *ctx, uint32_t algo, const uint8_t *data,
 
 	CHECK_CONTEXT(res, ss_ctx, SS_AES_Context2_t, ctx);
 
-	if (len < 0xFFFFFFFFU) {
+	if (len <= UINT32_MAX) {
 		srcLen = (uint32_t)len;
 	} else {
 		res = SS_ERROR_OVERFLOW;
