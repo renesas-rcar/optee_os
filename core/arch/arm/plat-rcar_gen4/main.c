@@ -25,6 +25,9 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+/*
+ * Copyright (c) 2021, Renesas Electronics Corporation.
+ */
 
 #include <console.h>
 #include <kernel/panic.h>
@@ -36,6 +39,37 @@
 
 register_phys_mem_pgdir(MEM_AREA_IO_SEC, GICD_BASE, GIC_DIST_REG_SIZE);
 register_phys_mem_pgdir(MEM_AREA_IO_SEC, GICC_BASE, GIC_DIST_REG_SIZE);
+
+#ifdef MEMORY1_BASE
+register_phys_mem_pgdir(MEMORY1_TYPE, MEMORY1_BASE, MEMORY1_SIZE);
+#endif
+#ifdef MEMORY2_BASE
+register_phys_mem(MEMORY2_TYPE, MEMORY2_BASE, MEMORY2_SIZE);
+#endif
+#ifdef MEMORY3_BASE
+register_phys_mem_pgdir(MEMORY3_TYPE, MEMORY3_BASE, MEMORY3_SIZE);
+#endif
+#ifdef MEMORY4_BASE
+register_phys_mem(MEMORY4_TYPE, MEMORY4_BASE, MEMORY4_SIZE);
+#endif
+#ifdef MEMORY5_BASE
+register_phys_mem_pgdir(MEMORY5_TYPE, MEMORY5_BASE, MEMORY5_SIZE);
+#endif
+#ifdef MEMORY6_BASE
+register_phys_mem_pgdir(MEMORY6_TYPE, MEMORY6_BASE, MEMORY6_SIZE);
+#endif
+#ifdef MEMORY7_BASE
+register_phys_mem_pgdir(MEMORY7_TYPE, MEMORY7_BASE, MEMORY7_SIZE);
+#endif
+#ifdef MEMORY8_BASE
+register_phys_mem_pgdir(MEMORY8_TYPE, MEMORY8_BASE, MEMORY8_SIZE);
+#endif
+#ifdef DEVICE1_PA_BASE
+register_phys_mem_pgdir(DEVICE1_TYPE, DEVICE1_PA_BASE, DEVICE1_SIZE);
+#endif
+#ifdef DEVICE2_PA_BASE
+register_phys_mem_pgdir(DEVICE2_TYPE, DEVICE2_PA_BASE, DEVICE2_SIZE);
+#endif
 
 /* Legacy platforms */
 #if defined(PLATFORM_FLAVOR_salvator_h3) || \
