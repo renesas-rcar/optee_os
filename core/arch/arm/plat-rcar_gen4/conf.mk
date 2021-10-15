@@ -29,3 +29,7 @@ $(call force,CFG_ARM32_core,y)
 endif
 
 CFG_DT ?= y
+
+CFG_MMAP_REGIONS ?= 21
+CFG_CORE_CLUSTER_SHIFT ?= 1
+CFG_NUM_THREADS ?= 8
