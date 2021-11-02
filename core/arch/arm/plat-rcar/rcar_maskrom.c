@@ -11,6 +11,7 @@
 #include "platform_config.h"
 #include "rcar_common.h"
 #include "rcar_maskrom.h"
+#include "rcar_ta_auth.h"
 
 /* Definitions */
 
@@ -116,7 +117,6 @@ service_init(product_setup);
 uint32_t switch_stack_pointer(void *func, uint8_t *data)
 {
 	return asm_switch_stack_pointer((uintptr_t)func,
-		(vaddr_t)phys_to_virt(NONCACHE_STACK_AREA, MEM_AREA_RAM_SEC),
-		 data);
+		NONCACHE_STACK_AREA_ADDR, data);
 }
 
