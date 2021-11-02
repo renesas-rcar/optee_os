@@ -780,6 +780,11 @@ void *thread_rpc_shm_cache_alloc(enum thread_shm_cache_user user,
 #if defined(PLATFORM_RCAR)
 TEE_Result thread_hw_wait_cmd(const TEE_Time *base_time, uint32_t timeout,
 			uint32_t wait, uint32_t delay);
+bool thread_rcar_suspend_sync(void);
+void thread_rcar_smc_resume(void);
+
+extern bool smc_prohibit_flag;
+
 #endif /* PLATFORM_RCAR */
 
 #endif /*__ASSEMBLER__*/
