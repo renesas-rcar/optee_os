@@ -14,40 +14,6 @@
 #include "platform_config.h"
 #include "rcar_mutex.h"
 
-#define TA_KEY_CERT_AREA_SIZE		(4096U)
-#define TA_CONTENT_CERT_AREA_SIZE	(4096U)
-#define TA_NONCACHE_STACK_AREA_SIZE	(4096U)
-#define TA_NONCACHE_STACK_ADDR		(TA_VERIFICATION_BASE + \
-					TA_VERIFICATION_SIZE)
-#define TA_CONTENT_CERT_ADDR		(TA_NONCACHE_STACK_ADDR - \
-					TA_NONCACHE_STACK_AREA_SIZE - \
-					TA_CONTENT_CERT_AREA_SIZE)
-#define TA_KEY_CERT_ADDR		(TA_CONTENT_CERT_ADDR - \
-					TA_KEY_CERT_AREA_SIZE)
-#define CERT_SIGNATURE_SIZE		(256U)
-#define CERT_STORE_ADDR_SIZE		(8U)
-#define CERT_REC_LEN_SIZE		(4U)
-#define CERT_ADD_DATA_SIZE		(CERT_STORE_ADDR_SIZE + \
-					CERT_REC_LEN_SIZE)
-#define CERT_OFS_BIT_SIZE		(0xffffU)
-#define CERT_BLOCK_SIZE			(4U)
-#define CERT_IDX_MAGIC			(0)
-#define CERT_IDX_VER			(1)
-#define CERT_IDX_SIZE			(2)
-#define CERT_IDX_FLAG			(3)
-#define RST_MODEMR			(p2v_ioadr(RST_BASE) + 0x0060U)
-#define MFIS_SOFTMDR			(p2v_ioadr(MFIS_BASE) + 0x0600U)
-#define LCS_CM				(0x0U)
-#define LCS_DM				(0x1U)
-#define LCS_SD				(0x3U)
-#define LCS_SE				(0x5U)
-#define LCS_FA				(0x7U)
-#define SECURE_BOOT_MODE		(0U)
-#define NORMAL_BOOT_MODE		(1U)
-#define CERT_IDX_MEM_LOAD_ADDR	(84U)
-#define TA_OBJ_SIZE				((TA_KEY_CERT_ADDR - \
-					TA_VERIFICATION_BASE) / CERT_BLOCK_SIZE)
-
 /* Declaration of internal function */
 static uint32_t get_key_cert_size(const uint32_t *cert_header);
 static uint32_t get_content_cert_size(const uint32_t *cert_header);
