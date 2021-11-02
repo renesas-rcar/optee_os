@@ -194,12 +194,18 @@ size_t bn_num_bytes(struct bignum *a)
 SSError_t ss_bn_bin2bn(const uint8_t *from, size_t fromsize,
 		struct bignum *to)
 {
+	int ret = 0;
+	SSError_t res = SS_SUCCESS;
 	PROV_INMSG("*from=%p, fromsize=%ld, *to=%p\n",from,fromsize,(void *)to);
 
-	((mbedtls_mpi *)(to))->n = (ROUNDUP(fromsize, 4U) >> 2U);
-	(void)memcpy((((mbedtls_mpi *)(to))->p), from, fromsize);
+	ret = mbedtls_mpi_read_binary_le((mbedtls_mpi *)to, from, fromsize);
+	if (ret != 0) {
+		res = SS_ERROR_BAD_PARAMETERS;
+	} else {
+		/* no operation */
+	}
 
-	return SS_SUCCESS;
+	return res;
 }
 
 /*
