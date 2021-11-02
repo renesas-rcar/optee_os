@@ -201,6 +201,7 @@ static inline size_t __tee_alg_get_digest_size(uint32_t algo)
 	case TEE_ALG_AES_CBC_MAC_NOPAD:
 	case TEE_ALG_AES_CBC_MAC_PKCS5:
 	case TEE_ALG_AES_CMAC:
+	case TEE_ALG_AES_XCBC_MAC:
 		return TEE_AES_BLOCK_SIZE;
 	case TEE_ALG_DES_CBC_MAC_NOPAD:
 	case TEE_ALG_DES_CBC_MAC_PKCS5:
