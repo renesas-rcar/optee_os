@@ -223,6 +223,16 @@ static void get_async_notif_value(struct thread_smc_args *args)
  */
 void __tee_entry_fast(struct thread_smc_args *args)
 {
+#if defined(PLATFORM_RCAR)
+	const unsigned long RCAR_CODE_SUCCESS = 1;
+	const unsigned long RCAR_CODE_BUSY = 0;
+
+	if ((smc_prohibit_flag) && (args->a0 != OPTEE_SMC_RCAR_RESUME)) {
+		DMSG("smc_prohibit: ETHREAD_LIMIT fast_cmd=0x%lx", args->a0);
+		args->a0 = OPTEE_SMC_RETURN_ETHREAD_LIMIT;
+		return;
+	}
+#endif /* PLATFORM_RCAR */
 	switch (args->a0) {
 
 	/* Generic functions */
@@ -290,6 +300,20 @@ void __tee_entry_fast(struct thread_smc_args *args)
 		else
 			args->a0 = OPTEE_SMC_RETURN_UNKNOWN_FUNCTION;
 		break;
+
+#if defined(PLATFORM_RCAR)
+	case OPTEE_SMC_RCAR_SUSPEND_SYNC:
+		if (thread_rcar_suspend_sync()) {
+			args->a0 = RCAR_CODE_SUCCESS;
+		} else {
+			args->a0 = RCAR_CODE_BUSY;
+		}
+		break;
+	case OPTEE_SMC_RCAR_RESUME:
+		thread_rcar_smc_resume();
+		args->a0 = RCAR_CODE_SUCCESS;
+		break;
+#endif /* PLATFORM_RCAR */
 
 	default:
 		args->a0 = OPTEE_SMC_RETURN_UNKNOWN_FUNCTION;

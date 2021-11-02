@@ -755,4 +755,55 @@ TEE_Result thread_hw_wait_cmd(const TEE_Time *base_time, uint32_t timeout,
 	}
 	return res;
 }
+
+bool smc_prohibit_flag __nex_bss = false;
+static uint32_t save_exceptions __nex_bss = 0U;
+
+bool thread_rcar_suspend_sync(void)
+{
+	bool rv;
+	int32_t n;
+
+	DMSG("IN  smc_prohibit_flag=%d", smc_prohibit_flag);
+
+	thread_lock_global();
+
+	for (n = 0; n < CFG_NUM_THREADS; n++) {
+		if (threads[n].state != THREAD_STATE_FREE) {
+			rv = false;
+			goto out;
+		} else {
+			/* no operation */
+		}
+	}
+
+	rv = true;
+	smc_prohibit_flag = true;
+out:
+	thread_unlock_global();
+	if (rv) {
+		save_exceptions = thread_mask_exceptions(
+					THREAD_EXCP_FOREIGN_INTR);
+	}  else {
+		/* no operation */
+	}
+
+	DMSG("OUT smc_prohibit_flag=%d ret=%d", smc_prohibit_flag, rv);
+	return rv;
+}
+
+void thread_rcar_smc_resume(void)
+{
+	DMSG("IN  smc_prohibit_flag=%d", smc_prohibit_flag);
+
+	thread_lock_global();
+
+	smc_prohibit_flag = false;
+
+	thread_unlock_global();
+
+	thread_unmask_exceptions(save_exceptions);
+	save_exceptions = 0U;
+	DMSG("OUT smc_prohibit_flag=%d", smc_prohibit_flag);
+}
 #endif /* PLATFORM_RCAR */

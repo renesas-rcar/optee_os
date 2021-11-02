@@ -540,6 +540,12 @@ TEE_Result __tee_entry_std(struct optee_msg_arg *arg, uint32_t num_params)
 {
 	TEE_Result res = TEE_SUCCESS;
 
+#if defined(PLATFORM_RCAR)
+	if (smc_prohibit_flag) {
+		DMSG("smc_prohibit: ETHREAD_LIMIT std_cmd=0x%x", arg->cmd);
+		return OPTEE_SMC_RETURN_ETHREAD_LIMIT;
+	}
+#endif /* PLATFORM_RCAR */
 	/* Enable foreign interrupts for STD calls */
 	thread_set_foreign_intr(true);
 	switch (arg->cmd) {
