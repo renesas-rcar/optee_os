@@ -80,6 +80,8 @@
 extern uint32_t product_type;
 extern const int8_t *product_name;
 extern uint32_t prr_cut;
+extern uint32_t cpu_on_core_lock;
+extern uint8_t cpu_on_core_bit;
 
 /*
  * Prototype declaration
