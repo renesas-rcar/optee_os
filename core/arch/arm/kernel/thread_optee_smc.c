@@ -27,6 +27,8 @@
 
 #if defined(PLATFORM_RCAR)
 #include <kernel/tee_time.h>
+#include <kernel/spinlock.h>
+#include "rcar_common.h"
 #endif /* PLATFORM_RCAR */
 
 static bool thread_prealloc_rpc_cache;
@@ -670,12 +672,12 @@ TEE_Result thread_hw_wait_cmd(const TEE_Time *base_time, uint32_t timeout,
 }
 
 bool smc_prohibit_flag __nex_bss = false;
-static uint32_t save_exceptions __nex_bss = 0U;
 
 bool thread_rcar_suspend_sync(void)
 {
 	bool rv;
 	int32_t n;
+	uint32_t exceptions;
 
 	DMSG("IN  smc_prohibit_flag=%d", smc_prohibit_flag);
 
@@ -695,8 +697,13 @@ bool thread_rcar_suspend_sync(void)
 out:
 	thread_unlock_global();
 	if (rv) {
-		save_exceptions = thread_mask_exceptions(
-					THREAD_EXCP_FOREIGN_INTR);
+		exceptions = cpu_spin_lock_xsave(&cpu_on_core_lock);
+
+		/* Mask all FIQ */
+		cpu_on_core_bit = 0U;
+		itr_set_all_cpu_mask(cpu_on_core_bit);
+
+		cpu_spin_unlock_xrestore(&cpu_on_core_lock, exceptions);
 	}  else {
 		/* no operation */
 	}
@@ -715,8 +722,6 @@ void thread_rcar_smc_resume(void)
 
 	thread_unlock_global();
 
-	thread_unmask_exceptions(save_exceptions);
-	save_exceptions = 0U;
 	DMSG("OUT smc_prohibit_flag=%d", smc_prohibit_flag);
 }
 #endif /* PLATFORM_RCAR */

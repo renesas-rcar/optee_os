@@ -34,8 +34,8 @@ static void main_hook_gic_add(struct itr_chip *chip, size_t it, uint32_t flags);
 
 static uint32_t suspend_to_ram_save_flag __nex_bss = 0U;
 static uint32_t main_cpu_lock __nex_bss = (uint32_t)SPINLOCK_UNLOCK;
-static uint32_t cpu_on_core_lock __nex_bss = (uint32_t)SPINLOCK_UNLOCK;
-static uint8_t cpu_on_core_bit __nex_bss = 0U;
+uint32_t cpu_on_core_lock __nex_bss = (uint32_t)SPINLOCK_UNLOCK;
+uint8_t cpu_on_core_bit __nex_bss = 0U;
 static void (*gic_add_ptr_bk)(struct itr_chip *chip, size_t it,
 				uint32_t flags) __nex_bss;
 static struct itr_ops main_itr_ops __nex_bss;
@@ -83,6 +83,7 @@ unsigned long thread_cpu_resume_handler(unsigned long a0 __unused,
 				unsigned long a1 __unused)
 {
 	uint32_t exceptions;
+	uint32_t exceptions2;
 
 	exceptions = cpu_spin_lock_xsave(&main_cpu_lock);
 	TMSG("a0=0x%lX, a1=0x%lX", a0, a1);
@@ -93,6 +94,16 @@ unsigned long thread_cpu_resume_handler(unsigned long a0 __unused,
 		DMSG("END suspend_to_ram_restore");
 	} else {
 		/* no operation */
+	}
+
+	if (smc_prohibit_flag) {
+		exceptions2 = cpu_spin_lock_xsave(&cpu_on_core_lock);
+
+		/* Unmask the FIQ on the primary CPU */
+		cpu_on_core_bit |= (uint8_t)(0x1U << get_core_pos());
+		itr_set_all_cpu_mask(cpu_on_core_bit);
+
+		cpu_spin_unlock_xrestore(&cpu_on_core_lock, exceptions2);
 	}
 
 	cpu_spin_unlock_xrestore(&main_cpu_lock, exceptions);
