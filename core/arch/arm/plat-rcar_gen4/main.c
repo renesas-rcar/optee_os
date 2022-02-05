@@ -209,20 +209,8 @@ register_phys_mem_pgdir(DEVICE1_TYPE, DEVICE1_PA_BASE, DEVICE1_SIZE);
 register_phys_mem_pgdir(DEVICE2_TYPE, DEVICE2_PA_BASE, DEVICE2_SIZE);
 #endif
 
-/* Legacy platforms */
-#if defined(PLATFORM_FLAVOR_salvator_h3) || \
-	defined(PLATFORM_FLAVOR_salvator_h3_4x2g) || \
-	defined(PLATFORM_FLAVOR_salvator_m3) || \
-	defined(PLATFORM_FLAVOR_salvator_m3_2x4g)
 register_ddr(NSEC_DDR_0_BASE, NSEC_DDR_0_SIZE);
 register_ddr(NSEC_DDR_1_BASE, NSEC_DDR_1_SIZE);
-#ifdef NSEC_DDR_2_BASE
-register_ddr(NSEC_DDR_2_BASE, NSEC_DDR_2_SIZE);
-#endif
-#ifdef NSEC_DDR_3_BASE
-register_ddr(NSEC_DDR_3_BASE, NSEC_DDR_3_SIZE);
-#endif
-#endif
 
 void main_init_gic(void)
 {
