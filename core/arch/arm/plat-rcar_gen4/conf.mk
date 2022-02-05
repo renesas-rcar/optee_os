@@ -1,4 +1,4 @@
-PLATFORM_FLAVOR ?= generic_dt
+PLATFORM_FLAVOR ?= spider
 
 include core/arch/arm/cpu/cortex-armv8-0.mk
 
