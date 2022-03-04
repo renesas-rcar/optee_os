@@ -217,8 +217,6 @@ static TEE_Result tee_standalone_fs_init(void)
 	return res;
 }
 
-driver_init(tee_standalone_fs_init);
-
 static TEE_Result spi_init_sector_info(void)
 {
 	TEE_Result res;
@@ -307,6 +305,7 @@ static TEE_Result spi_init_sector_info(void)
 
 static TEE_Result spi_get_status(void)
 {
+	(void)tee_standalone_fs_init();
 	return g_standalone_fs_status;
 }
 
