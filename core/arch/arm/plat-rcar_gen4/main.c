@@ -26,7 +26,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 /*
- * Copyright (c) 2021, Renesas Electronics Corporation.
+ * Copyright (c) 2021-2022, Renesas Electronics Corporation.
  */
 
 #include <console.h>
@@ -63,6 +63,9 @@ register_phys_mem_pgdir(MEMORY7_TYPE, MEMORY7_BASE, MEMORY7_SIZE);
 #endif
 #ifdef MEMORY8_BASE
 register_phys_mem_pgdir(MEMORY8_TYPE, MEMORY8_BASE, MEMORY8_SIZE);
+#endif
+#ifdef DEVICE0_PA_BASE
+register_phys_mem_pgdir(DEVICE0_TYPE, DEVICE0_PA_BASE, DEVICE0_SIZE);
 #endif
 #ifdef DEVICE1_PA_BASE
 register_phys_mem_pgdir(DEVICE1_TYPE, DEVICE1_PA_BASE, DEVICE1_SIZE);
