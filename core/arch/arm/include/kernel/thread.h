@@ -775,6 +775,12 @@ enum thread_shm_cache_user {
 void *thread_rpc_shm_cache_alloc(enum thread_shm_cache_user user,
 				 enum thread_shm_type shm_type,
 				 size_t size, struct mobj **mobj);
+
+#ifdef PLATFORM_rcar_gen4
+TEE_Result thread_hw_wait_cmd(const TEE_Time *base_time, uint32_t timeout,
+				uint32_t wait, uint32_t delay);
+#endif
+
 #endif /*__ASSEMBLER__*/
 
 #endif /*KERNEL_THREAD_H*/
