@@ -26,7 +26,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 /*
- * Copyright (c) 2021, Renesas Electronics Corporation.
+ * Copyright (c) 2021-2022, Renesas Electronics Corporation.
  */
 
 #ifndef PLATFORM_CONFIG_H
@@ -123,6 +123,10 @@
 /* Generic DT-based platform */
 
 #endif
+
+#define DEVICE0_PA_BASE		ROUNDDOWN(LIFEC_BASE, CORE_MMU_PGDIR_SIZE)
+#define DEVICE0_SIZE		(MEM_SECTION_SIZE)
+#define DEVICE0_TYPE		MEM_AREA_IO_SEC
 
 #define DEVICE1_PA_BASE		ROUNDDOWN(CE_BASE, CORE_MMU_PGDIR_SIZE)
 #define DEVICE1_SIZE		(MEM_SECTION_SIZE * 2)
