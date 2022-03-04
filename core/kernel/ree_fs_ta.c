@@ -78,6 +78,7 @@ struct ver_db_hdr {
 	uint32_t nb_entries;
 };
 
+#if !defined(PLATFORM_rcar_gen4) || !defined(CFG_RCAR_UNSUPPORT_TA_VER_DB)
 static const char ta_ver_db[] = "ta_ver.db";
 static const char subkey_ver_db[] = "subkey_ver.db";
 static struct mutex ver_db_mutex = MUTEX_INITIALIZER;
@@ -181,6 +182,7 @@ out:
 	mutex_unlock(&ver_db_mutex);
 	return res;
 }
+#endif
 
 /*
  * Load a TA via RPC with UUID defined by input param @uuid. The virtual
@@ -304,8 +306,10 @@ static TEE_Result ree_fs_ta_open(const TEE_UUID *uuid,
 		memcpy(next_uuid, pub_key.next_uuid, sizeof(TEE_UUID));
 		next_uuid_ptr = next_uuid;
 
+#if !defined(PLATFORM_rcar_gen4) || !defined(CFG_RCAR_UNSUPPORT_TA_VER_DB)
 		res = check_update_version(subkey_ver_db, pub_key.uuid,
 					   pub_key.version);
+#endif
 		if (res) {
 			res = TEE_ERROR_SECURITY;
 			shdr_free_pub_key(&pub_key);
@@ -628,10 +632,12 @@ static TEE_Result ree_fs_ta_read(struct ts_store_handle *h, void *data_core,
 		if (res != TEE_SUCCESS)
 			goto out;
 
+#if !defined(PLATFORM_rcar_gen4) || !defined(CFG_RCAR_UNSUPPORT_TA_VER_DB)
 		if (handle->bs_hdr)
 			res = check_update_version(ta_ver_db,
 						   handle->bs_hdr->uuid,
 						   handle->bs_hdr->ta_version);
+#endif
 	}
 out:
 	bb_free(bb, bb_len);
