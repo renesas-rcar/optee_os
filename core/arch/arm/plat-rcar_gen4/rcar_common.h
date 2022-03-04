@@ -79,4 +79,9 @@ extern void hw_engine_unlock(uint32_t lock);
 #define hw_engine_unlock(lock)	((void)(lock))
 #endif /* CFG_CRYPT_HW_CRYPTOENGINE */
 
+/* Storage is provided by the QSPI/Hyper Flash */
+#define TEE_STORAGE_PRIVATE_STANDALONE 0x80001000
+
+extern const struct tee_file_operations standalone_fs_ops;
+
 #endif /* RCAR_COMMON_H */
