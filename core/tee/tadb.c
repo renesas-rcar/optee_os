@@ -216,7 +216,11 @@ static TEE_Result tadb_open(struct tee_tadb_dir **db_ret)
 	if (!db)
 		return TEE_ERROR_OUT_OF_MEMORY;
 
+#if !defined(PLATFORM_rcar_gen4)
 	db->ops = tee_svc_storage_file_ops(TEE_STORAGE_PRIVATE);
+#else
+	db->ops = tee_svc_storage_file_ops(TEE_STORAGE_PRIVATE_REE);
+#endif
 
 	res = db->ops->open(&po, NULL, &db->fh);
 	if (res == TEE_ERROR_ITEM_NOT_FOUND)
