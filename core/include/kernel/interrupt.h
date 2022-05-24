@@ -541,4 +541,8 @@ static inline TEE_Result interrupt_dt_get(const void *fdt, int node,
 {
 	return interrupt_dt_get_by_index(fdt, node, 0, chip, itr_num);
 }
+#ifdef PLATFORM_rcar_gen4
+void itr_set_all_cpu_mask(uint8_t cpu_mask);
+#endif
+
 #endif /*__KERNEL_INTERRUPT_H*/

@@ -350,3 +350,14 @@ TEE_Result interrupt_dt_get_by_name(const void *fdt, int node, const char *name,
 	return interrupt_dt_get_by_index(fdt, node, idx, chip, itr_num);
 }
 #endif /*CFG_DT*/
+
+#ifdef PLATFORM_rcar_gen4
+void itr_set_all_cpu_mask(uint8_t cpu_mask)
+{
+	struct itr_handler *h;
+
+	SLIST_FOREACH(h, &handlers, link) {
+		itr_chip->ops->set_affinity(itr_chip, h->it, cpu_mask);
+	}
+}
+#endif
