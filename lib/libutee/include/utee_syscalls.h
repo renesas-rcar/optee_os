@@ -288,4 +288,11 @@ TEE_Result _utee_cache_operation(void *va, size_t l, unsigned long op);
 
 TEE_Result _utee_gprof_send(void *buf, size_t size, uint32_t *id);
 
+#ifdef PLATFORM_rcar_gen4
+TEE_Result urcar_gen_asset_unpack(uint32_t assetId,
+		uint8_t *pAssetPackage, uint32_t assetPackagLen,
+		uint8_t *pAssetData, uint32_t *pAssetDataLen,
+		uint32_t *pUserData);
+#endif
+
 #endif /* UTEE_SYSCALLS_H */

@@ -92,4 +92,10 @@ TEE_Result tee_obj_attr_from_binary(struct tee_obj *o, const void *data,
 				    size_t data_len);
 TEE_Result tee_obj_attr_copy_from(struct tee_obj *o, const struct tee_obj *src);
 
+#ifdef PLATFORM_rcar_gen4
+TEE_Result syscall_rcar_asset_unpack(uint32_t assetId, uint8_t *pAssetPackage,
+		uint32_t assetPackagLen, uint8_t *pAssetData,
+		uint32_t *pAssetDataLen, uint32_t *pUserData);
+#endif
+
 #endif /* TEE_SVC_CRYP_H */

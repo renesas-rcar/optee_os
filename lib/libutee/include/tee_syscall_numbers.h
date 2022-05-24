@@ -80,7 +80,12 @@
 /* End of deprecated Secure Element API syscalls */
 #define TEE_SCN_CACHE_OPERATION			70
 
+#ifdef PLATFORM_rcar_gen4
+#define RCAR_SCN_ASSET_UNPACK			71
+#define TEE_SCN_MAX				71
+#else
 #define TEE_SCN_MAX				70
+#endif
 
 /* Maximum number of allowed arguments for a syscall */
 #define TEE_SVC_MAX_ARGS			8

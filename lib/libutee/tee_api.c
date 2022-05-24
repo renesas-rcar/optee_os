@@ -426,3 +426,15 @@ TEE_Result TEE_CacheInvalidate(char *buf, size_t len)
 {
 	return _utee_cache_operation(buf, len, TEE_CACHEINVALIDATE);
 }
+
+#ifdef PLATFORM_rcar_gen4
+TEE_Result RCAR_AssetUnpack(uint32_t assetId,
+		uint8_t *pAssetPackage, uint32_t assetPackagLen,
+		uint8_t *pAssetData, uint32_t *pAssetDataLen,
+		uint32_t *pUserData)
+{
+	DMSG("Call %s\n", __func__);
+	return urcar_gen_asset_unpack(assetId, pAssetPackage, assetPackagLen,
+			pAssetData, pAssetDataLen, pUserData);
+}
+#endif

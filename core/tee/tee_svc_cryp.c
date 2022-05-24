@@ -3826,3 +3826,19 @@ out:
 	free_wipe(params);
 	return res;
 }
+
+#ifdef PLATFORM_rcar_gen4
+TEE_Result syscall_rcar_asset_unpack(uint32_t assetId __maybe_unused,
+		uint8_t *pAssetPackage __maybe_unused,
+		uint32_t assetPackagLen __maybe_unused,
+		uint8_t *pAssetData __maybe_unused,
+		uint32_t *pAssetDataLen __maybe_unused,
+		uint32_t *pUserData __maybe_unused)
+{
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	return TEE_ERROR_NOT_SUPPORTED;
+#else
+	return TEE_ERROR_NOT_IMPLEMENTED;
+#endif
+}
+#endif
