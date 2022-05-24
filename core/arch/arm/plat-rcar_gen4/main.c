@@ -36,6 +36,58 @@
 #include <stdint.h>
 #include <drivers/scif.h>
 #include <drivers/gic.h>
+#include <kernel/boot.h>
+#include <trace.h>
+#include <kernel/misc.h>
+#include <kernel/spinlock.h>
+
+static void main_hook_gic_add(struct itr_chip *chip, size_t it, uint32_t flags);
+
+uint32_t cpu_on_core_lock __nex_bss = (uint32_t)SPINLOCK_UNLOCK;
+uint8_t cpu_on_core_bit __nex_bss = 0U;
+static void (*gic_add_ptr_bk)(struct itr_chip *chip, size_t it,
+				uint32_t flags) __nex_bss;
+static struct itr_ops main_itr_ops __nex_bss;
+
+void main_secondary_init_gic(void)
+{
+	uint32_t exceptions;
+	uint8_t cpu_mask;
+
+	DMSG("IN cpu_on_core_bit=0x%x, get_core_pos()=%lu",
+					cpu_on_core_bit, get_core_pos());
+	exceptions = cpu_spin_lock_xsave(&cpu_on_core_lock);
+
+	cpu_on_core_bit |= (uint8_t)(0x1U << get_core_pos());
+	cpu_mask = cpu_on_core_bit;
+
+	itr_set_all_cpu_mask(cpu_mask);
+
+	cpu_spin_unlock_xrestore(&cpu_on_core_lock, exceptions);
+	DMSG("OUT cpu_mask=0x%x", cpu_mask);
+}
+
+unsigned long thread_cpu_off_handler(unsigned long a0 __unused,
+				unsigned long a1 __unused)
+{
+	uint32_t exceptions;
+	uint8_t cpu_mask;
+
+	DMSG("IN cpu_on_core_bit=0x%x, get_core_pos()=%lu",
+				cpu_on_core_bit, get_core_pos());
+	exceptions = cpu_spin_lock_xsave(&cpu_on_core_lock);
+
+	cpu_on_core_bit &= (0xFFU ^ (uint8_t)(0x1U << get_core_pos()));
+	cpu_mask = cpu_on_core_bit;
+
+	itr_set_all_cpu_mask(cpu_mask);
+
+	cpu_spin_unlock_xrestore(&cpu_on_core_lock, exceptions);
+	DMSG("OUT cpu_mask=0x%x", cpu_mask);
+	return 0;
+}
+
+struct gic_data gic_data __nex_bss;
 
 register_phys_mem_pgdir(MEM_AREA_IO_SEC, GICD_BASE, GIC_DIST_REG_SIZE);
 register_phys_mem_pgdir(MEM_AREA_IO_SEC, GICC_BASE, GIC_DIST_REG_SIZE);
@@ -88,6 +140,49 @@ register_ddr(NSEC_DDR_2_BASE, NSEC_DDR_2_SIZE);
 register_ddr(NSEC_DDR_3_BASE, NSEC_DDR_3_SIZE);
 #endif
 #endif
+
+void main_init_gic(void)
+{
+	vaddr_t gicc_base;
+	vaddr_t gicd_base;
+
+	gicc_base = (vaddr_t)phys_to_virt(GICC_BASE, MEM_AREA_IO_SEC);
+	gicd_base = (vaddr_t)phys_to_virt(GICD_BASE, MEM_AREA_IO_SEC);
+	assert(gicc_base && gicd_base);
+
+	/* On ARMv8, GIC configuration is initialized in ARM-TF */
+	gic_init_base_addr(&gic_data, gicc_base, gicd_base);
+
+	itr_init(&gic_data.chip);
+
+	cpu_on_core_bit = (uint8_t)(0x1U << get_core_pos());
+
+	gic_add_ptr_bk = gic_data.chip.ops->add;
+	main_itr_ops = *gic_data.chip.ops;
+	main_itr_ops.add = main_hook_gic_add;
+	gic_data.chip.ops = (const struct itr_ops *)&main_itr_ops;
+}
+
+static void main_hook_gic_add(struct itr_chip *chip, size_t it, uint32_t flags)
+{
+	uint32_t exceptions;
+	uint8_t cpu_mask;
+
+	DMSG("IN cpu_on_core_bit=0x%x, it=0x%lu", cpu_on_core_bit, it);
+	gic_add_ptr_bk(chip, it, flags);
+
+	exceptions = cpu_spin_lock_xsave(&cpu_on_core_lock);
+	cpu_mask = cpu_on_core_bit;
+	itr_set_affinity(it, cpu_mask);
+
+	cpu_spin_unlock_xrestore(&cpu_on_core_lock, exceptions);
+	DMSG("OUT cpu_mask=0x%x", cpu_mask);
+}
+
+void itr_core_handler(void)
+{
+	gic_it_handle(&gic_data);
+}
 
 void console_init(void)
 {

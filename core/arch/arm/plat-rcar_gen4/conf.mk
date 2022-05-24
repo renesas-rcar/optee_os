@@ -7,6 +7,10 @@ $(call force,CFG_WITH_ARM_TRUSTED_FW,y)
 $(call force,CFG_SCIF,y)
 $(call force,CFG_CORE_LARGE_PHYS_ADDR,y)
 $(call force,CFG_CORE_ARM64_PA_BITS,36)
+$(call force,CFG_GIC,y)
+
+CFG_ARM_GICV3 ?= y
+CFG_ARM64_core ?= y
 
 # Disable core ASLR for two reasons:
 # 1. There is no source for ALSR seed, as Rcar platform

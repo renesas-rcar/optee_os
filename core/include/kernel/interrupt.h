@@ -87,4 +87,8 @@ void itr_set_affinity(size_t it, uint8_t cpu_mask);
  */
 void itr_core_handler(void);
 
+#ifdef PLATFORM_rcar_gen4
+void itr_set_all_cpu_mask(uint8_t cpu_mask);
+#endif
+
 #endif /*__KERNEL_INTERRUPT_H*/

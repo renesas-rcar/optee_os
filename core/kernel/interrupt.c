@@ -136,3 +136,14 @@ void __weak __noreturn itr_core_handler(void)
 {
 	panic("Secure interrupt handler not defined");
 }
+
+#ifdef PLATFORM_rcar_gen4
+void itr_set_all_cpu_mask(uint8_t cpu_mask)
+{
+	struct itr_handler *h;
+
+	SLIST_FOREACH(h, &handlers, link) {
+		itr_chip->ops->set_affinity(itr_chip, h->it, cpu_mask);
+	}
+}
+#endif
