@@ -58,10 +58,12 @@ core-platform-cflags += -DRCAR_MMU_DIRECT_MAPPING
 
 ifeq ($(CFG_CRYPT_HW_CRYPTOENGINE),y)
 CFG_OTP_SUPPORT ?= y
+CFG_CORE_HUK_SUBKEY_COMPAT_USE_OTP_DIE_ID = $(CFG_CORE_HUK_SUBKEY_COMPAT)
 core-platform-cflags += -DCFG_OTP_SUPPORT
 core-platform-cflags += -Icore/lib
 else
 CFG_OTP_SUPPORT := n
+CFG_CORE_HUK_SUBKEY_COMPAT_USE_OTP_DIE_ID := n
 endif
 
 CFG_CORE_HEAP_SIZE ?= 196608
