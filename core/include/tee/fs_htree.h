@@ -21,7 +21,11 @@
 #include <utee_defines.h>
 
 #define TEE_FS_HTREE_HASH_SIZE		TEE_SHA256_HASH_SIZE
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
+#define TEE_FS_HTREE_IV_SIZE		U(13)
+#else
 #define TEE_FS_HTREE_IV_SIZE		U(16)
+#endif
 #define TEE_FS_HTREE_FEK_SIZE		U(16)
 #define TEE_FS_HTREE_TAG_SIZE		U(16)
 

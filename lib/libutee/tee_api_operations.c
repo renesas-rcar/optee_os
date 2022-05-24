@@ -142,6 +142,9 @@ TEE_Result TEE_AllocateOperation(TEE_OperationHandle *operation,
 	case TEE_ALG_AES_ECB_NOPAD:
 	case TEE_ALG_AES_CBC_NOPAD:
 	case TEE_ALG_AES_CCM:
+#ifdef PLATFORM_rcar_gen4
+	case TEE_ALG_AES_OFB:
+#endif
 	case TEE_ALG_DES_ECB_NOPAD:
 	case TEE_ALG_DES_CBC_NOPAD:
 	case TEE_ALG_DES3_ECB_NOPAD:
@@ -286,6 +289,9 @@ TEE_Result TEE_AllocateOperation(TEE_OperationHandle *operation,
 	case TEE_ALG_AES_CBC_MAC_NOPAD:
 	case TEE_ALG_AES_CBC_MAC_PKCS5:
 	case TEE_ALG_AES_CMAC:
+#ifdef PLATFORM_rcar_gen4
+	case TEE_ALG_AES_XCBC_MAC:
+#endif
 	case TEE_ALG_DES_CBC_MAC_PKCS5:
 	case TEE_ALG_DES3_CBC_MAC_NOPAD:
 	case TEE_ALG_DES3_CBC_MAC_PKCS5:

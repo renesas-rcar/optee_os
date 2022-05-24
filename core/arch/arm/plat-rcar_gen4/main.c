@@ -93,3 +93,5 @@ void console_init(void)
 {
 	/* No Operation */
 }
+
+int32_t is_normal_world_initialized __nex_bss;

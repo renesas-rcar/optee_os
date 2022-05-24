@@ -45,3 +45,13 @@ core-platform-cflags += -DSTANDALONE_FS_SECTOR_NUM=$(STANDALONE_FS_SECTOR_NUM)
 CFG_HYPER_FLASH := y
 CFG_RCAR_UNSUPPORT_TA_VER_DB := y
 endif
+
+ifeq ($(CFG_CRYPT_HW_CRYPTOENGINE),y)
+CFG_OTP_SUPPORT ?= y
+core-platform-cflags += -DCFG_OTP_SUPPORT
+core-platform-cflags += -Icore/lib
+else
+CFG_OTP_SUPPORT := n
+endif
+
+CFG_CORE_HEAP_SIZE ?= 196608

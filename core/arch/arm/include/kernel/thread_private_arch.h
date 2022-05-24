@@ -37,12 +37,16 @@
 #endif /*ARM32*/
 
 #ifdef ARM64
+#if defined(ENABLE_CRYPTOENGINE)
+#define STACK_TMP_SIZE		((2048 * 4) + STACK_TMP_OFFS + CFG_STACK_TMP_EXTRA)
+#else
 #if (defined(__clang__) && !defined(__OPTIMIZE_SIZE__)) || \
 	defined(CFG_CORE_SANITIZE_KADDRESS)
 #define STACK_TMP_SIZE		(4096 + STACK_TMP_OFFS + CFG_STACK_TMP_EXTRA)
 #else
 #define STACK_TMP_SIZE		(2048 + STACK_TMP_OFFS + CFG_STACK_TMP_EXTRA)
 #endif
+#endif /* ENABLE_CRYPTOENGINE */
 #if defined(CFG_CORE_SANITIZE_KADDRESS)
 #define STACK_THREAD_SIZE	(10240 + CFG_STACK_THREAD_EXTRA)
 #else

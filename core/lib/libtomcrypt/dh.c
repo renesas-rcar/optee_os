@@ -45,6 +45,17 @@ TEE_Result crypto_acipher_gen_dh_key(struct dh_keypair *key, struct bignum *q,
 	if (key_size != 8 * mp_unsigned_bin_size(key->p))
 		return TEE_ERROR_BAD_PARAMETERS;
 
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    uint32_t keySize;
+
+    keySize = crypto_bignum_num_bits(key->p);
+    if (crypto_hw_dh_check_support(keySize) == SS_HW_SUPPORT_ALG)
+    {
+        res = crypto_hw_acipher_gen_dh_key(key, q, xbits);
+        return res;
+    }
+#endif
+
 	ltc_res = mp_init_multi(&ltc_tmp_key.base, &ltc_tmp_key.prime, NULL);
 	if (ltc_res != CRYPT_OK)
 		return TEE_ERROR_OUT_OF_MEMORY;
@@ -71,6 +82,16 @@ TEE_Result crypto_acipher_dh_shared_secret(struct dh_keypair *private_key,
 					   struct bignum *secret)
 {
 	int err;
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    uint32_t keySize;
+
+    keySize = crypto_bignum_num_bits(private_key->p);
+    if (crypto_hw_dh_check_support(keySize) == SS_HW_SUPPORT_ALG)
+    {
+        return crypto_hw_acipher_dh_shared_secret(private_key,
+                 public_key, secret);
+    }
+#endif
 
 	if (!private_key || !public_key || !secret)
 		return TEE_ERROR_BAD_PARAMETERS;
