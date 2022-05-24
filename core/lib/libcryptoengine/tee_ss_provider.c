@@ -26,7 +26,6 @@
 #include "include_secure/dx_util_rpmb.h"
 #include "include_secure/crys_aes_unwrap_rcar.h"
 #include "include_secure/crys_suspend_to_ram.h"
-#include "include_secure/secure_key_gen.h"
 #include "rcar_mutex.h"
 #include "rcar_common.h"
 
@@ -6239,6 +6238,7 @@ void crypto_hw_aes_ccm_final(void)
  */
 TEE_Result crypto_hw_rng_read(void *outPtr, size_t outSize)
 {
+	TEE_Result tee_res;
 	SSError_t res;
 	CRYSError_t crys_res = (CRYSError_t)CRYS_OK;
 	size_t remain = outSize;
@@ -6246,6 +6246,23 @@ TEE_Result crypto_hw_rng_read(void *outPtr, size_t outSize)
 	uint8_t *compOutPtr = (uint8_t *)outPtr;
 
 	PROV_DMSG("crysOutSize=%ld  outPtr=%p\n", outSize, outPtr);
+
+	/* check rng_isr in Secure Driver API */
+	if ((0x0000001EU & CRYS_RND_GetTrngErrorStatus()) != 0U) {
+		tee_res = crypto_hw_rng_init();
+		PROV_EMSG("crypto_hw_rng_init() reinit tee_res=%x\n",
+				tee_res);
+		if (tee_res != TEE_SUCCESS) {
+			tee_res = TEE_ERROR_NO_DATA;
+			PROV_EMSG("crypto_hw_rng_init() reinit Error\n");
+			goto err;
+		}
+		if ((0x0000001EU & CRYS_RND_GetTrngErrorStatus()) != 0U) {
+			tee_res = TEE_ERROR_NO_DATA;
+			PROV_EMSG("CRYS_RND_GetTrngErrorStatus() Error\n");
+			goto err;
+		}
+	}
 
 	while ((remain != 0U) && (crys_res == (CRYSError_t)CRYS_OK)) {
 		if (remain > 0xFFC0U) {
@@ -6261,8 +6278,11 @@ TEE_Result crypto_hw_rng_read(void *outPtr, size_t outSize)
 	}
 
 	res = ss_translate_error_crys2ss_rnd(crys_res);
-	PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n", crys_res, res);
-	return res;
+	tee_res = ss_translate_error_ss2tee(res);
+	PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x -> tee_res=0x%08x\n",
+			crys_res, res, tee_res);
+err:
+	return tee_res;
 }
 
 /*
