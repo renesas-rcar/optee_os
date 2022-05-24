@@ -370,4 +370,8 @@ TEE_Result crypto_aes_expand_enc_key(const void *key, size_t key_len,
 void crypto_aes_enc_block(const void *enc_key, size_t enc_keylen,
 			  unsigned int rounds, const void *src, void *dst);
 
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+#include "crypto_hw_engine.h"
+#endif /* CFG_CRYPT_HW_CRYPTOENGINE */
+
 #endif /* __CRYPTO_CRYPTO_H */

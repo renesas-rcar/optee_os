@@ -75,11 +75,15 @@ struct thread_core_local thread_core_local[CFG_TEE_CORE_NB_CORE] __nex_bss;
 #endif /*ARM32*/
 
 #ifdef ARM64
+#if defined(ENABLE_CRYPTOENGINE)
+#define STACK_TMP_SIZE		((2048 * 4) + STACK_TMP_OFFS)
+#else
 #if defined(__clang__) && !defined(__OPTIMIZE_SIZE__)
 #define STACK_TMP_SIZE		(4096 + STACK_TMP_OFFS)
 #else
 #define STACK_TMP_SIZE		(2048 + STACK_TMP_OFFS)
 #endif
+#endif /* ENABLE_CRYPTOENGINE */
 #define STACK_THREAD_SIZE	8192
 
 #if TRACE_LEVEL > 0

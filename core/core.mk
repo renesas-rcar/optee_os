@@ -110,6 +110,22 @@ libdir = lib/libmbedtls
 include mk/lib.mk
 endif #tomcrypt
 
+ifeq ($(PLATFORM_rcar_gen4),y)
+ifeq ($(CFG_CRYPT_HW_CRYPTOENGINE),y)
+base-prefix :=
+core-platform-cflags += -DENABLE_CRYPTOENGINE
+core-platform-cflags += -DDX_CC_TEE -DCRYS_NO_CRYS_COMBINED_SUPPORT
+
+libname = crypto_engine_secure
+libdir = core/lib/libcryptoengine
+include core/lib/libcryptoengine/libcc.mk
+
+libname = crypto_engine
+libdir = core/lib/libcryptoengine
+include mk/lib.mk
+endif
+endif
+
 ifeq ($(CFG_CRYPTOLIB_NAME),mbedtls)
 $(call force,CFG_CRYPTO_RSASSA_NA1,n,not supported by mbedtls)
 libname = tomcrypt

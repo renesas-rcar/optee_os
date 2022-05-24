@@ -62,6 +62,9 @@ TEE_Result tee_cipher_get_block_size(uint32_t algo, size_t *size)
 	case TEE_ALG_AES_CBC_MAC_NOPAD:
 	case TEE_ALG_AES_CBC_MAC_PKCS5:
 	case TEE_ALG_AES_CMAC:
+#ifdef PLATFORM_rcar_gen4
+	case TEE_ALG_AES_XCBC_MAC:
+#endif
 	case TEE_ALG_AES_ECB_NOPAD:
 	case TEE_ALG_AES_CBC_NOPAD:
 	case TEE_ALG_AES_CTR:
@@ -69,6 +72,9 @@ TEE_Result tee_cipher_get_block_size(uint32_t algo, size_t *size)
 	case TEE_ALG_AES_XTS:
 	case TEE_ALG_AES_CCM:
 	case TEE_ALG_AES_GCM:
+#ifdef PLATFORM_rcar_gen4
+	case TEE_ALG_AES_OFB:
+#endif
 	case TEE_ALG_SM4_ECB_NOPAD:
 	case TEE_ALG_SM4_CBC_NOPAD:
 	case TEE_ALG_SM4_CTR:
@@ -129,6 +135,9 @@ TEE_Result tee_do_cipher_update(void *ctx, uint32_t algo,
 		case TEE_ALG_AES_CTR:
 		case TEE_ALG_AES_XTS:
 		case TEE_ALG_AES_CTS:
+#ifdef PLATFORM_rcar_gen4
+		case TEE_ALG_AES_OFB:
+#endif
 			/*
 			 * These modes doesn't require padding for the last
 			 * block.
@@ -206,7 +215,9 @@ static TEE_Result tee_cryp_init(void)
 		EMSG("Failed to initialize crypto API: %#" PRIx32, res);
 		panic();
 	}
+#ifndef CFG_CRYPT_HW_CRYPTOENGINE /* for PLATFORM_rcar_gen4 */
 	plat_rng_init();
+#endif
 
 	return TEE_SUCCESS;
 }

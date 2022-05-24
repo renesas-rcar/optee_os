@@ -172,8 +172,13 @@ err:
 	return res;
 }
 
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+static void __unused push_ring_buffer(uint8_t snum, uint8_t pnum,
+                 const void *data, size_t dlen)
+#else
 static void push_ring_buffer(uint8_t snum, uint8_t pnum, const void *data,
 			     size_t dlen)
+#endif
 {
 	uint8_t dl = MIN(RING_BUF_DATA_SIZE, dlen);
 	unsigned int next_begin;
@@ -264,7 +269,11 @@ static TEE_Result drain_ring_buffer(void)
 	}
 }
 
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+static unsigned int __unused get_next_pnum(unsigned int *pnum)
+#else
 static unsigned int get_next_pnum(unsigned int *pnum)
+#endif
 {
 	unsigned int nval;
 	unsigned int oval = atomic_load_uint(pnum);
@@ -304,10 +313,14 @@ void crypto_rng_add_event(enum crypto_rng_src sid, unsigned int *pnum,
 	if (CRYPTO_RNG_SRC_IS_QUICK(sid)) {
 		push_ring_buffer(snum, pn, data, dlen);
 	} else {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+		crypto_hw_rng_add_entropy((const uint8_t *)data, dlen);
+#else
 		mutex_lock(&state_mu);
 		add_event(snum, pn, data, dlen);
 		drain_ring_buffer();
 		mutex_unlock(&state_mu);
+#endif
 	}
 }
 
@@ -473,7 +486,11 @@ static TEE_Result maybe_reseed(void)
 	return TEE_SUCCESS;
 }
 
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+static TEE_Result __unused fortuna_read(void *buf, size_t blen)
+#else
 static TEE_Result fortuna_read(void *buf, size_t blen)
+#endif
 {
 	TEE_Result res;
 
@@ -513,6 +530,9 @@ out:
 
 TEE_Result crypto_rng_read(void *buf, size_t blen)
 {
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+    return crypto_hw_rng_read(buf, blen);
+#else
 	size_t offs = 0;
 
 	while (true) {
@@ -528,4 +548,5 @@ TEE_Result crypto_rng_read(void *buf, size_t blen)
 			return res;
 		offs += n;
 	}
+#endif
 }

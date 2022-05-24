@@ -11,6 +11,10 @@
 #ifndef TOMCRYPT_CUSTOM_H_
 #define TOMCRYPT_CUSTOM_H_
 
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+#define LTC_NO_PROTOTYPES
+#endif
+
 /* macros for various libc functions you can change for embedded targets */
 #ifndef XMALLOC
 #define XMALLOC  malloc
