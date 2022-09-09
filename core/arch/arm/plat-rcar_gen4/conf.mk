@@ -67,3 +67,9 @@ CFG_CORE_HUK_SUBKEY_COMPAT_USE_OTP_DIE_ID := n
 endif
 
 CFG_CORE_HEAP_SIZE ?= 196608
+
+# Compiler switch - Debug log(Linux terminal log)
+RCAR_DEBUG_LOG ?= 0
+ifneq ($(RCAR_DEBUG_LOG),0)
+core-platform-cflags += -DRCAR_DEBUG_LOG
+endif
