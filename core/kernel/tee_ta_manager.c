@@ -41,6 +41,11 @@ struct mutex tee_ta_mutex = MUTEX_INITIALIZER;
 struct condvar tee_ta_init_cv = CONDVAR_INITIALIZER;
 struct tee_ta_ctx_head tee_ctxes = TAILQ_HEAD_INITIALIZER(tee_ctxes);
 
+#ifdef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
+#include "rcar_mutex.h"
+struct mutex g_ta_area_for_verification_mutex __nex_data = MUTEX_INITIALIZER;
+#endif
+
 #ifndef CFG_CONCURRENT_SINGLE_INSTANCE_TA
 static struct condvar tee_ta_cv = CONDVAR_INITIALIZER;
 static short int tee_ta_single_instance_thread = THREAD_ID_INVALID;
@@ -713,7 +718,13 @@ TEE_Result tee_ta_open_session(TEE_ErrorOrigin *err,
 	bool panicked = false;
 	bool was_busy = false;
 
+#ifdef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
+	rcar_nex_mutex_lock(&g_ta_area_for_verification_mutex);
+#endif
 	res = tee_ta_init_session(err, open_sessions, uuid, &s);
+#ifdef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
+	rcar_nex_mutex_unlock(&g_ta_area_for_verification_mutex);
+#endif
 	if (res != TEE_SUCCESS) {
 		DMSG("init session failed 0x%x", res);
 		return res;
