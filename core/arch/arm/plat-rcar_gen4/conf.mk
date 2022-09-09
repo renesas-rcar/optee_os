@@ -34,7 +34,7 @@ endif
 
 CFG_DT ?= y
 
-CFG_MMAP_REGIONS ?= 21
+CFG_MMAP_REGIONS ?= 22
 CFG_CORE_CLUSTER_SHIFT ?= 1
 CFG_NUM_THREADS ?= 8
 
@@ -72,4 +72,13 @@ CFG_CORE_HEAP_SIZE ?= 196608
 RCAR_DEBUG_LOG ?= 0
 ifneq ($(RCAR_DEBUG_LOG),0)
 core-platform-cflags += -DRCAR_DEBUG_LOG
+endif
+
+CFG_DYNAMIC_TA_AUTH_BY_HWENGINE ?= n
+ifeq ($(CFG_DYNAMIC_TA_AUTH_BY_HWENGINE),y)
+core-platform-cflags += -DRCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
+CFG_ICUM_FW_SERVICE := y
+core-platform-cflags += -DTARGET_CORTEX_A
+core-platform-cflags += -DTARGET_DEVICE_S4X
+core-platform-cflags += -DAARCH64
 endif

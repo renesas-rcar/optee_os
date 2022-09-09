@@ -74,6 +74,9 @@
 #define NONCACHE_WORK_BASE	(0x45F00000U)	/* Non Cache Area address */
 #define NONCACHE_WORK_SIZE	(0x00100000U)	/* Non Cache Area Size */
 
+#define ICU_FW_SHMEM_BASE	(0x41C00000U)	/* ICU FW Share Memory address */
+#define ICU_FW_SHMEM_SIZE	(0x00100000U)	/* ICU FW Share Memory size */
+
 #define LIFEC_BASE		(0xE6110000U)	/* Life Cycle address	*/
 #define RST_BASE		(0xE6160000U)	/* Reset address	*/
 #define CE_BASE			(0xE6600000U)	/* Crypto Engine address */
@@ -178,5 +181,10 @@
 #define MEMORY8_BASE		ROUNDDOWN(RPC_ADDR_MAP_BASE, MEM_SECTION_SIZE)
 #define MEMORY8_SIZE		(RPC_ADDR_MAP_SIZE)
 #define MEMORY8_TYPE		MEM_AREA_IO_SEC
+
+/* ICU FW Share Memory Address Map */
+#define MEMORY9_BASE		ROUNDDOWN(ICU_FW_SHMEM_BASE, MEM_SECTION_SIZE)
+#define MEMORY9_SIZE		(ICU_FW_SHMEM_SIZE)
+#define MEMORY9_TYPE		MEM_AREA_IO_SEC
 
 #endif /*PLATFORM_CONFIG_H*/
