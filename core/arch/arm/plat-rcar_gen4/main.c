@@ -40,6 +40,10 @@
 #include <trace.h>
 #include <kernel/misc.h>
 #include <kernel/spinlock.h>
+#include <sm/optee_smc.h>
+#include <tee/entry_fast.h>
+#include "rcar_log_func.h"
+#include "rcar_common.h"
 
 static void main_hook_gic_add(struct itr_chip *chip, size_t it, uint32_t flags);
 
@@ -48,6 +52,20 @@ uint8_t cpu_on_core_bit __nex_bss = 0U;
 static void (*gic_add_ptr_bk)(struct itr_chip *chip, size_t it,
 				uint32_t flags) __nex_bss;
 static struct itr_ops main_itr_ops __nex_bss;
+
+/* Overriding the default __weak tee_entry_fast() */
+void tee_entry_fast(struct thread_smc_args *args)
+{
+	DMSG("IN args->a0=0x%lX", args->a0);
+	if ((args->a0 == OPTEE_SMC_GET_SHM_CONFIG) &&
+	    (args->a1 == SMC_RCAR_CMD) &&
+	    (args->a2 == START_DLOG_OUTPUT)) {
+		is_normal_world_initialized = 1;
+		DMSG("Normal World was initialized");
+	}
+	__tee_entry_fast(args);
+	DMSG("OUT Received SMC from Normal World");
+}
 
 void main_secondary_init_gic(void)
 {
@@ -161,6 +179,8 @@ void main_init_gic(void)
 	main_itr_ops = *gic_data.chip.ops;
 	main_itr_ops.add = main_hook_gic_add;
 	gic_data.chip.ops = (const struct itr_ops *)&main_itr_ops;
+
+	log_buf_init();
 }
 
 static void main_hook_gic_add(struct itr_chip *chip, size_t it, uint32_t flags)
@@ -188,5 +208,3 @@ void console_init(void)
 {
 	/* No Operation */
 }
-
-int32_t is_normal_world_initialized __nex_bss;
