@@ -1155,6 +1155,8 @@ static bool assign_mem_va_dir(vaddr_t tee_ram_va,
 
 #ifdef RCAR_MMU_DIRECT_MAPPING
 	const paddr_t direct_map_area[][2] = {
+		{ MEMORY4_BASE, MEMORY4_SIZE }, /* TA area for verification address */
+		{ MEMORY9_BASE, MEMORY9_SIZE }, /* ICU FW Share Memory address */
 		{ DEVICE1_PA_BASE, DEVICE1_SIZE } /* Crypto Engine address */
 	};
 	const size_t dmnum = sizeof(direct_map_area) / sizeof(paddr_t) / 2;
