@@ -19,6 +19,7 @@
 #include "platform_config.h"
 #include "rcar_common.h"
 #include "rcar_mutex.h"
+#include "rcar_suspend_to_ram.h"
 
 static struct spim_sector_info g_sector[SURFACE_NUM][SAVE_SECTOR_NUM] __nex_bss;
 static int32_t g_current_surface[SAVE_SECTOR_NUM] __nex_bss;
@@ -30,6 +31,7 @@ static TEE_Result g_standalone_fs_status __nex_data =
 static uint8_t *g_work_buf __nex_bss;
 static uint8_t *g_record_data_buf __nex_bss;
 static struct spim_record_descriptor *g_record_data_rdesc __nex_bss;
+static uint32_t resume_init_rpc_flag __nex_bss = 0U;
 
 static TEE_Result tee_standalone_fs_init(void);
 static TEE_Result spi_init_sector_info(void);
@@ -173,6 +175,8 @@ static TEE_Result standalone_fs_opendir(const TEE_UUID *uuid,
 static TEE_Result standalone_fs_readdir(struct tee_fs_dir *d,
 			struct tee_fs_dirent **ent);
 static void standalone_fs_closedir(struct tee_fs_dir *d);
+static void qspi_hyper_flash_backup_cb(enum suspend_to_ram_state s2r_state,
+			uint32_t cpu_id);
 
 static TEE_Result tee_standalone_fs_init(void)
 {
@@ -306,6 +310,10 @@ static TEE_Result spi_init_sector_info(void)
 static TEE_Result spi_get_status(void)
 {
 	(void)tee_standalone_fs_init();
+	if(resume_init_rpc_flag == 1U){
+		(void)qspi_hyper_flash_init_rpc();
+		resume_init_rpc_flag = 0U;
+	}
 	return g_standalone_fs_status;
 }
 
@@ -2301,6 +2309,16 @@ static void standalone_fs_closedir(struct tee_fs_dir *d)
 
 	DMSG("OUT status=0x%X", res);
 }
+
+static void qspi_hyper_flash_backup_cb(enum suspend_to_ram_state s2r_state,
+				uint32_t cpu_id __unused)
+{
+	if (s2r_state == SUS2RAM_STATE_RESUME) {
+		resume_init_rpc_flag = 1U;
+	}
+}
+
+suspend_to_ram_cbfunc(qspi_hyper_flash_backup_cb);
 
 const struct tee_file_operations standalone_fs_ops = {
 	.open = standalone_fs_open,
