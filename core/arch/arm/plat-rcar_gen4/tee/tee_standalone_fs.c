@@ -14,6 +14,7 @@
 #include <kernel/tee_misc.h>
 #include <trace.h>
 #include <initcall.h>
+#include <drivers/mfis_lock.h>
 
 #include "tee_standalone_fs.h"
 #include "platform_config.h"
@@ -311,8 +312,10 @@ static TEE_Result spi_get_status(void)
 {
 	(void)tee_standalone_fs_init();
 	if(resume_init_rpc_flag == 1U){
+		mfis_lock();
 		(void)qspi_hyper_flash_init_rpc();
 		resume_init_rpc_flag = 0U;
+		mfis_unlock();
 	}
 	return g_standalone_fs_status;
 }
