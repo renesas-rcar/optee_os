@@ -6,6 +6,7 @@
 #include <initcall.h>
 #include <platform_config.h>
 #include <kernel/panic.h>
+#include <rcar_suspend_to_ram.h>
 #include <crypto/crypto.h>
 #include <crypto/crypto_impl.h>
 #include "tee_provider_common.h"
@@ -302,6 +303,7 @@ static SSError_t ss_crys_hmac_update(void *ctx, uint8_t *dataIn_ptr,
 		uint32_t dataInSize, uint8_t *dataOut_ptr, CRYSError_t *crysRes);
 static SSError_t ss_crys_aesccm_update(void *ctx, uint8_t *dataIn_ptr,
 		uint32_t dataInSize, uint8_t *dataOut_ptr, CRYSError_t *crysRes);
+static void ss_backup_cb(enum suspend_to_ram_state state, uint32_t cpu_id);
 static TEE_Result crypto_hw_init_crypto_engine(void);
 
 static struct mutex secure_asymm_mutex __nex_data = MUTEX_INITIALIZER;
@@ -6578,6 +6580,25 @@ TEE_Result crypto_hw_asset_unpack(uint32_t assetId,
 	PROV_OUTMSG("res=0x%08x -> tee_res=0x%08x\n",res, tee_res);
 	return tee_res;
 }
+
+/*
+ * brief:	Callback function to use Suspend To RAM.
+ *
+ * param[in]	state		- State of Suspend To RAM.
+ * param[in]	cpu_id		- ID of using CPU.
+ * return	void
+ */
+static void ss_backup_cb(enum suspend_to_ram_state state,
+		uint32_t cpu_id __unused)
+{
+	if (state == SUS2RAM_STATE_SUSPEND) {
+		CRYS_Core_Suspend();
+	} else {
+		CRYS_Core_Resume();
+	}
+	return;
+}
+suspend_to_ram_cbfunc(ss_backup_cb);
 
 /*
  * brief:	Initialize of Crypto Engine Secure engines.
