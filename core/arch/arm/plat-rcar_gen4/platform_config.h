@@ -82,6 +82,7 @@
 #define CE_BASE			(0xE6600000U)	/* Crypto Engine address */
 #define RPC_BASE		(0xEE200000U)	/* RPC address		*/
 #define PRR_BASE		(0xFFF00000U)	/* Product Register address */
+#define MFIS_BASE		(0xE6260000U)	/* MFIS address */
 #define RPC_ADDR_MAP_BASE	(0x08000000U)	/* RPC Internal address	*/
 #define RPC_ADDR_MAP_SIZE	(0x04000000U)	/* RPC Address Map size */
 
@@ -186,5 +187,10 @@
 #define MEMORY9_BASE		ROUNDDOWN(ICU_FW_SHMEM_BASE, MEM_SECTION_SIZE)
 #define MEMORY9_SIZE		(ICU_FW_SHMEM_SIZE)
 #define MEMORY9_TYPE		MEM_AREA_IO_SEC
+
+/* MFIS Address Map */
+#define MEMORY10_BASE		ROUNDDOWN(MFIS_BASE, MEM_SECTION_SIZE)
+#define MEMORY10_SIZE		(MEM_SECTION_SIZE)
+#define MEMORY10_TYPE		MEM_AREA_IO_SEC
 
 #endif /*PLATFORM_CONFIG_H*/

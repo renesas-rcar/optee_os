@@ -44,11 +44,14 @@
 #include <tee/entry_fast.h>
 #include "rcar_log_func.h"
 #include "rcar_common.h"
+#include "rcar_suspend_to_ram.h"
 
 static void main_hook_gic_add(struct itr_chip *chip, size_t it, uint32_t flags);
 
 uint32_t cpu_on_core_lock __nex_bss = (uint32_t)SPINLOCK_UNLOCK;
 uint8_t cpu_on_core_bit __nex_bss = 0U;
+static uint32_t suspend_to_ram_save_flag __nex_bss = 0U;
+static uint32_t main_cpu_lock __nex_bss = (uint32_t)SPINLOCK_UNLOCK;
 static void (*gic_add_ptr_bk)(struct itr_chip *chip, size_t it,
 				uint32_t flags) __nex_bss;
 static struct itr_ops main_itr_ops __nex_bss;
@@ -65,6 +68,62 @@ void tee_entry_fast(struct thread_smc_args *args)
 	}
 	__tee_entry_fast(args);
 	DMSG("OUT Received SMC from Normal World");
+}
+
+unsigned long thread_cpu_suspend_handler(unsigned long a0,
+				unsigned long a1 __unused)
+{
+
+	uint32_t exceptions;
+
+	exceptions = cpu_spin_lock_xsave(&main_cpu_lock);
+	TMSG("a0=0x%lX, a1=0x%lX", a0, a1);
+
+	if (a0 >= TFW_ARG_SYSTEM_SUSPEND) {
+		if (suspend_to_ram_save_flag == 0U) {
+			suspend_to_ram_save();
+			suspend_to_ram_save_flag = 1U;
+			DMSG("END suspend_to_ram_save");
+		} else {
+			/* no operation */
+		}
+	} else {
+		/* in case of CPU_SUSPEND(CPU Idle), no operation */
+	}
+
+	cpu_spin_unlock_xrestore(&main_cpu_lock, exceptions);
+	return 0U;
+}
+
+unsigned long thread_cpu_resume_handler(unsigned long a0 __unused,
+				unsigned long a1 __unused)
+{
+	uint32_t exceptions;
+	uint32_t exceptions2;
+
+	exceptions = cpu_spin_lock_xsave(&main_cpu_lock);
+	TMSG("a0=0x%lX, a1=0x%lX", a0, a1);
+
+	if (suspend_to_ram_save_flag == 1U) {
+		suspend_to_ram_restore();
+		suspend_to_ram_save_flag = 0U;
+		DMSG("END suspend_to_ram_restore");
+	} else {
+		/* no operation */
+	}
+
+	if (smc_prohibit_flag) {
+		exceptions2 = cpu_spin_lock_xsave(&cpu_on_core_lock);
+
+		/* Unmask the FIQ on the primary CPU */
+		cpu_on_core_bit |= (uint8_t)(0x1U << get_core_pos());
+		itr_set_all_cpu_mask(cpu_on_core_bit);
+
+		cpu_spin_unlock_xrestore(&cpu_on_core_lock, exceptions2);
+	}
+
+	cpu_spin_unlock_xrestore(&main_cpu_lock, exceptions);
+	return 0U;
 }
 
 void main_secondary_init_gic(void)
@@ -136,6 +195,9 @@ register_phys_mem_pgdir(MEMORY8_TYPE, MEMORY8_BASE, MEMORY8_SIZE);
 #endif
 #ifdef MEMORY9_BASE
 register_phys_mem_pgdir(MEMORY9_TYPE, MEMORY9_BASE, MEMORY9_SIZE);
+#endif
+#ifdef MEMORY10_BASE
+register_phys_mem_pgdir(MEMORY10_TYPE, MEMORY10_BASE, MEMORY10_SIZE);
 #endif
 #ifdef DEVICE0_PA_BASE
 register_phys_mem_pgdir(DEVICE0_TYPE, DEVICE0_PA_BASE, DEVICE0_SIZE);

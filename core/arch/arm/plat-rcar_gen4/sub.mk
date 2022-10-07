@@ -6,6 +6,7 @@ srcs-y += rcar_log_func.c
 srcs-y += rcar_mutex.c
 srcs-$(CFG_DYNAMIC_TA_AUTH_BY_HWENGINE) += rcar_ta_auth.c
 srcs-$(CFG_ICUM_FW_SERVICE) += rcar_fw_security_service.c
+srcs-y += rcar_suspend_to_ram.c
 
 # Copy the base file - /core/arch/arm/kernel/
 srcs-y += trace_ext.c

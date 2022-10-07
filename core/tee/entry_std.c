@@ -17,6 +17,7 @@
 #include <mm/core_mmu.h>
 #include <mm/mobj.h>
 #include <optee_msg.h>
+#include <sm/optee_smc.h>
 #include <string.h>
 #include <tee/entry_std.h>
 #include <tee/tee_cryp_utl.h>
@@ -534,6 +535,12 @@ TEE_Result __tee_entry_std(struct optee_msg_arg *arg, uint32_t num_params)
 {
 	TEE_Result res = TEE_SUCCESS;
 
+#if defined(PLATFORM_rcar_gen4)
+	if (smc_prohibit_flag) {
+		DMSG("smc_prohibit: ETHREAD_LIMIT std_cmd=0x%x", arg->cmd);
+		return OPTEE_SMC_RETURN_ETHREAD_LIMIT;
+	}
+#endif /* PLATFORM_rcar_gen4 */
 	/* Enable foreign interrupts for STD calls */
 	thread_set_foreign_intr(true);
 	switch (arg->cmd) {
