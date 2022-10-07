@@ -8,6 +8,7 @@
 #include <trace.h>
 #include <kernel/delay.h>
 #include <io.h>
+#include <drivers/mfis_lock.h>
 #include <drivers/qspi_hyper_flash.h>
 
 #include "qspi_hyper_flash_common.h"
@@ -38,6 +39,8 @@ uint32_t qspi_hyper_flash_init(void)
 
 	ret = init_rpc_reg_depends_soc();
 
+	mfis_lock();
+
 	if (ret == FL_DRV_OK) {
 		ret = qspi_hyper_flash_init_rpc();
 	}
@@ -50,6 +53,8 @@ uint32_t qspi_hyper_flash_init(void)
 		ret = qspi_common_init(&flash_control_ops);
 	}
 
+	mfis_unlock();
+
 	return ret;
 }
 
@@ -59,6 +64,8 @@ uint32_t qspi_hyper_flash_erase(uint32_t sector_addr)
 	uint32_t check_sector_size;
 
 	DMSG("sector_addr=%x", sector_addr);
+
+	mfis_lock();
 
 	check_sector_size = (sector_addr) % (SECTOR_SIZE);
 	if (check_sector_size != 0U) {
@@ -71,6 +78,8 @@ uint32_t qspi_hyper_flash_erase(uint32_t sector_addr)
 		/* erase the according to device id */
 		ret = flash_control_ops.erase(sector_addr);
 	}
+
+	mfis_unlock();
 
 	DMSG("ret=%d", ret);
 
@@ -88,6 +97,8 @@ uint32_t qspi_hyper_flash_read(uint32_t flash_addr, uint8_t *buf, size_t rsize)
 	uint8_t *p_flash_addr;
 
 	DMSG("flash_addr=%x, buf=%p, rsize=%zu", flash_addr, buf, rsize);
+
+	mfis_lock();
 
 	if (buf == NULL) {
 		ret = FL_DRV_ERR_BUF_INCORRECT;
@@ -150,6 +161,8 @@ uint32_t qspi_hyper_flash_read(uint32_t flash_addr, uint8_t *buf, size_t rsize)
 						flash_addr, buf, rsize);
 	}
 
+	mfis_unlock();
+
 	DMSG("ret=%d", ret);
 
 	return ret;
@@ -162,6 +175,8 @@ uint32_t qspi_hyper_flash_write(uint32_t flash_addr, const uint8_t *buf,
 	uint32_t check_sector_size;
 
 	DMSG("flash_addr=%x, buf=%p, wsize=%zu", flash_addr, buf, wsize);
+
+	mfis_lock();
 
 	if (buf == NULL) {
 		ret = FL_DRV_ERR_BUF_INCORRECT;
@@ -191,6 +206,8 @@ uint32_t qspi_hyper_flash_write(uint32_t flash_addr, const uint8_t *buf,
 		ret = flash_control_ops.write((uintptr_t)buf,
 							flash_addr, wsize);
 	}
+
+	mfis_unlock();
 
 	DMSG("ret=%d", ret);
 
