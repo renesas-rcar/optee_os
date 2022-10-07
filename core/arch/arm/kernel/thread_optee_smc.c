@@ -26,6 +26,8 @@
 
 #ifdef PLATFORM_rcar_gen4
 #include <kernel/tee_time.h>
+#include <kernel/spinlock.h>
+#include "rcar_common.h"
 #endif
 
 static bool thread_prealloc_rpc_cache;
@@ -667,4 +669,58 @@ TEE_Result thread_hw_wait_cmd(const TEE_Time *base_time, uint32_t timeout,
 	}
 	return res;
 }
-#endif
+
+bool smc_prohibit_flag __nex_bss = false;
+
+bool thread_rcar_suspend_sync(void)
+{
+	bool rv;
+	int32_t n;
+	uint32_t exceptions;
+
+	DMSG("IN  smc_prohibit_flag=%d", smc_prohibit_flag);
+
+	thread_lock_global();
+
+	for (n = 0; n < CFG_NUM_THREADS; n++) {
+		if (threads[n].state != THREAD_STATE_FREE) {
+			rv = false;
+			goto out;
+		} else {
+			/* no operation */
+		}
+	}
+
+	rv = true;
+	smc_prohibit_flag = true;
+out:
+	thread_unlock_global();
+	if (rv) {
+		exceptions = cpu_spin_lock_xsave(&cpu_on_core_lock);
+
+		/* Mask all FIQ */
+		cpu_on_core_bit = 0U;
+		itr_set_all_cpu_mask(cpu_on_core_bit);
+
+		cpu_spin_unlock_xrestore(&cpu_on_core_lock, exceptions);
+	}  else {
+		/* no operation */
+	}
+
+	DMSG("OUT smc_prohibit_flag=%d ret=%d", smc_prohibit_flag, rv);
+	return rv;
+}
+
+void thread_rcar_smc_resume(void)
+{
+	DMSG("IN  smc_prohibit_flag=%d", smc_prohibit_flag);
+
+	thread_lock_global();
+
+	smc_prohibit_flag = false;
+
+	thread_unlock_global();
+
+	DMSG("OUT smc_prohibit_flag=%d", smc_prohibit_flag);
+}
+#endif /* PLATFORM_rcar_gen4 */

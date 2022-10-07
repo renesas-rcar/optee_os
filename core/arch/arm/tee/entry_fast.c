@@ -187,6 +187,16 @@ void __weak tee_entry_fast(struct thread_smc_args *args)
  */
 void __tee_entry_fast(struct thread_smc_args *args)
 {
+#if defined(PLATFORM_rcar_gen4)
+	const uint64_t RCAR_CODE_SUCCESS = 1;
+	const uint64_t RCAR_CODE_BUSY = 0;
+
+	if ((smc_prohibit_flag) && (args->a0 != OPTEE_SMC_RCAR_RESUME)) {
+		DMSG("smc_prohibit: ETHREAD_LIMIT fast_cmd=0x%lx", args->a0);
+		args->a0 = OPTEE_SMC_RETURN_ETHREAD_LIMIT;
+		return;
+	}
+#endif /* PLATFORM_rcar_gen4 */
 	switch (args->a0) {
 
 	/* Generic functions */
@@ -239,6 +249,20 @@ void __tee_entry_fast(struct thread_smc_args *args)
 		tee_entry_vm_destroyed(args);
 		break;
 #endif
+
+#if defined(PLATFORM_rcar_gen4)
+	case OPTEE_SMC_RCAR_SUSPEND_SYNC:
+		if (thread_rcar_suspend_sync()) {
+			args->a0 = RCAR_CODE_SUCCESS;
+		} else {
+			args->a0 = RCAR_CODE_BUSY;
+		}
+		break;
+	case OPTEE_SMC_RCAR_RESUME:
+		thread_rcar_smc_resume();
+		args->a0 = RCAR_CODE_SUCCESS;
+		break;
+#endif /* PLATFORM_rcar_gen4 */
 
 	default:
 		args->a0 = OPTEE_SMC_RETURN_UNKNOWN_FUNCTION;
