@@ -36,5 +36,6 @@ uint32_t qspi_hyper_flash_read(uint32_t flash_addr, uint8_t *buf,
 				size_t rsize);
 uint32_t qspi_hyper_flash_write(uint32_t flash_addr, const uint8_t *buf,
 				size_t wsize);
+uint32_t qspi_hyper_flash_init_rpc(void);
 
 #endif /* QSPI_HYPER_FLASH_H */

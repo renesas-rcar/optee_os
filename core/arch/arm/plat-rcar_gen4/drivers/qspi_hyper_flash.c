@@ -13,6 +13,7 @@
 #include "qspi_hyper_flash_common.h"
 #include "qspi_flash_common.h"
 #include "hyper_flash_control.h"
+#include "rcar_suspend_to_ram.h"
 #include "rcar_common.h"
 
 uint32_t rpc_clock_mode __nex_data = RPC_CLK_80M;
@@ -24,7 +25,6 @@ static uint32_t ext_addr_read_mode_flash_unsupported(uint32_t read_ext_top_addr,
 static uint32_t write_flash_unsupported(uint32_t buf_addr,
 					uint32_t flash_addr, uint32_t wsize);
 static uint32_t init_rpc_reg_depends_soc(void);
-static uint32_t init_rpc(void);
 
 static struct flash_control_operations flash_control_ops __nex_data = {
 	.erase = erase_flash_unsupported,
@@ -39,7 +39,7 @@ uint32_t qspi_hyper_flash_init(void)
 	ret = init_rpc_reg_depends_soc();
 
 	if (ret == FL_DRV_OK) {
-		ret = init_rpc();
+		ret = qspi_hyper_flash_init_rpc();
 	}
 
 	if (ret == FL_DRV_OK) {
@@ -244,7 +244,7 @@ static uint32_t init_rpc_reg_depends_soc(void)
 	return ret;
 }
 
-static uint32_t init_rpc(void)
+uint32_t qspi_hyper_flash_init_rpc(void)
 {
 	uint32_t ret;
 	uint32_t dataL;
