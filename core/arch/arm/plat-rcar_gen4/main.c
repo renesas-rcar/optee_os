@@ -209,8 +209,10 @@ register_phys_mem_pgdir(DEVICE1_TYPE, DEVICE1_PA_BASE, DEVICE1_SIZE);
 register_phys_mem_pgdir(DEVICE2_TYPE, DEVICE2_PA_BASE, DEVICE2_SIZE);
 #endif
 
+#if defined(CFG_CORE_DYN_SHM) && !defined(CFG_CORE_RESERVED_SHM)
 register_ddr(NSEC_DDR_0_BASE, NSEC_DDR_0_SIZE);
 register_ddr(NSEC_DDR_1_BASE, NSEC_DDR_1_SIZE);
+#endif
 
 void main_init_gic(void)
 {
