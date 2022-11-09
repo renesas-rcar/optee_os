@@ -24,7 +24,7 @@
 
 static struct spim_sector_info g_sector[SURFACE_NUM][SAVE_SECTOR_NUM] __nex_bss;
 static int32_t g_current_surface[SAVE_SECTOR_NUM] __nex_bss;
-static struct handle_db g_fd_handle_db __nex_data = HANDLE_DB_INITIALIZER;
+static struct handle_db g_fd_handle_db = HANDLE_DB_INITIALIZER;
 static struct handle_db g_rd_handle_db __nex_data = HANDLE_DB_INITIALIZER;
 static struct mutex g_standalone_fs_mutex __nex_data = MUTEX_INITIALIZER;
 static TEE_Result g_standalone_fs_status __nex_data =
@@ -132,6 +132,7 @@ static TEE_Result spi_erase_and_write_sector(uint32_t sector_addr,
 			const uint8_t *encrypted_record_buf,
 			uint32_t record_buf_size,
 			const uint8_t *encrypted_term_info);
+static int32_t spi_handle_get(struct handle_db *db, void *ptr);
 
 static TEE_Result tee_standalone_open(const char *file, size_t file_len,
 			size_t *file_size, struct tee_file_handle **fh_out);
@@ -1398,8 +1399,11 @@ static struct spim_record_descriptor *spi_alloc_rdesc
 	int32_t descriptor;
 	void *buf;
 
+#ifdef CFG_VIRTUALIZATION
+	rdesc = nex_malloc(sizeof(struct spim_record_descriptor));
+#else
 	rdesc = malloc(sizeof(struct spim_record_descriptor));
-
+#endif
 	if (rdesc != NULL) {
 		(void)memset(rdesc, 0, sizeof(struct spim_record_descriptor));
 		if (record_head != NULL) {
@@ -1416,11 +1420,15 @@ static struct spim_record_descriptor *spi_alloc_rdesc
 		rdesc->record_offset = 0;
 		rdesc->ref_count = 1;
 		rdesc->ctrl_flag = 0;
-		descriptor = handle_get(&g_rd_handle_db, rdesc);
+		descriptor = spi_handle_get(&g_rd_handle_db, rdesc);
 		if (descriptor >= 0) {
 			rdesc->rd = descriptor;
 		} else {
+#ifdef CFG_VIRTUALIZATION
+			nex_free(rdesc);
+#else
 			free(rdesc);
+#endif
 			rdesc = NULL;
 		}
 	}
@@ -1444,7 +1452,11 @@ static void spi_free_rdesc(struct spim_record_descriptor *rdesc)
 			}
 		}
 		(void)handle_put(&g_rd_handle_db, rdesc->rd);
+#ifdef CFG_VIRTUALIZATION
+		nex_free(rdesc);
+#else
 		free(rdesc);
+#endif
 		if (rdesc == g_record_data_rdesc) {
 			g_record_data_rdesc = NULL;
 		}
@@ -1633,6 +1645,55 @@ static TEE_Result spi_erase_and_write_sector(uint32_t sector_addr,
 	}
 
 	return res;
+}
+
+static int32_t spi_handle_get(struct handle_db *db, void *ptr)
+{
+#ifdef CFG_VIRTUALIZATION
+	const size_t HANDLE_DB_INITIAL_MAX_PTRS = 4;
+	size_t n;
+	void *p;
+	size_t new_max_ptrs;
+	int32_t ret = -1;
+
+	if ((db == NULL) || (ptr == NULL)) {
+		goto out;
+	}
+
+	/* Try to find an empty location */
+	for (n = 0; n < db->max_ptrs; n++) {
+		if (db->ptrs[n] == NULL) {
+			db->ptrs[n] = ptr;
+			ret = (int32_t)n;
+			goto out;
+		}
+	}
+
+	/* No location available, grow the ptrs array */
+	if (db->max_ptrs != 0U) {
+		new_max_ptrs = db->max_ptrs * 2U;
+	} else {
+		new_max_ptrs = HANDLE_DB_INITIAL_MAX_PTRS;
+	}
+	p = nex_realloc(db->ptrs, new_max_ptrs * sizeof(void *));
+	if (p == NULL) {
+		goto out;
+	}
+
+	db->ptrs = p;
+	(void)memset(db->ptrs + db->max_ptrs, 0,
+	       (new_max_ptrs - db->max_ptrs) * sizeof(void *));
+	db->max_ptrs = new_max_ptrs;
+
+	/* Since n stopped at db->max_ptrs there is an empty location there */
+	db->ptrs[n] = ptr;
+	ret = (int32_t)n;
+
+out:
+	return ret;
+#else
+	return handle_get(db, ptr);
+#endif
 }
 
 static TEE_Result tee_standalone_open(const char *file, size_t file_len,
