@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2015, Linaro Limited
+ * Copyright (c) 2017-2022, Renesas Electronics Corporation
  */
 
 #include <platform_config.h>
@@ -24,7 +25,11 @@
 		cmp	x0, #CFG_TEE_CORE_NB_CORE
 		/* Unsupported CPU, park it before it breaks something */
 		bge	unhandled_cpu
+#if defined(PLATFORM_rcar_gen4)
+		adr_l	x1, stack_tmp_stride
+#else
 		adr	x1, stack_tmp_stride
+#endif
 		ldr	w1, [x1]
 		mul	x1, x0, x1
 		adrp	x0, stack_tmp_export
@@ -137,8 +142,13 @@ clear_bss:
 	 * Clear .nex_bss, this code obviously depends on the linker keeping
 	 * start/end of .bss at least 8 byte aligned.
 	 */
+#if defined(PLATFORM_rcar_gen4)
+	adr_l	x0, __nex_bss_start
+	adr_l	x1, __nex_bss_end
+#else
 	adr	x0, __nex_bss_start
 	adr	x1, __nex_bss_end
+#endif
 clear_nex_bss:
 	str	xzr, [x0], #8
 	cmp	x0, x1
