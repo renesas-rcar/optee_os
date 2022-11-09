@@ -88,6 +88,11 @@
 
 #define MEM_SECTION_SIZE	(0x00100000U)
 
+#ifdef CFG_WITH_LPAE
+/* Maximum number of memory mapping by MMU */
+#define MAX_XLAT_TABLES		CFG_MMAP_REGIONS
+#endif
+
 #ifdef CFG_CORE_DYN_SHM
 #define NSEC_DDR_0_BASE		0x48000000
 #define NSEC_DDR_0_SIZE		0x78000000

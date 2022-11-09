@@ -82,3 +82,10 @@ core-platform-cflags += -DTARGET_CORTEX_A
 core-platform-cflags += -DTARGET_DEVICE_S4X
 core-platform-cflags += -DAARCH64
 endif
+
+ifeq ($(CFG_VIRTUALIZATION),y)
+CFG_VIRT_GUEST_COUNT ?= 3
+CFG_RCAR_MUTEX_DELAY ?= 1
+core-platform-cflags += -DCFG_RCAR_MUTEX_DELAY=$(CFG_RCAR_MUTEX_DELAY)
+CFG_CORE_RESERVED_SHM ?= n
+endif
