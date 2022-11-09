@@ -154,11 +154,17 @@ SECTIONS
 	__flatmap_nex_rw_start = . ;
 	.nex_data : ALIGN(8) {
 		*(.nex_data .nex_data.*)
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
+	        *libcrypto_engine_secure.a:*(.data .data.*)
+#endif
 	}
 
 	.nex_bss : ALIGN(8) {
 		__nex_bss_start = .;
 		*(.nex_bss .nex_bss.*)
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
+	        *libcrypto_engine_secure.a:*(.bss .bss.*)
+#endif
 		__nex_bss_end = .;
 	}
 
