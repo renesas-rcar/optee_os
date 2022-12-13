@@ -23,7 +23,6 @@ static uint32_t call_maskrom_api(void);
 static uint64_t check_object_addr(const uint32_t *cert_header);
 
 static struct mutex g_rom_api_mutex __nex_data = MUTEX_INITIALIZER;
-static struct mutex g_fixed_mem_mutex __nex_data = MUTEX_INITIALIZER;
 
 static uint32_t get_key_cert_size(const uint32_t *cert_header)
 {
@@ -237,7 +236,6 @@ TEE_Result rcar_auth_ta_certificate(const struct shdr *key_cert,
 	 * ---------------------------------------------------------------
 	 */
 	if (res == TEE_SUCCESS) {
-		rcar_nex_mutex_lock(&g_fixed_mem_mutex);
 		/* copy to fixed memory */
 		(void)memcpy(fixed_base,
 			(const uint8_t *)content_cert + content_cert_size,
@@ -271,7 +269,6 @@ TEE_Result rcar_auth_ta_certificate(const struct shdr *key_cert,
 			DMSG("[%s] Normal boot", product_name);
 			*secmem_ta = fixed_ta;
 		}
-		rcar_nex_mutex_unlock(&g_fixed_mem_mutex);
 	} else {
 		EMSG("Security error. r=0x%x", res);
 	}
