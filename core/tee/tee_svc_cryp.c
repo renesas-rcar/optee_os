@@ -2,6 +2,7 @@
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
  * Copyright (c) 2020, Linaro Limited
+ * Copyright (c) 2017-2022, Renesas Electronics Corporation.
  */
 
 #include <assert.h>
@@ -3836,7 +3837,10 @@ TEE_Result syscall_rcar_asset_unpack(uint32_t assetId __maybe_unused,
 		uint32_t *pUserData __maybe_unused)
 {
 #if defined(CFG_CRYPT_HW_CRYPTOENGINE)
-	return TEE_ERROR_NOT_SUPPORTED;
+	TEE_Result ret;
+	ret = crypto_hw_asset_unpack(assetId, pAssetPackage, assetPackagLen,
+			pAssetData, pAssetDataLen, pUserData);
+	return ret;
 #else
 	return TEE_ERROR_NOT_IMPLEMENTED;
 #endif
