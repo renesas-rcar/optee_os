@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
- * Copyright (c) 2015-2021, Renesas Electronics Corporation
+ * Copyright (c) 2015-2023, Renesas Electronics Corporation
  */
 
 #ifndef RCAR_COMMON_H
@@ -32,7 +32,8 @@
 /* Product Register */
 #define PRR			p2v_ioadr(0xFFF00044U)
 
-
+/* Stack switching */
+uint32_t asm_switch_stack_pointer(uintptr_t jump, uint32_t stack, void *arg);
 
 /* Parameters value passed from ARM Trusted FW */
 #define TFW_ARG_CPU_SUSPEND	(0x0UL)
