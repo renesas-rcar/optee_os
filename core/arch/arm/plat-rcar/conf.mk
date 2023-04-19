@@ -21,6 +21,9 @@ $(call force,CFG_TEE_CORE_NB_CORE,8)
 $(call force,CFG_ARM64_core,y)
 $(call force,CFG_WITH_LPAE,y)
 
+$(call force,CFG_CORE_ASLR,n)
+$(call force,CFG_TA_ASLR,n)
+
 ifeq ($(PLATFORM_FLAVOR), spider_s4)
 $(call force,CFG_RCAR_GEN4, y)
 else
