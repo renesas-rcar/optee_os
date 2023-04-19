@@ -1,15 +1,41 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
- * Copyright (c) 2014, STMicroelectronics International N.V.
- * Copyright (c) 2015-2021, Renesas Electronics Corporation
+ * Copyright (c) 2016, GlobalLogic
+ * Copyright (c) 2015-2023, Renesas Electronics Corporation
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice,
+ * this list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ * this list of conditions and the following disclaimer in the documentation
+ * and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
  */
-
 
 #include <console.h>
 #include <crypto/crypto.h>
 #include <kernel/boot.h>
 #include <kernel/panic.h>
 #include <mm/core_memprot.h>
+#include <platform_config.h>
+#include <stdint.h>
+#include <drivers/scif.h>
+#include <drivers/gic.h>
 #include <string.h>
 
 #include <arm.h>
@@ -31,7 +57,10 @@
 #include "rcar_log_func.h"
 #include "rcar_suspend_to_ram.h"
 
+struct gic_data gic_data __nex_bss;
+
 static void main_hook_gic_add(struct itr_chip *chip, size_t it, uint32_t type, uint32_t prio);
+static void rcar_main_secondary_init_gic(void);
 
 static uint32_t suspend_to_ram_save_flag __nex_bss = 0U;
 static uint32_t main_cpu_lock __nex_bss = (uint32_t)SPINLOCK_UNLOCK;
@@ -111,7 +140,7 @@ unsigned long thread_cpu_resume_handler(unsigned long a0 __unused,
 	return 0U;
 }
 
-void main_secondary_init_gic(void)
+void rcar_main_secondary_init_gic(void)
 {
 	uint32_t exceptions;
 	uint8_t cpu_mask;
@@ -149,8 +178,6 @@ unsigned long thread_cpu_off_handler(unsigned long a0 __unused,
 	return 0;
 }
 
-struct gic_data gic_data __nex_bss;
-
 // register_phys_mem_pgdir(MEM_AREA_IO_SEC, CONSOLE_UART_BASE, SCIF_REG_SIZE);
 register_phys_mem_pgdir(MEM_AREA_IO_SEC, GICD_BASE, GIC_DIST_REG_SIZE);
 register_phys_mem_pgdir(MEM_AREA_IO_SEC, GICC_BASE, GIC_CPU_REG_SIZE);
@@ -158,6 +185,13 @@ register_phys_mem_pgdir(MEM_AREA_IO_SEC, GICC_BASE, GIC_CPU_REG_SIZE);
 register_phys_mem_pgdir(MEM_AREA_IO_SEC, PRR_BASE, SMALL_PAGE_SIZE);
 #endif
 
+/* Legacy platforms */
+/* #if defined(PLATFORM_FLAVOR_salvator_h3) || \
+	defined(PLATFORM_FLAVOR_salvator_h3_4x2g) || \
+	defined(PLATFORM_FLAVOR_salvator_m3) || \
+	defined(PLATFORM_FLAVOR_salvator_m3_2x4g) || \
+	defined(PLATFORM_FLAVOR_spider_s4)
+*/
 #ifdef MEMORY1_BASE
 register_phys_mem_pgdir(MEMORY1_TYPE, MEMORY1_BASE, MEMORY1_SIZE);
 #endif
@@ -215,39 +249,9 @@ register_ddr(NSEC_DDR_2_BASE, NSEC_DDR_2_SIZE);
 register_ddr(NSEC_DDR_3_BASE, NSEC_DDR_3_SIZE);
 #endif
 #endif /* !CFG_CORE_RESERVED_SHM */
+// #endif
 
-static struct scif_uart_data console_data __nex_bss;
-const struct thread_handlers *generic_boot_get_handlers(void)
-{
-	return &handlers;
-}
-
-void main_init_gic(void)
-{
-	vaddr_t gicc_base;
-	vaddr_t gicd_base;
-
-	gicc_base = (vaddr_t)phys_to_virt(GICC_BASE,
-					  MEM_AREA_IO_SEC, GIC_CPU_REG_SIZE);
-	gicd_base = (vaddr_t)phys_to_virt(GICD_BASE,
-					  MEM_AREA_IO_SEC, GIC_DIST_REG_SIZE);
-	assert(gicc_base && gicd_base);
-
-	/* On ARMv8, GIC configuration is initialized in ARM-TF */
-	gic_init_base_addr(&gic_data, gicc_base, gicd_base);
-
-	itr_init(&gic_data.chip);
-
-	cpu_on_core_bit = (uint8_t)(0x1U << get_core_pos());
-
-	gic_add_ptr_bk = gic_data.chip.ops->add;
-	main_itr_ops = *gic_data.chip.ops;
-	main_itr_ops.add = main_hook_gic_add;
-	gic_data.chip.ops = (const struct itr_ops *)&main_itr_ops;
-
-	log_buf_init();
-}
-
+// static struct scif_uart_data console_data __nex_bss;  //use rcar_logging feature instead
 static void main_hook_gic_add(struct itr_chip *chip, size_t it, uint32_t type, uint32_t prio)
 {
 	uint32_t exceptions;
@@ -264,25 +268,16 @@ static void main_hook_gic_add(struct itr_chip *chip, size_t it, uint32_t type, u
 	DMSG("OUT cpu_mask=0x%x", cpu_mask);
 }
 
-void itr_core_handler(void)
-{
-	gic_it_handle(&gic_data);
-}
-
-void console_init(void)
-{
-	/* No Operation */
-}
-
 #ifdef PRR_BASE
 uint32_t rcar_prr_value __nex_bss;
 #endif
 
-// void console_init(void)
-// {
+void console_init(void)
+{
+	/* No Operation */
 	// scif_uart_init(&console_data, CONSOLE_UART_BASE);
 	// register_serial_console(&console_data.chip);
-// }
+}
 
 #ifdef CFG_RCAR_ROMAPI
 /* Should only seed from a hardware random number generator */
@@ -303,25 +298,20 @@ unsigned long plat_get_aslr_seed(void)
 void main_init_gic(void)
 {
 	gic_init(GICC_BASE, GICD_BASE);
+
+	// Use custom itr_ops.add (instead of gic_op_add).
+	cpu_on_core_bit = (uint8_t)(0x1U << get_core_pos());
+	gic_add_ptr_bk = gic_data.chip.ops->add;
+	main_itr_ops = *gic_data.chip.ops;
+	main_itr_ops.add = main_hook_gic_add;
+	gic_data.chip.ops = (const struct itr_ops *)&main_itr_ops;
+
+	// Initialize logging feature
+	log_buf_init();
 }
 
 void main_secondary_init_gic(void)
 {
 	gic_cpu_init();
+	rcar_main_secondary_init_gic();
 }
-// void main_init_gic(void)
-// {
-	// gic_init(&gic_data, GICC_BASE, GICD_BASE);
-	// itr_init(&gic_data.chip);
-// }
-
-// void main_secondary_init_gic(void)
-// {
-	// gic_cpu_init(&gic_data);
-// }
-
-// void itr_core_handler(void)
-// {
-	// gic_it_handle(&gic_data);
-// }
-

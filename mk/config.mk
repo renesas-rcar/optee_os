@@ -294,7 +294,7 @@ CFG_BUILD_IN_TREE_TA ?= y
 # When this flag is enabled, the ELF loader will introduce a random offset
 # when mapping the application in user space. ASLR makes the exploitation of
 # memory corruption vulnerabilities more difficult.
-CFG_TA_ASLR ?= y
+CFG_TA_ASLR ?= n
 
 # How much ASLR may shift the base address (in pages). The base address is
 # randomly shifted by an integer number of pages comprised between these two
@@ -308,7 +308,7 @@ CFG_TA_ASLR_MAX_OFFSET_PAGES ?= 128
 # When this flag is enabled, the early init code will introduce a random
 # offset when mapping TEE Core. ASLR makes the exploitation of memory
 # corruption vulnerabilities more difficult.
-CFG_CORE_ASLR ?= y
+CFG_CORE_ASLR = n
 
 # Stack Protection for TEE Core
 # This flag enables the compiler stack protection mechanisms -fstack-protector.
