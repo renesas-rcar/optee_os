@@ -17,57 +17,57 @@
 
 /* RCarH3_RPC  SPI Multi I/O Bus Controller (RPC) */
 /* Top of RPC memory space : 0x08000000-0x0BFFFFFF = 64MBytes */
-#define SPI_IOADDRESS_TOP	p2v_ioadr(RPC_ADDR_MAP_BASE)
+#define SPI_IOADDRESS_TOP	p2v_ioadr(RPC_ADDR_MAP_BASE, MEMORY10_SIZE)
 /* Common control register */
-#define RPC_CMNCR	p2v_regadr(RPC_BASE + 0x0000U)
+#define RPC_CMNCR	p2v_regadr(RPC_BASE + 0x0000U, MEMORY9_SIZE - 0x0000U)
 /* Data read control register */
-#define RPC_DRCR	p2v_regadr(RPC_BASE + 0x000CU)
+#define RPC_DRCR	p2v_regadr(RPC_BASE + 0x000CU, MEMORY9_SIZE - 0x000CU)
 /* Data read command setting register */
-#define RPC_DRCMR	p2v_regadr(RPC_BASE + 0x0010U)
+#define RPC_DRCMR	p2v_regadr(RPC_BASE + 0x0010U, MEMORY9_SIZE - 0x0010U)
 /* Data read enable setting register */
-#define RPC_DREAR	p2v_regadr(RPC_BASE + 0x0014U)
-#define	RPC_DROPR	p2v_regadr(RPC_BASE + 0x0018U)
+#define RPC_DREAR	p2v_regadr(RPC_BASE + 0x0014U, MEMORY9_SIZE - 0x0014U)
+#define	RPC_DROPR	p2v_regadr(RPC_BASE + 0x0018U, MEMORY9_SIZE - 0x0018U)
 /* Data read enable setting register */
-#define RPC_DRENR	p2v_regadr(RPC_BASE + 0x001CU)
+#define RPC_DRENR	p2v_regadr(RPC_BASE + 0x001CU, MEMORY9_SIZE - 0x001CU)
 /* Manual mode control register */
-#define RPC_SMCR	p2v_regadr(RPC_BASE + 0x0020U)
+#define RPC_SMCR	p2v_regadr(RPC_BASE + 0x0020U, MEMORY9_SIZE - 0x0020U)
 /* Manual mode command setting register */
-#define RPC_SMCMR	p2v_regadr(RPC_BASE + 0x0024U)
+#define RPC_SMCMR	p2v_regadr(RPC_BASE + 0x0024U, MEMORY9_SIZE - 0x0024U)
 /* Manual mode address setting register */
-#define RPC_SMADR	p2v_regadr(RPC_BASE + 0x0028U)
+#define RPC_SMADR	p2v_regadr(RPC_BASE + 0x0028U, MEMORY9_SIZE - 0x0028U)
 /* Manual mode option setting register */
-#define RPC_SMOPR	p2v_regadr(RPC_BASE + 0x002CU)
+#define RPC_SMOPR	p2v_regadr(RPC_BASE + 0x002CU, MEMORY9_SIZE - 0x002CU)
 /* Manual mode enable setting register */
-#define RPC_SMENR	p2v_regadr(RPC_BASE + 0x0030U)
+#define RPC_SMENR	p2v_regadr(RPC_BASE + 0x0030U, MEMORY9_SIZE - 0x0030U)
 /* Manual mode read data register 0 */
-#define RPC_SMRDR0	p2v_regadr(RPC_BASE + 0x0038U)
+#define RPC_SMRDR0	p2v_regadr(RPC_BASE + 0x0038U, MEMORY9_SIZE - 0x0038U)
 /* Manual mode read data register 1 */
-#define RPC_SMRDR1	p2v_regadr(RPC_BASE + 0x003CU)
+#define RPC_SMRDR1	p2v_regadr(RPC_BASE + 0x003CU, MEMORY9_SIZE - 0x003CU)
 /* Manual mode write data register 0 */
-#define RPC_SMWDR0	p2v_regadr(RPC_BASE + 0x0040U)
+#define RPC_SMWDR0	p2v_regadr(RPC_BASE + 0x0040U, MEMORY9_SIZE - 0x0040U)
 /* Common status register */
-#define RPC_CMNSR	p2v_regadr(RPC_BASE + 0x0048U)
+#define RPC_CMNSR	p2v_regadr(RPC_BASE + 0x0048U, MEMORY9_SIZE - 0x0048U)
 /* Data read dummy cycle setting register */
-#define RPC_DRDMCR	p2v_regadr(RPC_BASE + 0x0058U)
+#define RPC_DRDMCR	p2v_regadr(RPC_BASE + 0x0058U, MEMORY9_SIZE - 0x0058U)
 /* Data read DDR enable register */
-#define RPC_DRDRENR	p2v_regadr(RPC_BASE + 0x005CU)
+#define RPC_DRDRENR	p2v_regadr(RPC_BASE + 0x005CU, MEMORY9_SIZE - 0x005CU)
 /* Manual mode dummy cycle setting register */
-#define RPC_SMDMCR	p2v_regadr(RPC_BASE + 0x0060U)
+#define RPC_SMDMCR	p2v_regadr(RPC_BASE + 0x0060U, MEMORY9_SIZE - 0x0060U)
 /* Manual mode DDR enable register */
-#define RPC_SMDRENR	p2v_regadr(RPC_BASE + 0x0064U)
+#define RPC_SMDRENR	p2v_regadr(RPC_BASE + 0x0064U, MEMORY9_SIZE - 0x0064U)
 /* PHY control register */
-#define RPC_PHYCNT	p2v_regadr(RPC_BASE + 0x007CU)
+#define RPC_PHYCNT	p2v_regadr(RPC_BASE + 0x007CU, MEMORY9_SIZE - 0x007CU)
 /* Offset */
-#define RPC_OFFSET1	p2v_regadr(RPC_BASE + 0x0080U)
+#define RPC_OFFSET1	p2v_regadr(RPC_BASE + 0x0080U, MEMORY9_SIZE - 0x0080U)
 /* PHY interrupt register */
-#define RPC_PHYINT	p2v_regadr(RPC_BASE + 0x0088U)
+#define RPC_PHYINT	p2v_regadr(RPC_BASE + 0x0088U, MEMORY9_SIZE - 0x0088U)
 /* Write Buffer output base address */
-#define RPC_WB_OUT_BASE p2v_ioadr(RPC_BASE + 0x8000U)
+#define RPC_WB_OUT_BASE p2v_ioadr(RPC_BASE + 0x8000U, MEMORY9_SIZE - 0x8000U)
 
-#define CPG_CPGWPR	p2v_regadr(0xE6150900U)
-#define CPG_RPCCKCR	p2v_ioadr(0xE6150238U)
-#define CPG_SRCR9	p2v_regadr(0xE6150924U)
-#define CPG_SRSTCLR9	p2v_regadr(0xE6150964U)
+#define CPG_CPGWPR	p2v_regadr(0xE6150900U, DEVICE0_PA_END - 0xE6150900U)
+#define CPG_RPCCKCR	p2v_ioadr(0xE6150238U, DEVICE0_PA_END - 0xE6150238U)
+#define CPG_SRCR9	p2v_regadr(0xE6150924U, DEVICE0_PA_END - 0xE6150924U)
+#define CPG_SRSTCLR9	p2v_regadr(0xE6150964U, DEVICE0_PA_END - 0xE6150964U)
 
 /* device id */
 /* QSPI_ONBOARD : S25FS128S */
