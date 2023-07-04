@@ -34,7 +34,7 @@ void log_buf_init(void)
 
 	/* initialize global variable */
 	log_secram_header = (struct log_buf_header_t *)phys_to_virt(
-				OPTEE_LOG_BASE, MEM_AREA_IO_SEC, OPTEE_LOG_NS_BASE - OPTEE_LOG_BASE);
+			OPTEE_LOG_BASE, MEM_AREA_IO_SEC, MEMORY1_PA_END - OPTEE_LOG_BASE);
 	log_nonsec_ptr = (int8_t *)phys_to_virt(OPTEE_LOG_NS_BASE,
 				MEM_AREA_RAM_NSEC, OPTEE_LOG_NS_SIZE);
 	log_spin_lock = (uint32_t)SPINLOCK_UNLOCK;
