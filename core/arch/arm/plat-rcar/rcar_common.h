@@ -19,8 +19,8 @@
  * Convert a physical address to a virtual address with the
  *  MEM_AREA_IO_SEC attribute.
  */
-#define p2v_ioadr(r)		((vaddr_t)(phys_to_virt((r), MEM_AREA_IO_SEC, 1)))
-#define p2v_regadr(r)		((phys_to_virt((r), MEM_AREA_IO_SEC, 1)))
+#define p2v_ioadr(r, len) ((vaddr_t)(phys_to_virt((r), MEM_AREA_IO_SEC, (len))))
+#define p2v_regadr(r, len) ((phys_to_virt((r), MEM_AREA_IO_SEC, (len))))
 
 /* Interrupt ID */
 #define INTID_PKA		(65U  + 32U)	/* Crypto Engine PKA sec */
@@ -30,7 +30,7 @@
 #define TEE_RPC_DEBUG_LOG	(0x3F000000U)
 
 /* Product Register */
-#define PRR			p2v_ioadr(0xFFF00044U)
+#define PRR			p2v_ioadr(0xFFF00044U, MEMORY7_PA_END - 0xFFF00044U)
 #define PRR_PRODUCT_MASK	(0x0000FF00U)
 #define PRR_PRODUCT_API_TABLE	(0x00010000U)
 #define PRR_PRODUCT_H3		(0x00004F00U)	/* R-Car H3 */
@@ -44,7 +44,8 @@
 #define PRR_CUT_20		(0x00000010U)
 
 /* Fuse Monitor Register */
-#define FUSE_DUMMY5		p2v_ioadr(0xE60603E8U)	/* Fuse dummy5 */
+#define FUSE_DUMMY5	p2v_ioadr(0xE60603E8U, DEVICE0_PA_END - 0xE60603E8U) /*
+	Fuse dummy5 */
 #define	FUSE_M3_MASK		(0x1C000000U)	/* Dummy5[28:26] */
 #define	M3_100			(0x00000000U)	/* M3 1.0  */
 #define	M3_105			(0x04000000U)	/* M3 1.05 */
