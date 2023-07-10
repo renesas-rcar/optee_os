@@ -16,10 +16,14 @@
 /* Defines                                                                    */
 /******************************************************************************/
 /* Register */
-#define	MFIERRCTLR(a)	((volatile uint32_t *)(p2v_ioadr(0xE6260214U) + (vaddr_t)((a) * 4U)))
-#define	MFIERRSTSR(a)	((volatile uint32_t *)(p2v_ioadr(0xE6260254U) + (vaddr_t)((a) * 4U)))
-#define	MFIERRTGTR(a)	((volatile uint32_t *)(p2v_ioadr(0xE6260294U) + (vaddr_t)((a) * 4U)))
-#define	MFIERRTGTR6	((volatile uint32_t *)(p2v_ioadr(0xE626025CU)))
+#define	MFIERRCTLR(a)	((volatile uint32_t *) (p2v_ioadr(0xE6260214U, \
+		(DEVICE0_PA_END - 0xE6260214U)) + (vaddr_t)((a) * 4U)))
+#define	MFIERRSTSR(a)	((volatile uint32_t *)(p2v_ioadr(0xE6260254U, \
+		(DEVICE0_PA_END - 0xE6260254U)) + (vaddr_t)((a) * 4U)))
+#define	MFIERRTGTR(a)	((volatile uint32_t *)(p2v_ioadr(0xE6260294U, \
+		(DEVICE0_PA_END - 0xE6260294U)) + (vaddr_t)((a) * 4U)))
+#define	MFIERRTGTR6	((volatile uint32_t *)(p2v_ioadr(0xE626025CU, \
+		(DEVICE0_PA_END - 0xE626025CU))))
 
 typedef struct {
 	struct {
