@@ -31,8 +31,9 @@
 #define CERT_BLOCK_SIZE			(4U)
 #define CERT_IDX_SIZE			(2)
 #define CERT_IDX_FLAG			(3)
-#define RST_MODEMR			(p2v_ioadr(RST_BASE) + 0x0060U)
-#define MFIS_SOFTMDR			(p2v_ioadr(MFIS_BASE) + 0x0600U)
+#define RST_MODEMR	(p2v_ioadr(RST_BASE, DEVICE0_PA_END - RST_BASE) + 0x0060U)
+#define MFIS_SOFTMDR	(p2v_ioadr(MFIS_BASE, DEVICE0_PA_END - MFIS_BASE) \
+						+ 0x0600U)
 #define LCS_SE				(0x5U)
 #define SECURE_BOOT_MODE		(0U)
 #define NORMAL_BOOT_MODE		(1U)
