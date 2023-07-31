@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
- * Copyright (c) 2015-2023, Renesas Electronics Corporation
+ * Copyright (c) 2015-2021, Renesas Electronics Corporation
  */
 
 
@@ -13,11 +13,11 @@
 #include <string.h>
 
 #include <arm.h>
-#include <kernel/generic_boot.h>
-#include <kernel/pm_stubs.h>
+#include <kernel/boot.h>
 #include <trace.h>
 #include <kernel/misc.h>
 #include <kernel/tee_time.h>
+#include <kernel/thread.h>
 #include <tee/entry_fast.h>
 #include <tee/entry_std.h>
 #include <mm/core_memprot.h>
@@ -55,7 +55,7 @@ void tee_entry_fast(struct thread_smc_args *args)
 	DMSG("OUT Received SMC from Normal World");
 }
 
-static unsigned long main_cpu_suspend(unsigned long a0,
+unsigned long thread_cpu_suspend_handler(unsigned long a0,
 				unsigned long a1 __unused)
 {
 
@@ -80,7 +80,7 @@ static unsigned long main_cpu_suspend(unsigned long a0,
 	return 0U;
 }
 
-static unsigned long main_cpu_resume(unsigned long a0 __unused,
+unsigned long thread_cpu_resume_handler(unsigned long a0 __unused,
 				unsigned long a1 __unused)
 {
 	uint32_t exceptions;
@@ -118,7 +118,7 @@ void main_secondary_init_gic(void)
 	DMSG("OUT cpu_mask=0x%x", cpu_mask);
 }
 
-static unsigned long main_cpu_off(unsigned long a0 __unused,
+unsigned long thread_cpu_off_handler(unsigned long a0 __unused,
 				unsigned long a1 __unused)
 {
 	uint32_t exceptions;
@@ -137,15 +137,6 @@ static unsigned long main_cpu_off(unsigned long a0 __unused,
 	DMSG("OUT cpu_mask=0x%x", cpu_mask);
 	return 0;
 }
-
-static const struct thread_handlers handlers __nex_data = {
-	.cpu_on = cpu_on_handler,
-	.cpu_off = main_cpu_off,
-	.cpu_suspend = main_cpu_suspend,
-	.cpu_resume = main_cpu_resume,
-	.system_off = pm_do_nothing,
-	.system_reset = pm_do_nothing,
-};
 
 struct gic_data gic_data __nex_bss;
 
