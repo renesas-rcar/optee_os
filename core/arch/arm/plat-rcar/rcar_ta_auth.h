@@ -43,6 +43,6 @@
 					TA_VERIFICATION_BASE) / CERT_BLOCK_SIZE)
 
 TEE_Result rcar_auth_ta_certificate(const struct shdr *key_cert,
-				struct shdr **secmem_ta);
+				struct shdr **secmem_ta, size_t ta_size);
 
 #endif /* RCAR_TA_AUTH_H */

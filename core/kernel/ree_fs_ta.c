@@ -266,7 +266,7 @@ static TEE_Result ree_fs_ta_open(const TEE_UUID *uuid,
 		goto error;
 
 #ifdef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
-	res = rcar_auth_ta_certificate(ta, &ta);
+	res = rcar_auth_ta_certificate(ta, &ta, ta_size);
 	if (res != TEE_SUCCESS) {
 		goto error_free_payload;
 	}
