@@ -175,7 +175,7 @@ static uint32_t call_maskrom_api(void)
 }
 
 TEE_Result rcar_auth_ta_certificate(const struct shdr *key_cert,
-				struct shdr **secmem_ta)
+				struct shdr **secmem_ta, size_t ta_size)
 {
 	TEE_Result res = TEE_SUCCESS;
 	uint32_t ret;
@@ -189,6 +189,7 @@ TEE_Result rcar_auth_ta_certificate(const struct shdr *key_cert,
 	uint8_t *fixed_key_cert = (uint8_t *)TA_KEY_CERT_ADDR;
 	uint8_t *fixed_content_cert = (uint8_t *)TA_CONTENT_CERT_ADDR;
 	uint64_t object_addr;
+	size_t real_ta_size = 0U;
 
 	key_cert_size = get_key_cert_size((const uint32_t *)key_cert);
 	if ((key_cert_size == 0U) || (key_cert_size > TA_KEY_CERT_AREA_SIZE)) {
@@ -206,13 +207,14 @@ TEE_Result rcar_auth_ta_certificate(const struct shdr *key_cert,
 
 	if (res == TEE_SUCCESS) {
 		object_size = get_object_size(content_cert);
-		if (object_size == 0U) {
+		real_ta_size = ta_size - key_cert_size - content_cert_size;
+		if (object_size == 0U || object_size != real_ta_size) {
 			res = TEE_ERROR_SECURITY;
 		}
 	}
 
-	DMSG("TA size: key_cert=0x%x content_cert=0x%x shdr+bin=0x%x",
-		key_cert_size, content_cert_size, object_size);
+	DMSG("TA size: key_cert=0x%x content_cert=0x%x shdr+bin=0x%x real_ta=0x%lx",
+		key_cert_size, content_cert_size, object_size, real_ta_size);
 
 	/* check the address of loading TA is the top of verification area */
 	if (res == TEE_SUCCESS) {
