@@ -23,6 +23,7 @@
 struct log_buf_header_t *log_secram_header __nex_data;
 static int8_t *log_nonsec_ptr __nex_bss;
 uint32_t log_spin_lock __nex_bss;
+uint32_t cpu_id_run_log __nex_bss;
 int32_t is_normal_world_initialized __nex_bss;
 const int8_t version_of_renesas[] __attribute__((__section__(".version"))) =
 	VERSION_OF_RENESAS;
@@ -38,6 +39,7 @@ void log_buf_init(void)
 	log_nonsec_ptr = (int8_t *)phys_to_virt(OPTEE_LOG_NS_BASE,
 				MEM_AREA_RAM_NSEC, OPTEE_LOG_NS_SIZE);
 	log_spin_lock = (uint32_t)SPINLOCK_UNLOCK;
+	cpu_id_run_log = 0;
 	is_normal_world_initialized = 0;
 
 	/* initialize SDRAM area */
@@ -121,7 +123,7 @@ void log_debug_send(const struct msg_block_t *msg_block, int32_t msg_block_num)
 	size_t memcpy_size;
 	int32_t i;
 
-	cpu_id = get_core_pos();
+	cpu_id = cpu_id_run_log;
 
 	if ((log_nonsec_ptr != NULL) && (cpu_id < CFG_TEE_CORE_NB_CORE)) {
 		log_area = &log_nonsec_ptr[cpu_id * LOG_NS_CPU_AREA_SIZE];
