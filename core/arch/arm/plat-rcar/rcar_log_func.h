@@ -62,6 +62,7 @@ struct msg_block_t {
 
 extern struct log_buf_header_t *log_secram_header;
 extern uint32_t log_spin_lock;
+extern uint32_t cpu_id_run_log;
 extern int32_t is_normal_world_initialized;
 
 /*
