@@ -70,7 +70,7 @@
 #define GICC_IAR_IT_ID_MASK	0x3ff
 #define GICC_IAR_CPU_ID_MASK	0x7
 #define GICC_IAR_CPU_ID_SHIFT	10
-
+/*
 struct gic_data {
 	vaddr_t gicc_base;
 	vaddr_t gicd_base;
@@ -78,7 +78,7 @@ struct gic_data {
 	struct itr_chip chip;
 };
 
-static struct gic_data gic_data __nex_bss;
+static */struct gic_data gic_data __nex_bss;
 
 static void gic_op_add(struct itr_chip *chip, size_t it, uint32_t type,
 		       uint32_t prio);

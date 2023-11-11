@@ -29,6 +29,15 @@
  * then used by the other functions.
  */
 
+struct gic_data {
+	vaddr_t gicc_base;
+	vaddr_t gicd_base;
+	size_t max_it;
+	struct itr_chip chip;
+};
+
+extern struct gic_data gic_data __nex_bss;
+
 /* Initialize GIC */
 void gic_init(paddr_t gicc_base_pa, paddr_t gicd_base_pa);
 
