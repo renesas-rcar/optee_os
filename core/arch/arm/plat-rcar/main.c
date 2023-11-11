@@ -236,9 +236,9 @@ void main_init_gic(void)
 
 	cpu_on_core_bit = (uint8_t)(0x1U << get_core_pos());
 
-	gic_add_ptr_bk = gic_data.chip.ops->add;
+	gic_add_ptr_bk = gic_data.chip.ops->configure;
 	main_itr_ops = *gic_data.chip.ops;
-	main_itr_ops.add = main_hook_gic_add;
+	main_itr_ops.configure = main_hook_gic_add;
 	gic_data.chip.ops = (const struct itr_ops *)&main_itr_ops;
 
 	log_buf_init();

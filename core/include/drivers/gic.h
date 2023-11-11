@@ -68,6 +68,7 @@
 /* Default IRQ priority for SPIs in Non-Sec EL1 */
 #define GIC_SPI_PRI_NS_EL1	0x50
 
+
 /*
  * The two gic_init() and gic_init_v3() functions initializes the struct
  * gic_data which is then used by the other functions. These two functions
@@ -76,10 +77,26 @@
  */
 void gic_init_v3(paddr_t gicc_base_pa, paddr_t gicd_base_pa,
 		 paddr_t gicr_base_pa);
+/* Initialize GIC */
 static inline void gic_init(paddr_t gicc_base_pa, paddr_t gicd_base_pa)
 {
 	gic_init_v3(gicc_base_pa, gicd_base_pa, 0);
 }
+
+struct gic_data {
+	vaddr_t gicc_base;
+	vaddr_t gicd_base;
+#ifdef _CFG_ARM_V3_OR_V4
+	vaddr_t gicr_base[CFG_TEE_CORE_NB_CORE];
+#endif
+	size_t max_it;
+	uint32_t per_cpu_group_status;
+	uint32_t per_cpu_group_modifier;
+	uint32_t per_cpu_enable;
+	struct itr_chip chip;
+};
+
+extern struct gic_data gic_data __nex_bss;
 
 /* Donates one of the secure SGIs to normal world */
 void gic_init_donate_sgi_to_ns(size_t it);

@@ -140,7 +140,7 @@
 #define GICD_ICFGR_FIELD_MASK		0x3
 #define GICD_ICFGR_NUM_INTS_PER_REG	(NUM_INTS_PER_REG / \
 					 GICD_ICFGR_FIELD_BITS)
-
+/*
 struct gic_data {
 	vaddr_t gicc_base;
 	vaddr_t gicd_base;
@@ -153,9 +153,9 @@ struct gic_data {
 	uint32_t per_cpu_enable;
 	struct itr_chip chip;
 };
-
+*/
+struct gic_data gic_data __nex_bss;
 static bool gic_primary_done __nex_bss;
-static struct gic_data gic_data __nex_bss;
 static struct mutex gic_mutex = MUTEX_INITIALIZER;
 
 static void gic_op_configure(struct itr_chip *chip, size_t it, uint32_t type,

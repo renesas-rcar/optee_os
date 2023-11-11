@@ -142,7 +142,7 @@ void itr_add_type_prio(struct itr_handler *h, uint32_t type, uint32_t prio)
 			assert((hdl->flags & ITRF_SHARED) &&
 			       (h->flags & ITRF_SHARED));
 
-	itr_main_chip->ops->add(itr_main_chip, h->it, type, prio);
+	itr_main_chip->ops->configure(itr_main_chip, h->it, type, prio);
 	SLIST_INSERT_HEAD(&itr_main_chip->handlers, h, link);
 }
 
