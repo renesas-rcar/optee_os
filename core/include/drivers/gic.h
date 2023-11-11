@@ -32,6 +32,7 @@
 /* Max ID for secure SGIs */
 #define GIC_SGI_SEC_MAX		15
 
+
 /*
  * The two gic_init() and gic_init_v3() functions initializes the struct
  * gic_data which is then used by the other functions. These two functions
@@ -40,10 +41,20 @@
  */
 void gic_init_v3(paddr_t gicc_base_pa, paddr_t gicd_base_pa,
 		 paddr_t gicr_base_pa);
+/* Initialize GIC */
 static inline void gic_init(paddr_t gicc_base_pa, paddr_t gicd_base_pa)
 {
 	gic_init_v3(gicc_base_pa, gicd_base_pa, 0);
 }
+
+struct gic_data {
+	vaddr_t gicc_base;
+	vaddr_t gicd_base;
+	size_t max_it;
+	struct itr_chip chip;
+};
+
+extern struct gic_data gic_data __nex_bss;
 
 /* Donates one of the secure SGIs to normal world */
 void gic_init_donate_sgi_to_ns(size_t it);
