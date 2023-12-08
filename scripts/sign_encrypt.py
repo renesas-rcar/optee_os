@@ -472,6 +472,7 @@ class BinaryImage:
     def parse(self):
         from cryptography.hazmat.primitives.asymmetric import rsa
         import struct
+        from cryptography.hazmat.backends import default_backend
 
         offs = 0
         self.shdr = self.inf[offs:offs + SHDR_SIZE]
@@ -559,7 +560,7 @@ class BinaryImage:
             e_bytes = find_attr(TEE_ATTR_RSA_PUBLIC_EXPONENT)
             e = int.from_bytes(e_bytes, 'big')
             n = int.from_bytes(n_bytes, 'big')
-            self.subkey_key = rsa.RSAPublicNumbers(e, n).public_key()
+            self.subkey_key = rsa.RSAPublicNumbers(e, n).public_key(backend=default_backend())
 
             self.img = self.inf[subkey_offs:offs - self.name_size]
             if len(self.img) != img_size:
