@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2016, Linaro Limited
+ * Copyright (c) 2025, Renesas Electronics Corporation
  */
 #ifndef __DRIVERS_SERIAL_H
 #define __DRIVERS_SERIAL_H
@@ -17,7 +18,7 @@ struct serial_chip {
 
 struct serial_ops {
 	/* Mandatory handler */
-	void (*putc)(struct serial_chip *chip, int ch);
+	void (*putc)(struct serial_chip *chip, uint8_t ch);
 	/* Optional handlers */
 	void (*flush)(struct serial_chip *chip);
 	bool (*have_rx_data)(struct serial_chip *chip);

@@ -50,15 +50,17 @@ register_phys_mem_pgdir(DEVICE0_TYPE, DEVICE0_PA_BASE, DEVICE0_SIZE);
 register_phys_mem_pgdir(DEVICE1_TYPE, DEVICE1_PA_BASE, DEVICE1_SIZE);
 #endif
 
-static struct scif_uart_data console_data __nex_bss;
+#ifdef CFG_SCIF
+static struct hscif_uart_data console_data __nex_bss;
+#endif
 
 #ifdef PRR_BASE
 uint32_t rcar_prr_value __nex_bss;
 #endif
 
-void console_init(void)
+void plat_console_init(void)
 {
-	scif_uart_init(&console_data, CONSOLE_UART_BASE);
+	hscif_uart_init(&console_data, CONSOLE_UART_START);
 	register_serial_console(&console_data.chip);
 }
 
