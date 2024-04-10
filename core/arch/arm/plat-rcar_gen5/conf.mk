@@ -6,6 +6,7 @@ $(call force,CFG_WITH_ARM_TRUSTED_FW,y)
 $(call force,CFG_GIC,y)
 $(call force,CFG_CORE_LARGE_PHYS_ADDR,y)
 $(call force,CFG_CORE_ARM64_PA_BITS,36)
+$(call force,CFG_LPAE_ADDR_SPACE_BITS,36)
 # Disable core ASLR for two reasons:
 # 1. There is no source for ALSR seed, as Rcar platform
 # does not provide DTB to OP-TEE. Also, there is no
@@ -52,3 +53,7 @@ CFG_RCAR_MUTEX_DELAY ?= 1
 core-platform-cflags += -DCFG_RCAR_MUTEX_DELAY=$(CFG_RCAR_MUTEX_DELAY)
 CFG_CORE_RESERVED_SHM ?= n
 endif
+
+# For Direct mapping function
+core-platform-cflags += -DRCAR_MMU_DIRECT_MAPPING
+
