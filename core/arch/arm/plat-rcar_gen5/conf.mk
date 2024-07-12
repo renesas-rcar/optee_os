@@ -3,7 +3,6 @@ include core/arch/arm/cpu/cortex-armv8-0.mk
 
 $(call force,CFG_SECURE_TIME_SOURCE_CNTPCT,y)
 $(call force,CFG_WITH_ARM_TRUSTED_FW,y)
-$(call force,CFG_SCIF,y)
 $(call force,CFG_GIC,y)
 $(call force,CFG_CORE_LARGE_PHYS_ADDR,y)
 $(call force,CFG_CORE_ARM64_PA_BITS,36)
@@ -39,3 +38,9 @@ CFG_NUM_THREADS ?= $(CFG_TEE_CORE_NB_CORE)
 CFG_MMAP_REGIONS ?= 21
 endif
 
+# For logging function
+# Compiler switch - Debug log(Linux terminal log)
+RCAR_DEBUG_LOG ?= 0
+ifneq ($(RCAR_DEBUG_LOG),0)
+core-platform-cflags += -DRCAR_DEBUG_LOG
+endif

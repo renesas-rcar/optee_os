@@ -41,7 +41,7 @@
  */
 #define SMC_RCAR_CMD           (12345U)
 
-#define START_DLOG_OUTPUT      (1U)
+#define NORMAL_WORLD_COMPLETE_INIT      (1U)
 
 /* Declaration of global variables */
 extern uint32_t product_type;

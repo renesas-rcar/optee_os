@@ -60,8 +60,10 @@ uint32_t rcar_prr_value __nex_bss;
 
 void plat_console_init(void)
 {
+#ifdef CFG_SCIF
 	hscif_uart_init(&console_data, CONSOLE_UART_START);
 	register_serial_console(&console_data.chip);
+#endif
 }
 
 #ifdef CFG_RCAR_ROMAPI
@@ -81,6 +83,10 @@ unsigned long plat_get_aslr_seed(void)
 void boot_primary_init_intc(void)
 {
 	gic_init(GICC_BASE, GICD_BASE);
+#ifndef CFG_SCIF
+	/* Initialize logging feature */
+	log_buf_init();
+#endif
 }
 
 void boot_secondary_init_intc(void)
@@ -101,4 +107,18 @@ void plat_rng_init(void)
 	}
 }
 #endif /*END CFG_WITH_SOFTWARE_PRNG */
+/* For logging output function */
+/* Overriding the default __weak tee_entry_fast() */
+void tee_entry_fast(struct thread_smc_args *args)
+{
+	DMSG("IN args->a0=0x%lX", args->a0);
+	if (args->a0 == OPTEE_SMC_GET_SHM_CONFIG &&
+	    args->a1 == SMC_RCAR_CMD &&
+	    args->a2 == NORMAL_WORLD_COMPLETE_INIT) {
+		is_normal_world_initialized = 1;
+		DMSG("Normal World was initialized");
+	}
+	 __tee_entry_fast(args);
+	 DMSG("OUT Received SMC from Normal World");
+}
 
