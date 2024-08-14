@@ -46,14 +46,16 @@
 #include "rcar_common.h"
 #include "rcar_suspend_to_ram.h"
 
-static void main_hook_gic_add(struct itr_chip *chip, size_t it, uint32_t flags);
+static void main_hook_gic_add(struct itr_chip *chip, size_t it, uint32_t flags, uint32_t prio);
+static void main_init_gic(void);
+static void main_secondary_init_gic(void);
 
 uint32_t cpu_on_core_lock __nex_bss = (uint32_t)SPINLOCK_UNLOCK;
 uint8_t cpu_on_core_bit __nex_bss = 0U;
 static uint32_t suspend_to_ram_save_flag __nex_bss = 0U;
 static uint32_t main_cpu_lock __nex_bss = (uint32_t)SPINLOCK_UNLOCK;
 static void (*gic_add_ptr_bk)(struct itr_chip *chip, size_t it,
-				uint32_t flags) __nex_bss;
+				uint32_t flags, uint32_t prio) __nex_bss;
 static struct itr_ops main_itr_ops __nex_bss;
 
 /* Overriding the default __weak tee_entry_fast() */
@@ -220,50 +222,51 @@ register_ddr(NSEC_DDR_1_BASE, NSEC_DDR_1_SIZE);
 
 void main_init_gic(void)
 {
-	vaddr_t gicc_base;
-	vaddr_t gicd_base;
-
-	gicc_base = (vaddr_t)phys_to_virt(GICC_BASE, MEM_AREA_IO_SEC);
-	gicd_base = (vaddr_t)phys_to_virt(GICD_BASE, MEM_AREA_IO_SEC);
-	assert(gicc_base && gicd_base);
-
-	/* On ARMv8, GIC configuration is initialized in ARM-TF */
-	gic_init_base_addr(&gic_data, gicc_base, gicd_base);
-
-	itr_init(&gic_data.chip);
-
+	// Use custom itr_ops.add (instead of gic_op_add).
 	cpu_on_core_bit = (uint8_t)(0x1U << get_core_pos());
-
 	gic_add_ptr_bk = gic_data.chip.ops->add;
 	main_itr_ops = *gic_data.chip.ops;
 	main_itr_ops.add = main_hook_gic_add;
 	gic_data.chip.ops = (const struct itr_ops *)&main_itr_ops;
 
+	// Initialize logging feature
 	log_buf_init();
 }
 
-static void main_hook_gic_add(struct itr_chip *chip, size_t it, uint32_t flags)
+static void main_hook_gic_add(struct itr_chip *chip, size_t it, uint32_t flags, uint32_t prio)
 {
 	uint32_t exceptions;
 	uint8_t cpu_mask;
 
 	DMSG("IN cpu_on_core_bit=0x%x, it=0x%lu", cpu_on_core_bit, it);
-	gic_add_ptr_bk(chip, it, flags);
+	gic_add_ptr_bk(chip, it, flags, prio);
 
 	exceptions = cpu_spin_lock_xsave(&cpu_on_core_lock);
 	cpu_mask = cpu_on_core_bit;
-	itr_set_affinity(it, cpu_mask);
+	interrupt_set_affinity(chip, it, cpu_mask);
 
 	cpu_spin_unlock_xrestore(&cpu_on_core_lock, exceptions);
 	DMSG("OUT cpu_mask=0x%x", cpu_mask);
 }
 
-void itr_core_handler(void)
-{
-	gic_it_handle(&gic_data);
-}
+/* Not defined. Use implementation from gic driver in core/drivers/gic.c
+void interrupt_main_handler(void){ }
+*/
 
 void console_init(void)
 {
 	/* No Operation */
+}
+
+void boot_primary_init_intc(void)
+{
+	gic_init(GICC_BASE, GICD_BASE);
+
+	main_init_gic();
+}
+
+void boot_secondary_init_intc(void)
+{
+	gic_init_per_cpu();
+	main_secondary_init_gic();
 }
