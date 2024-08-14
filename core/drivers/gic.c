@@ -123,6 +123,7 @@
 #define GICD_SGIR_NSATT_SHIFT			15
 #define GICD_SGIR_CPU_TARGET_LIST_SHIFT		16
 
+#if !defined(PLATFORM_rcar_gen4)
 struct gic_data {
 	vaddr_t gicc_base;
 	vaddr_t gicd_base;
@@ -136,8 +137,10 @@ struct gic_data {
 	struct itr_chip chip;
 };
 
-static bool gic_primary_done __nex_bss;
 static struct gic_data gic_data __nex_bss;
+#endif
+
+static bool gic_primary_done __nex_bss;
 
 static void gic_op_add(struct itr_chip *chip, size_t it, uint32_t type,
 		       uint32_t prio);
