@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <kernel/spinlock.h>
-#include <kernel/time_source.h>
+#include <kernel/tee_time.h>
 #include "rcar_log_func.h"
 #include "rcar_common.h"
 
@@ -33,11 +33,7 @@ void trace_ext_puts(const char *str)
 	if ((str != NULL) && (log_secram_header != NULL)) {
 		exceptions = cpu_spin_lock_xsave(&log_spin_lock);
 
-		if (_time_source.get_sys_time != NULL) {
-			ret = tee_time_get_sys_time(&sys_time);
-		} else {
-			ret = TEE_SUCCESS;
-		}
+		ret = tee_time_get_sys_time(&sys_time);
 		if (ret == (TEE_Result)TEE_SUCCESS) {
 			res = snprintf((char *)time_buf, sizeof(time_buf),
 				"[%u.%06u][%d]",

@@ -356,8 +356,8 @@ void itr_set_all_cpu_mask(uint8_t cpu_mask)
 {
 	struct itr_handler *h;
 
-	SLIST_FOREACH(h, &handlers, link) {
-		itr_chip->ops->set_affinity(itr_chip, h->it, cpu_mask);
+	SLIST_FOREACH(h, &itr_main_chip->handlers, link) {
+		itr_main_chip->ops->set_affinity(itr_main_chip, h->it, cpu_mask);
 	}
 }
 #endif
