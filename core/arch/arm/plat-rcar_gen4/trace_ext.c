@@ -89,3 +89,12 @@ int trace_ext_get_thread_id(void)
 {
 	return -1;
 }
+
+int trace_ext_get_core_id(void)
+{
+	/* If foreign interrupts aren't masked we report invalid core ID */
+	if (thread_get_exceptions() & THREAD_EXCP_FOREIGN_INTR)
+		return get_core_pos();
+	else
+		return -1;
+}

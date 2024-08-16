@@ -24,7 +24,7 @@ __weak void plat_console_init(void)
 {
 }
 
-void console_init(void)
+void __weak console_init(void)
 {
 	if (IS_ENABLED(CFG_SEMIHOSTING_CONSOLE))
 		semihosting_console_init(CFG_SEMIHOSTING_CONSOLE_FILE);
