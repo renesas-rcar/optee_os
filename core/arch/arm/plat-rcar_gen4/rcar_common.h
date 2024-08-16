@@ -19,8 +19,8 @@
  * Convert a physical address to a virtual address with the
  *  MEM_AREA_IO_SEC attribute.
  */
-#define p2v_ioadr(r)		((vaddr_t)(phys_to_virt((r), MEM_AREA_IO_SEC)))
-#define p2v_regadr(r)		((phys_to_virt((r), MEM_AREA_IO_SEC)))
+#define p2v_ioadr(r, len)		((vaddr_t)(phys_to_virt((r), MEM_AREA_IO_SEC, (len))))
+#define p2v_regadr(r, len)		((phys_to_virt((r), MEM_AREA_IO_SEC, (len))))
 
 /* Interrupt ID */
 #define INTID_PKA		(65U  + 32U)	/* Crypto Engine PKA sec */
@@ -30,7 +30,7 @@
 #define TEE_RPC_DEBUG_LOG	(0x3F000000U)
 
 /* Product Register */
-#define PRR			p2v_ioadr(0xFFF00044U)
+#define PRR			p2v_ioadr(0xFFF00044U,MEMORY5_SIZE)
 
 /* Stack switching */
 uint32_t asm_switch_stack_pointer(uintptr_t jump, uint32_t stack, void *arg);

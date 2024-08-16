@@ -16,8 +16,9 @@
 #define MFISLCKR_TARGET_ADDRESS	(0x0800U)
 #define MFIS_LCKR_ADDRESS		(0xE6260800U)
 #define MFIS_WACNTR_ADDRESS		(0xE6260904U)
-#define MFIS_LCKR			p2v_regadr(MFIS_LCKR_ADDRESS)
-#define MFIS_WACNTR			p2v_regadr(MFIS_WACNTR_ADDRESS)
+
+#define MFIS_LCKR			p2v_regadr(MFIS_LCKR_ADDRESS, MEMORY10_SIZE)
+#define MFIS_WACNTR			p2v_regadr(MFIS_WACNTR_ADDRESS, MEMORY10_SIZE)
 
 void mfis_lock(void);
 void mfis_unlock(void);
