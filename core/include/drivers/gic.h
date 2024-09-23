@@ -50,7 +50,13 @@ static inline void gic_init(paddr_t gicc_base_pa, paddr_t gicd_base_pa)
 struct gic_data {
 	vaddr_t gicc_base;
 	vaddr_t gicd_base;
+#if defined(CFG_ARM_GICV3)
+	vaddr_t gicr_base[CFG_TEE_CORE_NB_CORE];
+#endif
 	size_t max_it;
+	uint32_t per_cpu_group_status;
+	uint32_t per_cpu_group_modifier;
+	uint32_t per_cpu_enable;
 	struct itr_chip chip;
 };
 
