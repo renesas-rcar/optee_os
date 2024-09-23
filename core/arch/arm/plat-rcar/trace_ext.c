@@ -10,7 +10,6 @@
 #include <arm.h>
 #include <kernel/tee_time.h>
 #include <kernel/spinlock.h>
-#include <kernel/time_source.h>
 #include "rcar_log_func.h"
 #include "rcar_common.h"
 
@@ -38,11 +37,7 @@ void trace_ext_puts(const char *str)
 		exceptions = cpu_spin_lock_xsave(&log_spin_lock);
 		cpu_id_run_log = (int32_t)get_core_pos();
 
-		if (_time_source.get_sys_time != NULL) {
-			ret = tee_time_get_sys_time(&sys_time);
-		} else {
-			ret = TEE_SUCCESS;
-		}
+		ret = tee_time_get_sys_time(&sys_time);
 		if (ret == TEE_SUCCESS) {
 			res = snprintf((char *)time_buf, sizeof(time_buf),
 				"[%u.%06u][%d]",
