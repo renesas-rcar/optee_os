@@ -12,6 +12,7 @@
 #include <kernel/handle.h>
 #include <kernel/mutex.h>
 #include <kernel/tee_misc.h>
+#include <kernel/user_access.h>
 #include <trace.h>
 #include <initcall.h>
 
@@ -155,13 +156,13 @@ static TEE_Result standalone_fs_open(struct tee_pobj *po, size_t *size,
 static TEE_Result standalone_fs_create(struct tee_pobj *po, bool overwrite,
 			const void *head, size_t head_size,
 			const void *attr, size_t attr_size,
-			const void *data, size_t data_size,
-			struct tee_file_handle **fh);
+			const void *data_core, const void *data_user,
+			size_t data_size, struct tee_file_handle **fh);
 static void standalone_fs_close(struct tee_file_handle **fh);
 static TEE_Result standalone_fs_read(struct tee_file_handle *fh, size_t pos,
-			void *buf, size_t *len);
+			void *buf_core, void *buf_user, size_t *len);
 static TEE_Result standalone_fs_write(struct tee_file_handle *fh, size_t pos,
-			const void *buf, size_t len);
+			const void *buf_core, const void *buf_user, size_t len);
 static TEE_Result standalone_fs_rename(struct tee_pobj *old_po,
 			struct tee_pobj *new_po, bool overwrite);
 static TEE_Result standalone_fs_remove(struct tee_pobj *po);
@@ -2014,32 +2015,63 @@ static TEE_Result standalone_fs_open(struct tee_pobj *po, size_t *size,
 static TEE_Result standalone_fs_create(struct tee_pobj *po, bool overwrite,
 			const void *head, size_t head_size,
 			const void *attr, size_t attr_size,
-			const void *data, size_t data_size,
-			struct tee_file_handle **fh)
+			const void *data_core, const void *data_user,
+			size_t data_size, struct tee_file_handle **fh)
 {
 	TEE_Result res;
 	char *file;
 	size_t len;
 	struct spio_write_data wd[3];
 	const size_t wd_num = sizeof(wd) / sizeof(struct spio_write_data);
+	uint32_t f = TEE_MEMORY_ACCESS_READ |
+			TEE_MEMORY_ACCESS_ANY_OWNER;
 
-	DMSG("IN  po=%p, overw=%d, head=%p,%zu, attr=%p,%zu, data=%p,%zu, fh=%p"
-		, (void *)po, overwrite, head, head_size, attr, attr_size,
-		data, data_size, (void *)fh);
+	/* One of data_core and data_user must be NULL */
+	assert(!data_core || !data_user);
+
+	DMSG("IN  po=%p, overw=%d, head=%p,%zu, attr=%p,%zu,\
+		data_core=%p, data_user=%p, data_size=%zu, fh=%p",
+		(void *)po, overwrite, head, head_size, attr, attr_size,
+		data_core, data_user, data_size, (void *)fh);
 
 	if ((po != NULL) && (fh != NULL)) {
+		wd[0].data = head;
+		wd[0].size = head_size;
+		wd[1].data = attr;
+		wd[1].size = attr_size;
 		res = spi_get_status_and_alloc_file(po, &file, &len);
 		if (res == TEE_SUCCESS) {
-			wd[0].data = head;
-			wd[0].size = head_size;
-			wd[1].data = attr;
-			wd[1].size = attr_size;
-			wd[2].data = data;
-			wd[2].size = data_size;
-			spi_lock();
-			res = tee_standalone_create(file, len, wd,
-					wd_num, overwrite, fh);
-			spi_unlock();
+			if (data_core) {
+				wd[2].data = data_core;
+				wd[2].size = data_size;
+				spi_lock();
+				res = tee_standalone_create(file, len, wd,
+						wd_num, overwrite, fh);
+				spi_unlock();
+			}
+			else if (data_user) {
+				wd[2].data = data_user;
+				wd[2].size = data_size;
+				spi_lock();
+				res = check_user_access(f, data_user, data_size);
+				if (res) {
+					spi_unlock();
+					goto out;
+				}
+				enter_user_access();
+				res = tee_standalone_create(file, len, wd,
+						wd_num, overwrite, fh);
+				exit_user_access();
+				spi_unlock();
+			}
+			else { /* (data_core == NULL) && (data_user == NULL) */
+				wd[2].data = 0;
+				wd[2].size = 0;
+				spi_lock();
+				res = tee_standalone_create(file, len, wd,
+						wd_num, overwrite, fh);
+				spi_unlock();
+			}
 			spi_free_file(file);
 		}
 	} else {
@@ -2047,6 +2079,7 @@ static TEE_Result standalone_fs_create(struct tee_pobj *po, bool overwrite,
 		EMSG("Invalid argument provided.");
 	}
 
+out:
 	DMSG("OUT res=0x%X, *fh=%p", res, (res == 0U) ? (void *)*fh : NULL);
 	return res;
 }
@@ -2079,67 +2112,126 @@ static void standalone_fs_close(struct tee_file_handle **fh)
 }
 
 static TEE_Result standalone_fs_read(struct tee_file_handle *fh, size_t pos,
-			void *buf, size_t *len)
+			void *buf_core, void *buf_user, size_t *len)
 {
 	TEE_Result res;
 	struct spim_file_descriptor *fdp;
 
-	DMSG("IN  fh=%p, pos=%zu, buf=%p, len=%zu", (void *)fh, pos, buf,
+	/* One of data_core and data_user must be NULL */
+	assert(!buf_core || !buf_user);
+
+	DMSG("IN  fh=%p, pos=%zu, buf_core=%p, buf_user=%p, len=%zu",\
+		(void *)fh, pos, buf_core, buf_user,
 		(len != NULL) ? *len : 0U);
 
-	if ((fh != NULL) && (buf != NULL) && (len != NULL)) {
+	if ((fh != NULL) && (len != NULL)) {
 		res = spi_get_status();
 		if (res == TEE_SUCCESS) {
-			spi_lock();
-			fdp = spi_get_fdp(fh);
-			if (fdp != NULL) {
-				res = tee_standalone_read(fdp, buf, len, pos);
-			} else {
-				res = TEE_ERROR_BAD_PARAMETERS;
-				EMSG("Invalid file descriptor.");
+			if (buf_core) {
+				spi_lock();
+				fdp = spi_get_fdp(fh);
+				if (fdp != NULL) {
+					res = tee_standalone_read(fdp, buf_core, len, pos);
+				} else {
+					res = TEE_ERROR_BAD_PARAMETERS;
+					EMSG("Invalid file descriptor.");
+				}
+				spi_unlock();
 			}
-			spi_unlock();
+			else if (buf_user) {
+				spi_lock();
+				fdp = spi_get_fdp(fh);
+				if (fdp != NULL) {
+					uint32_t f = TEE_MEMORY_ACCESS_WRITE;
+
+					res = check_user_access(f, buf_user, *len);
+					if (res) {
+						spi_unlock();
+						goto out;
+					}
+					enter_user_access();
+					res = tee_standalone_read(fdp, buf_user, len, pos);
+					exit_user_access();
+				} else {
+					res = TEE_ERROR_BAD_PARAMETERS;
+					EMSG("Invalid file descriptor.");
+				}
+				spi_unlock();
+			}
 		}
 	} else {
 		res = TEE_ERROR_BAD_PARAMETERS;
 		EMSG("Invalid argument provided.");
 	}
 
+out:
 	DMSG("OUT res=0x%X, *len=%zu", res, (res == 0U) ? *len : 0U);
 	return res;
 }
 
 static TEE_Result standalone_fs_write(struct tee_file_handle *fh, size_t pos,
-			const void *buf, size_t len)
+			const void *buf_core, const void *buf_user, size_t len)
 {
 	TEE_Result res;
 	struct spim_file_descriptor *fdp;
 
-	DMSG("IN  fh=%p, pos=%zu, buf=%p, len=%zu", (void *)fh, pos, buf, len);
+	/* One of data_core and data_user must be NULL */
+	assert(!buf_core || !buf_user);
 
-	if ((fh != NULL) && ((len == 0U) || (buf != NULL))) {
+	DMSG("IN  fh=%p, pos=%zu, buf_core=%p, buf_user=%p len=%zu",\
+		(void *)fh, pos, buf_core, buf_user, len);
+
+	if (fh != NULL) {
 		res = spi_get_status();
 		if (res == TEE_SUCCESS) {
-			spi_lock();
-			fdp = spi_get_fdp(fh);
-			if (fdp != NULL) {
-				if (len > 0U) {
-					res = tee_standalone_write(fdp, buf,
-							len, pos);
+			if (buf_core) {
+				spi_lock();
+				fdp = spi_get_fdp(fh);
+				if (fdp != NULL) {
+					if (len > 0U) {
+						res = tee_standalone_write(fdp, buf_core,
+								len, pos);
+					} else {
+						res = TEE_SUCCESS;
+					}
 				} else {
-					res = TEE_SUCCESS;
+					res = TEE_ERROR_BAD_PARAMETERS;
+					EMSG("Invalid file descriptor.");
 				}
-			} else {
-				res = TEE_ERROR_BAD_PARAMETERS;
-				EMSG("Invalid file descriptor.");
+				spi_unlock();
 			}
-			spi_unlock();
+			else if (buf_user) {
+				spi_lock();
+				fdp = spi_get_fdp(fh);
+				if (fdp != NULL) {
+					if (len > 0U) {
+						uint32_t f = TEE_MEMORY_ACCESS_READ;
+
+						res = check_user_access(f, buf_user, len);
+						if (res) {
+							spi_unlock();
+							goto out;
+						}
+						enter_user_access();
+						res = tee_standalone_write(fdp, buf_user,
+								len, pos);
+						exit_user_access();
+					} else {
+						res = TEE_SUCCESS;
+					}
+				} else {
+					res = TEE_ERROR_BAD_PARAMETERS;
+					EMSG("Invalid file descriptor.");
+				}
+				spi_unlock();
+			}
 		}
 	} else {
 		res = TEE_ERROR_BAD_PARAMETERS;
 		EMSG("Invalid argument provided.");
 	}
 
+out:
 	DMSG("OUT res=0x%X", res);
 	return res;
 }
