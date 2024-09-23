@@ -216,7 +216,7 @@ static TEE_Result mfis_err_init(void)
 			mfis_reg.array[loop].MFIERRCTLR = MFIERRCTLR(loop);
 			mfis_reg.array[loop].MFIERRSTSR = MFIERRSTSR(loop);
 			mfis_reg.array[loop].MFIERRTGTR = MFIERRTGTR(loop);
-			itr_add(&mfis_err_itr[loop]);
+			itr_add_type_prio(&mfis_err_itr[loop], IRQ_TYPE_NONE, 0);
 		}
 		mfis_reg.array[1U].MFIERRTGTR = MFIERRTGTR6;
 
