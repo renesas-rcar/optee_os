@@ -270,7 +270,7 @@ static void main_hook_gic_add(struct itr_chip *chip, size_t it, uint32_t type, u
 uint32_t rcar_prr_value __nex_bss;
 #endif
 
-void console_init(void)
+void plat_console_init(void)
 {
 	/* No Operation */
 	// scif_uart_init(&console_data, CONSOLE_UART_BASE);
