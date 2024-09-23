@@ -240,7 +240,7 @@ static TEE_Result swdt_init(void)
 
 	exceptions = cpu_spin_lock_xsave(&thread_global_lock);
 	if (swdt_init_flag == INIT_FLAG_UNINITIALIZED) {
-		itr_add(swdt_itr);
+		itr_add_type_prio(swdt_itr, IRQ_TYPE_NONE, 0);
 
 		/* SWDT has been initialized */
 		swdt_init_flag = INIT_FLAG_INITIALIZED;
