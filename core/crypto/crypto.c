@@ -13,6 +13,7 @@
 #include <kernel/panic.h>
 #include <stdlib.h>
 #include <utee_defines.h>
+#include <string.h>
 
 TEE_Result crypto_hash_alloc_ctx(void **ctx, uint32_t algo)
 {
