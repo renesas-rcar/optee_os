@@ -30,7 +30,7 @@ static void read_uid_reg(uint8_t *read_uid, uint32_t read_num)
 	uint32_t uid;
 	uint32_t i;
 	uint32_t uid_addr = (uint32_t)((vaddr_t)phys_to_virt((LIFEC_BASE +
-				0x0040U), MEM_AREA_IO_SEC));
+				0x0040U), MEM_AREA_IO_SEC, DEVICE0_SIZE * 2));
 
 	/* get uid from LifeC register. */
 	for (i = 0U; i < read_num; i++) {
