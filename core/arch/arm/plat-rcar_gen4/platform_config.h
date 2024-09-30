@@ -68,8 +68,7 @@
 #define OPTEE_LOG_NS_SIZE	(0x00014000U)   /* OP-TEE Log Area NS size */
 
 #define TA_VERIFICATION_BASE	(0x45C00000U)	/* TA area for verification */
-//#define TA_VERIFICATION_SIZE	(0x00100000U)	/* TA verification size */
-#define TA_VERIFICATION_SIZE  (0x00200000U)   /* TA verification size */
+#define TA_VERIFICATION_SIZE	(0x00100000U)	/* TA verification size */
 #define CRYPTOENGINE_WORK_BASE	(0x46000000U)	/* Crypto Enegine Work area */
 
 #define NONCACHE_WORK_BASE	(0x45F00000U)	/* Non Cache Area address */
