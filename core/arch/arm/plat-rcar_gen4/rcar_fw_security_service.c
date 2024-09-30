@@ -95,7 +95,6 @@ uint32_t fwss_secureboot_get_lcs(uint32_t *lcs_out)
 
 	/* Run ICU FW Security services */
 	ret = fw_service_request(p_ISD);
-
 	if (ret == FW_SERVICE_SUCCESS) {
 		if (p_ISD->prm.SECURE_BOOT_API.api_return_value ==
 			BOOTROMAPI_OK) {
@@ -200,7 +199,7 @@ uint32_t fwss_secureboot_dec_and_comp(uint8_t *cnt_cert, uint32_t *cmac)
 	p_ISD->prm.SECURE_BOOT_API.api.
 		boot_decrypt.ptr1.p_content_cert = (uint32_t*)p_cnt_cert;
 	p_ISD->prm.SECURE_BOOT_API.api.
-		boot_decrypt.ptr2.p_cmac = p_cmac_buf;
+		boot_decrypt.ptr2.p_cmac = (uint32_t *)g_CMAC_BUFFER;
 
 	/* Run ICU FW Security services */
 	ret = fw_service_request(p_ISD);
@@ -222,7 +221,7 @@ uint32_t fwss_secureboot_dec_and_comp(uint8_t *cnt_cert, uint32_t *cmac)
 		p_ISD->prm.SECURE_BOOT_API.api.boot_compare.
 			hash_size_in_bytes = SIZE_OF_HASH_BUFFER;
 		p_ISD->prm.SECURE_BOOT_API.api.boot_compare.
-			ptr3.p_cmac = p_cmac_buf;
+			ptr3.p_cmac = (uint32_t *)g_CMAC_BUFFER;
 
 		/* Run ICU FW Security services */
 		ret = fw_service_request(p_ISD);
