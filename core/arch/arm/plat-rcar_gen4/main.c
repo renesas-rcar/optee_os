@@ -26,7 +26,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 /*
- * Copyright (c) 2021-2022, Renesas Electronics Corporation.
+ * Copyright (c) 2021-2024, Renesas Electronics Corporation.
  */
 
 #include <console.h>

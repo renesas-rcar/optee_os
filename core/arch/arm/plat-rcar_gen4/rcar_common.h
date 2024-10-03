@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
- * Copyright (c) 2015-2023, Renesas Electronics Corporation
+ * Copyright (c) 2015-2024, Renesas Electronics Corporation
  */
 
 #ifndef RCAR_COMMON_H

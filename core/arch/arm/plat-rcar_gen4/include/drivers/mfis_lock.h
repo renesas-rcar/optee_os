@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
- * Copyright (c) 2022, Renesas Electronics Corporation
+ * Copyright (c) 2022-2024, Renesas Electronics Corporation
  */
 
 #ifndef MFIS_LOCK_H
