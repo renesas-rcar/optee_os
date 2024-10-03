@@ -347,8 +347,7 @@ static TEE_Result spi_alloc_file(struct tee_pobj *po, char **pfile,
 {
 	TEE_Result res;
 
-	if ((po->obj_id != NULL) && (po->obj_id_len > 0U) &&
-	    (po->obj_id_len <= TEE_OBJECT_ID_MAX_LEN)) {
+	if (po->obj_id_len <= TEE_OBJECT_ID_MAX_LEN) {
 		res = spi_alloc_path(po, pfile, len_out);
 	} else {
 		res = TEE_ERROR_BAD_PARAMETERS;
@@ -374,7 +373,7 @@ static TEE_Result spi_alloc_path(struct tee_pobj *po, char **ppath,
 		(void)memset(mpath, 0, dir_len + file_len);
 		pos = tee_b2hs((uint8_t *)&po->uuid, (uint8_t *)mpath,
 				sizeof(TEE_UUID), dir_len);
-		if (po->obj_id_len > 0U) {
+		if ((po->obj_id != NULL) && (po->obj_id_len > 0U)) {
 			mpath[pos] = '/';
 			pos++;
 			pos += tee_b2hs((uint8_t *)po->obj_id,
