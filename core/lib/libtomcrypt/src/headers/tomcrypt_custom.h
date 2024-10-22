@@ -1,7 +1,7 @@
 /* LibTomCrypt, modular cryptographic library -- Tom St Denis */
 /* SPDX-License-Identifier: Unlicense */
 /*
- * Copyright (c) 2020-2023, Renesas Electronics Corporation
+ * Copyright (c) 2020-2024, Renesas Electronics Corporation
  */
 
 #ifndef TOMCRYPT_CUSTOM_H_

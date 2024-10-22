@@ -3,7 +3,7 @@
  * Copyright (c) 2016-2025 Linaro Limited
  * Copyright (c) 2014, STMicroelectronics International N.V.
  * Copyright (c) 2022, Arm Limited and Contributors. All rights reserved.
- * Copyright (c) 2017-2023, Renesas Electronics Corporation
+ * Copyright (c) 2017-2024, Renesas Electronics Corporation
  */
 
 #include <assert.h>
