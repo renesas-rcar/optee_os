@@ -10,8 +10,10 @@ srcs-y += rcar_maskrom.c
 srcs-y += rcar_suspend_to_ram.c
 srcs-y += rcar_mutex.c
 
-# Copy the base file - /core/arch/arm/kernel/
+ifneq ($(CFG_SCIF),y)
+# Use RCAR_DEBUG_LOG feature
 srcs-y += trace_ext.c
+endif
 
 subdirs-y += drivers
 subdirs-y += tee

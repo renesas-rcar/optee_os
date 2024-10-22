@@ -37,8 +37,10 @@ ifeq ($(CFG_WITH_VFP),y)
 srcs-$(CFG_ARM32_core) += vfp_a32.S
 srcs-$(CFG_ARM64_core) += vfp_a64.S
 endif
+ifeq ($(CFG_SCIF),y)
 WITH_TRACE_EXT ?= y
 srcs-$(WITH_TRACE_EXT) += trace_ext.c
+endif
 srcs-$(CFG_ARM32_core) += misc_a32.S
 srcs-$(CFG_ARM64_core) += misc_a64.S
 srcs-$(CFG_WITH_STMM_SP) += stmm_sp.c

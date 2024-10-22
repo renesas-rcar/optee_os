@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include <drivers/gic.h>
+#include <drivers/scif.h>
 
 #include <arm.h>
 #include <kernel/boot.h>
@@ -237,6 +238,10 @@ void main_init_gic(void)
 	log_buf_init();
 }
 
+#ifdef CFG_SCIF
+static struct scif_uart_data console_data __nex_bss;
+#endif
+
 static void main_hook_gic_add(struct itr_chip *chip, size_t it, uint32_t flags)
 {
 	uint32_t exceptions;
@@ -260,5 +265,10 @@ void itr_core_handler(void)
 
 void console_init(void)
 {
-	/* No Operation */
+#ifdef CFG_SCIF
+	scif_uart_init(&console_data, SCIF2_BASE);
+	/* Register struct chip (handler func) to framework (console.c)*/
+	register_serial_console(&console_data.chip);
+	IMSG("Init SCIF driver before mmu enable");
+#endif
 }
