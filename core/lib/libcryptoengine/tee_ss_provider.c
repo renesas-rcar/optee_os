@@ -4068,7 +4068,6 @@ static SSError_t ss_aes_init(void *ctx, uint32_t algo, TEE_OperationMode mode,
 		PROV_DMSG("ERROR:BAD_PARAMETERS(ctx)\n");
 		res = SS_ERROR_BAD_PARAMETERS;
 	}
-
 	if (res == SS_SUCCESS) {
 		if (iv == NULL) {
 			PROV_DMSG("iv = NULL\n");
@@ -4396,7 +4395,10 @@ TEE_Result crypto_hw_cipher_init(void *ctx, uint32_t algo,
 		PROV_DMSG("Input ctx\n");
 		PROV_DHEXDUMP(&(ss_cipher_ctx->u.aes_ctx),sizeof(SS_AES_Context_t));
 		PROV_DMSG("CALL: ss_aes_init\n");
-		res = ss_aes_init(&(ss_cipher_ctx->u.aes_ctx), algo, mode, key1, key1_len, iv, iv_len);
+		if(iv_len == 0)
+			res = ss_aes_init(&(ss_cipher_ctx->u.aes_ctx), algo, mode, key1, key1_len, NULL, 0);
+		else
+			res = ss_aes_init(&(ss_cipher_ctx->u.aes_ctx), algo, mode, key1, key1_len, iv, iv_len);
 		PROV_DMSG("Result: 0x%08x\n",res);
 		break;
 #endif
@@ -4410,7 +4412,10 @@ TEE_Result crypto_hw_cipher_init(void *ctx, uint32_t algo,
 	case TEE_ALG_DES3_CBC_NOPAD:
 #endif
 		PROV_DMSG("CALL: ss_des_init\n");
-		res = ss_des_init(&(ss_cipher_ctx->u.des_ctx), algo, mode, key1, key1_len, iv, iv_len);
+		if(iv_len == 0)
+			res = ss_des_init(&(ss_cipher_ctx->u.des_ctx), algo, mode, key1, key1_len, NULL, 0);
+		else
+			res = ss_des_init(&(ss_cipher_ctx->u.des_ctx), algo, mode, key1, key1_len, iv, iv_len);
 		PROV_DMSG("Result: 0x%08x\n",res);
 		break;
 #endif
