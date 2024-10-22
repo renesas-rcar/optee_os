@@ -35,30 +35,36 @@ static void verify_cb_args(struct pm_callback_handle *pm_hdl)
 void register_pm_cb(struct pm_callback_handle *pm_hdl)
 {
 	struct pm_callback_handle *ref = NULL;
-	const char *name = pm_hdl->name;
+	const char *name;
+	const char *name_final;
 	size_t count = pm_cb_count;
 	uint32_t exceptions = 0;
 
 	verify_cb_args(pm_hdl);
 
-	if (!name)
+	if (!pm_hdl->name)
 		name = no_name;
+	else
+		name = pm_hdl->name;
 
 	if (!is_unpaged((void *)name)) {
-		name = strdup(name);
-		if (!name)
+		name_final = strdup(name? name:no_name);
+		if(!name_final)
 			panic();
+	}
+	else
+	{
+		name_final = name;
 	}
 
 	exceptions = cpu_spin_lock_xsave(&pm_list_lock);
-
 	ref = realloc(pm_cb_ref, sizeof(*ref) * (count + 1));
 	if (!ref)
 		panic();
 
 	ref[count] = *pm_hdl;
 	ref[count].flags = 0;
-	ref[count].name = name;
+	ref[count].name = name_final;
 
 	pm_cb_count = count + 1;
 	pm_cb_ref = ref;
