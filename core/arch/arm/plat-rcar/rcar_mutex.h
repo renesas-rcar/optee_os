@@ -5,6 +5,9 @@
 
 #ifndef RCAR_MUTEX_H
 #define RCAR_MUTEX_H
+#include <kernel/mutex.h>
+
+extern struct mutex g_rom_api_mutex;
 
 void rcar_nex_mutex_lock(struct mutex *m);
 void rcar_nex_mutex_unlock(struct mutex *m);

@@ -12,6 +12,8 @@
 #include "../kernel/mutex_lockdep.h"
 #include "rcar_mutex.h"
 
+struct mutex g_rom_api_mutex __nex_data = MUTEX_INITIALIZER;
+
 void rcar_nex_mutex_lock(struct mutex *m)
 {
 #ifdef CFG_VIRTUALIZATION
