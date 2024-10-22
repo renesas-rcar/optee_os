@@ -13,10 +13,11 @@
 #include "rcar_log_func.h"
 #include "rcar_common.h"
 
+#ifndef CFG_SCIF
 const char trace_ext_prefix[] = "TEE-CORE";
 int trace_level = TRACE_LEVEL;
 
-void trace_ext_puts(const char *str)
+void plat_trace_ext_puts(const char *str)
 {
 	int8_t time_buf[LOG_TIME_BUF_MAX_SIZE] = {0};
 	size_t time_len = 0U;
@@ -88,13 +89,4 @@ void trace_ext_puts(const char *str)
 #endif
 	}
 }
-
-int trace_ext_get_thread_id(void)
-{
-	return -1;
-}
-
-int trace_ext_get_core_id(void)
-{
-	return -1;
-}
+#endif

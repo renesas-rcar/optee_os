@@ -15,7 +15,6 @@ srcs-y += rcar_maskrom.c
 srcs-y += rcar_suspend_to_ram.c
 srcs-y += rcar_mutex.c
 
-# Copy the base file - /core/arch/arm/kernel/
 srcs-y += trace_ext.c
 
 subdirs-y += drivers

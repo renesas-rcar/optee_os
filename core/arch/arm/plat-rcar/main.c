@@ -249,7 +249,10 @@ register_ddr(NSEC_DDR_3_BASE, NSEC_DDR_3_SIZE);
 #endif /* !CFG_CORE_RESERVED_SHM */
 // #endif
 
-// static struct scif_uart_data console_data __nex_bss;  //use rcar_logging feature instead
+#ifdef CFG_SCIF
+static struct scif_uart_data console_data __nex_bss;
+#endif
+
 static void main_hook_gic_add(struct itr_chip *chip, size_t it, uint32_t type, uint32_t prio)
 {
 	uint32_t exceptions;
@@ -272,9 +275,12 @@ uint32_t rcar_prr_value __nex_bss;
 
 void plat_console_init(void)
 {
-	/* No Operation */
-	// scif_uart_init(&console_data, CONSOLE_UART_BASE);
-	// register_serial_console(&console_data.chip);
+#ifdef CFG_SCIF
+	scif_uart_init(&console_data, SCIF2_BASE);
+	/* Register struct chip (handler func) to framework (console.c)*/
+	register_serial_console(&console_data.chip);
+	IMSG("Init SCIF driver before mmu enable");
+#endif
 }
 
 #ifdef CFG_RCAR_ROMAPI
@@ -305,7 +311,9 @@ void boot_primary_init_intc(void)
 	gic_data.chip.ops = (const struct itr_ops *)&main_itr_ops;
 
 	// Initialize logging feature
+#ifndef CFG_SCIF
 	log_buf_init();
+#endif
 }
 
 void boot_secondary_init_intc(void)

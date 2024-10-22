@@ -40,6 +40,7 @@
 #define SCSCR_TE		BIT(5)
 #define SCFSR_TDFE		BIT(5)
 #define SCFSR_TEND		BIT(6)
+#define TRANS_END_CHECK         (uint16_t)(SCFSR_TEND | SCFSR_TDFE)
 
 #define SCFDR_T_SHIFT		8
 
@@ -57,18 +58,22 @@ static void scif_uart_flush(struct serial_chip *chip)
 {
 	vaddr_t base = chip_to_base(chip);
 
-	while (!(io_read16(base + SCIF_SCFSR) & SCFSR_TEND))
+	while ((TRANS_END_CHECK & io_read16(base + SCIF_SCFSR)) != TRANS_END_CHECK)
+	{
 		;
+	}
 }
 
 static void scif_uart_putc(struct serial_chip *chip, int ch)
 {
 	vaddr_t base = chip_to_base(chip);
 
-	/* Wait until there is space in the FIFO */
-	while ((io_read16(base + SCIF_SCFDR) >> SCFDR_T_SHIFT) >=
-		SCIF_TX_FIFO_SIZE)
+	/* Check that transfer is completed */
+	while ((TRANS_END_CHECK & io_read16(base + SCIF_SCFSR)) != TRANS_END_CHECK)
+	{
 		;
+	}
+
 	io_write8(base + SCIF_SCFTDR, ch);
 	io_clrbits16(base + SCIF_SCFSR, SCFSR_TEND | SCFSR_TDFE);
 }

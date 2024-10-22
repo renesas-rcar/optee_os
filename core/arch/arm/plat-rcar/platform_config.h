@@ -95,6 +95,7 @@
 #define ROMAPI_BASE		(0xEB100000U)	/* MaskROM API address	*/
 #define RPC_BASE		(0xEE200000U)	/* RPC address		*/
 // #define PRR_BASE		(0xFFF00000U)	/* Product Register address */
+#define SCIF2_BASE 		(0xE6E88000U)	/* SCIF2 base address */
 #define RPC_ADDR_MAP_BASE	(0x08000000U)	/* RPC Internal address	*/
 #define RPC_ADDR_MAP_SIZE	(0x04000000U)	/* RPC Address Map size */
 
