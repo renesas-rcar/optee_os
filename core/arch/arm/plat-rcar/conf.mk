@@ -106,9 +106,6 @@ endif
 core-platform-cflags += -DPLATFORM_RCAR
 core-platform-cflags += -DMMU_DIRECT_MAPPING
 
-# Not covered by compile - /core/arch/arm/kernel/trace_ext.c
-WITH_TRACE_EXT := n
-
 # Compiler switch - Debug log(Linux terminal log)
 RCAR_DEBUG_LOG ?= 0
 ifneq ($(RCAR_DEBUG_LOG),0)
