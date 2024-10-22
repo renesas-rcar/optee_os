@@ -11,6 +11,8 @@
 #define NONCACHE_STACK_AREA		(NONCACHE_WORK_BASE + \
 					NONCACHE_WORK_SIZE)
 
+#define LCS_SD		(0x3U)
+
 typedef uint32_t (*ROM_FuncReadFlash) (
 			uint64_t srcAddr,
 			uint8_t *pDest,

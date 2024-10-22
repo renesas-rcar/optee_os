@@ -4,13 +4,17 @@
 #include <assert.h>
 #include <kernel/panic.h>
 #include <kernel/spinlock.h>
+#include <kernel/tee_time.h>
 #include <platform_config.h>
 #include <rng_support.h>
 #include <trace.h>
 
+#include "rcar_maskrom.h"
+#include "rcar_mutex.h"
 #include "romapi.h"
 
 #define SCRATCH_BUF_SZ		4096
+#define RANDOM_MASK_VALUE (0xFC8A7E25)
 
 static uint8_t scratch_buf[SCRATCH_BUF_SZ] __nex_bss
 					__aligned(RCAR_CACHE_LINE_SZ);
@@ -24,24 +28,72 @@ static uint8_t rng_cache[PLAT_RND_VECTOR_SZ] __nex_bss
 					__aligned(RCAR_CACHE_LINE_SZ);
 static uint8_t rng_cache_pos __nex_data;
 
+static TEE_Result creat_prng_by_generic_timer(uint8_t *buf, size_t len)
+{
+	uint32_t idx = 0, i, rand_seed;
+	uint8_t *seed;
+	TEE_Result ret;
+	TEE_Time g_time;
+
+	while (idx < len) {
+		ret = tee_time_get_sys_time(&g_time);
+		if (ret != TEE_SUCCESS) {
+			DMSG("%s() failed. Please check !!!\n", __func__);
+			break;
+		}
+
+		rand_seed = (g_time.seconds + idx) << 24 | (g_time.seconds + idx) << 8;
+		rand_seed |= (g_time.millis + idx) << 16 | (g_time.millis + idx);
+		rand_seed ^= RANDOM_MASK_VALUE;
+		seed = (uint8_t *)&rand_seed;
+		for (i = 0; i < 4; i++) {
+			if (idx < len) {
+				buf[idx++] = seed[i];
+			} else {
+				break;
+			}
+		}
+
+	}
+
+	return ret;
+}
+
 TEE_Result hw_get_random_bytes(void *buf, size_t len)
 {
 	uint32_t exceptions;
 	uint8_t *buffer = buf;
 	size_t buffer_pos = 0;
 	uint8_t ret_val = 0;
+	uint32_t lcs, ret;
 
 	assert(rng_cache_pos < PLAT_RND_VECTOR_SZ);
+
+	rcar_nex_mutex_lock(&g_rom_api_mutex);
+	ret = ROM_GetLcs(&lcs);
+	rcar_nex_mutex_unlock(&g_rom_api_mutex);
+	if (ret != 0) {
+		DMSG("%s(): ROM_GetLcs() error\n", __func__);
+		return ret;
+	}
 
 	while (buffer_pos < len) {
 		exceptions = cpu_spin_lock_xsave(&spin_lock);
 		/* Refill our FIFO */
 		if (rng_cache_pos == 0) {
-			uint32_t ret = plat_rom_getrndvector(rng_cache,
+			if (lcs != LCS_SD) {
+				ret = plat_rom_getrndvector(rng_cache,
 							scratch_buf,
 							sizeof(scratch_buf));
-			if (ret != 0)
-				panic("ROM_GetRndVector() returned error!");
+				if (ret != 0)
+					panic("ROM_GetRndVector() returned error!");
+			} else {
+				ret = creat_prng_by_generic_timer(rng_cache, PLAT_RND_VECTOR_SZ);
+				if (ret != TEE_SUCCESS) {
+					cpu_spin_unlock_xrestore(&spin_lock, exceptions);
+					return ret;
+				}
+			}
 		}
 
 		buffer[buffer_pos++] = rng_cache[rng_cache_pos++];
