@@ -57,8 +57,6 @@
 #include "rcar_log_func.h"
 #include "rcar_suspend_to_ram.h"
 
-struct gic_data gic_data __nex_bss;
-
 static void main_hook_gic_add(struct itr_chip *chip, size_t it, uint32_t type, uint32_t prio);
 static void rcar_main_secondary_init_gic(void);
 
