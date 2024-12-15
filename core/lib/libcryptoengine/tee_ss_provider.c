@@ -3966,7 +3966,7 @@ TEE_Result crypto_hw_cipher_alloc_ctx(void **ctx, uint32_t algo)
     }
 
     tee_ret = ss_translate_error_ss2tee(ret);
-    PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n",res,tee_res);
+    PROV_OUTMSG("return ret=0x%08x -> tee_ret=0x%08x\n",ret,tee_ret);
     return tee_ret;
 }
 
@@ -4952,7 +4952,7 @@ TEE_Result crypto_hw_mac_check_current_engine(void *ctx, uint32_t *engine)
     }
 
     tee_ret = ss_translate_error_ss2tee(res);
-    PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n",res,tee_ret);
+    PROV_OUTMSG("return ret=0x%08x -> tee_ret=0x%08x\n",res,tee_ret);
     return tee_ret;
 }
 
@@ -5071,7 +5071,7 @@ TEE_Result crypto_hw_mac_alloc_ctx(void **ctx, uint32_t algo)
     }
 
     tee_ret = ss_translate_error_ss2tee(ret);
-    PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n",res,tee_res);
+    PROV_OUTMSG("return ret=0x%08x -> tee_ret=0x%08x\n",ret,tee_ret);
     return tee_ret;
 }
 
@@ -5810,7 +5810,7 @@ TEE_Result crypto_hw_aes_ccm_check_current_engine(void *ctx, uint32_t *engine)
     }
 
 	tee_ret = ss_translate_error_ss2tee(res);
-    PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n",res,tee_ret);
+    PROV_OUTMSG("return res=0x%08x -> tee_ret=0x%08x\n",res,tee_ret);
     return tee_ret;
 }
 
