@@ -12,6 +12,9 @@
 #include <kernel/panic.h>
 #include <stdlib.h>
 #include <utee_defines.h>
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+#include <string.h>
+#endif
 
 TEE_Result crypto_hash_alloc_ctx(void **ctx, uint32_t algo)
 {
