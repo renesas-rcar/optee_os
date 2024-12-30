@@ -82,7 +82,7 @@ unsigned long plat_get_aslr_seed(void)
 
 void boot_primary_init_intc(void)
 {
-	gic_init(GICC_BASE, GICD_BASE);
+	gic_init_v3(0, GICD_BASE, GICR_BASE);
 #ifndef CFG_SCIF
 	/* Initialize logging feature */
 	log_buf_init();

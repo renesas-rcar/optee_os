@@ -14,6 +14,7 @@
 
 #if defined(CFG_RCAR_GEN5)
 #define GICD_BASE              0x38000000
+#define GICR_BASE              0x38060000
 
 #if CFG_RCAR_UART == 200	/* HSCIF0 */
 #define CONSOLE_UART_START	0xC0710000
