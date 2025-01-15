@@ -20,7 +20,45 @@ CFG_ARM64_core ?= y
 # 2. OP-TEE crashes during boot with enabled CFG_CORE_ASLR.
 $(call force,CFG_CORE_ASLR,n)
 
+define add_define
+DEFINES			+=	-D$(1)$(if $(value $(1)),=$(value $(1)),)
+endef
+
+# LSI setting common define
+RCAR_S4:=0
+RCAR_V4H:=1
+RCAR_V4M:=2
+
+$(eval $(call add_define,RCAR_S4))
+$(eval $(call add_define,RCAR_V4H))
+$(eval $(call add_define,RCAR_V4M))
+
+# The source code supports for R-Car S4, V4H, V4M.
+# Set "LSI" as Make paramater with value: "S4", "V4H", "V4M" to select one of them.
+ifeq (${LSI},V4H)
+  RCAR_LSI:=${RCAR_V4H}
+else ifeq (${LSI},V4M)
+  RCAR_LSI:=${RCAR_V4M}
+else
+  LSI = S4
+  RCAR_LSI:=${RCAR_S4}
+endif
+$(eval $(call add_define,RCAR_LSI))
+
+ifeq ($(RCAR_LSI),$(RCAR_S4))			# Target board: S4
 $(call force,CFG_TEE_CORE_NB_CORE,8)
+CFG_NUM_THREADS = 8
+CFG_CORE_CLUSTER_SHIFT = 1
+else ifeq ($(RCAR_LSI),$(RCAR_V4H))		# Target board: V4H
+$(call force,CFG_TEE_CORE_NB_CORE,4)
+CFG_NUM_THREADS = 4
+CFG_CORE_CLUSTER_SHIFT = 1
+else						# Target board: V4M
+$(call force,CFG_TEE_CORE_NB_CORE,4)
+CFG_NUM_THREADS = 4
+CFG_CORE_CLUSTER_SHIFT = 2
+endif
+$(info "-- Build for ${LSI} --")
 
 CFG_TZDRAM_START ?= 0x44100000
 CFG_TZDRAM_SIZE	 ?= 0x03D00000
