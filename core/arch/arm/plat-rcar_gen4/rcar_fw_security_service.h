@@ -16,7 +16,7 @@
 #define SIZE_OF_CMAC_BUFFER			(16U)
 #define SIZE_OF_HASH_BUFFER			(64U)
 
-#define RST_MODEMR0		p2v_regadr(RST_BASE)
+#define RST_MODEMR0		p2v_regadr(RST_BASE, DEVICE0_SIZE)
 #define RST_MODEMR0_MD5		(0x00000020U)
 
 #define CMAC_COPY		(4U)
