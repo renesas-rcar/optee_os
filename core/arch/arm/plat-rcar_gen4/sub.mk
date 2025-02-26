@@ -14,4 +14,4 @@ srcs-y += trace_ext.c
 
 subdirs-y += drivers
 subdirs-y += tee
-subdirs-$(CFG_DYNAMIC_TA_AUTH_BY_HWENGINE) += secure
+subdirs-$(CFG_ICUM_FW_SERVICE) += secure

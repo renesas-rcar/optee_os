@@ -26,6 +26,14 @@
 #define BUF_OFS_CMAC		(BUF_OFS_LCS + 32U)
 #define BUF_OFS_HASH		(BUF_OFS_CMAC + 32U)
 
+#ifdef RCAR_TRNG_BY_ICUMX_HWENGINE
+#define DEF_MAX_TRNG_BLOCKS	32
+#define TRNG_BLOCK_SIZE		4
+#define NEXT_ADDR_ALIGN4(n)	(((n + 3) / 4) * 4)
+#define ICUM_FW_SHARED_AREA_ADDR_TRNG    0x41C00480u
+#define SIZE_OF_TRNG_SERVICE            512
+#endif
+
 /*******************************************************************************
  * Function & variable prototypes
  ******************************************************************************/
@@ -34,6 +42,10 @@ uint32_t fwss_secureboot_get_lcs(uint32_t *lcs_out);
 uint32_t fwss_secureboot_verify(uint8_t *key_cert, uint8_t *cnt_cert,
 				uint32_t *cmac);
 uint32_t fwss_secureboot_dec_and_comp(uint8_t *cnt_cert, uint32_t *cmac);
-
+#ifdef RCAR_TRNG_BY_ICUMX_HWENGINE
+uint32_t fwss_trng_generate(void *buf, size_t buf_len);
+uint32_t fwss_sys_fw_init(void);
+uint32_t fwss_lc_set_stage(uint32_t stage);
+#endif
 #endif /* RCAR_FW_SECURITY_SERVICE_H */
 

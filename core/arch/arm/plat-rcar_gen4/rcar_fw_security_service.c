@@ -13,12 +13,23 @@
 #include <io.h>
 #include <trace.h>
 #include <kernel/delay.h>
+#ifdef RCAR_TRNG_BY_ICUMX_HWENGINE
+#include <tee_api_defines.h>
+#endif
 
 static void *g_ISD_BUFFER __nex_data = NULL;
 static void *g_LCS_BUFFER __nex_data = NULL;
 static void *g_CMAC_BUFFER __nex_data = NULL;
 static void *g_HASH_BUFFER __nex_data = NULL;
-
+#ifdef RCAR_TRNG_BY_ICUMX_HWENGINE
+static void *g_ISD_TRNG_BUFFER __nex_data = NULL;
+// Function to convert buffer length to TRNG block
+inline uint32_t byte_to_trng_block(uint32_t buf_len){
+	/* A TRNG block is equal to 4 bytes */
+	return (buf_len + TRNG_BLOCK_SIZE - 1) / TRNG_BLOCK_SIZE;
+}
+static uint8_t is_init_icum = 0;
+#endif
 static uint32_t fw_service_request(r_icumif_isd_t *p_ISD);
 
 uint32_t fwss_service_init(void)
@@ -28,6 +39,9 @@ uint32_t fwss_service_init(void)
 	uint32_t ret = FW_SERVICE_SUCCESS;
 
 	if (g_ISD_BUFFER == NULL) {
+#ifdef RCAR_TRNG_BY_ICUMX_HWENGINE
+		g_ISD_TRNG_BUFFER = (void *)ICUM_FW_SHARED_AREA_ADDR_TRNG;
+#endif
 		g_ISD_BUFFER = (void *)ICUM_FW_SHARED_AREA_ADDR;
 		g_LCS_BUFFER = (void *)(ICUM_FW_SHARED_AREA_ADDR +
 						BUF_OFS_LCS);
@@ -231,6 +245,140 @@ uint32_t fwss_secureboot_dec_and_comp(uint8_t *cnt_cert, uint32_t *cmac)
 	return p_ISD->prm.SECURE_BOOT_API.api_return_value;
 }
 
+#ifdef RCAR_TRNG_BY_ICUMX_HWENGINE
+uint32_t fwss_trng_generate(void *buf, size_t buf_len)
+{
+	uint32_t res;
+	r_icumif_isd_t *p_ISD;
+	uint32_t ret = FW_SERVICE_SUCCESS;
+	uint32_t *trng_output;
+
+	/* Init ICUM Firmware interface */
+	res = fwss_service_init();
+	if(res != FW_SERVICE_SUCCESS) {
+		EMSG("fwss_service_init() error");
+		ret = TEE_ERROR_SECURITY;
+	}
+
+	if(!is_init_icum) {
+		/* Init ICUM Firmware system */
+		res = fwss_sys_fw_init();
+		if(res != FW_SERVICE_SUCCESS) {
+			EMSG("fwss_sys_fw_init() error");
+			ret = TEE_ERROR_SECURITY;
+		}
+
+		/* Transfer to LC1 stage */
+		res = fwss_lc_set_stage(LC_STAGE_LC1);
+		if(res != FW_SERVICE_SUCCESS) {
+			EMSG("fwss_lc_set_stage() error");
+			ret = TEE_ERROR_SECURITY;
+		}
+		is_init_icum = 1;
+	}
+
+	/* Initialize the global buffer */
+	(void)memset(g_ISD_TRNG_BUFFER, 0, SIZE_OF_TRNG_SERVICE);
+
+	/* Set parameter */
+	p_ISD = (r_icumif_isd_t *)g_ISD_TRNG_BUFFER;
+	trng_output = (uint32_t *)p_ISD + NEXT_ADDR_ALIGN4(sizeof(r_icumif_isd_t));
+
+	p_ISD->service_id                        = SERVICE_02_RAND_TRNG;
+	p_ISD->ptr.p_callbackfunc                = NULL;
+	p_ISD->job_id                            = 0;
+	p_ISD->prm.RAND_GENERATE.ptr.p_block_out = (uint32_t*)trng_output;
+	p_ISD->prm.RAND_GENERATE.nb_blocks       = byte_to_trng_block(buf_len);
+	p_ISD->service_priority                  = R_ICUMIF_SERV_PRIORITY_NORMAL;
+	p_ISD->req_nointerrupt                   = R_ICUMIF_REQRES_INTERRPUT;
+	p_ISD->res_nointerrupt                   = R_ICUMIF_REQRES_NOINTERRPUT;
+
+	/* Run ICU FW Security services */
+	res = fw_service_request(p_ISD);
+	if(res != FW_SERVICE_SUCCESS) {
+		EMSG("fw_service_request error");
+		ret = TEE_ERROR_SECURITY;
+		goto out;
+	}
+
+	(void)memcpy((uint8_t*)buf, (uint8_t*)trng_output, buf_len);
+
+out:
+	return ret;
+}
+
+uint32_t fwss_sys_fw_init(void)
+{
+	uint32_t res;
+	r_icumif_isd_t *p_ISD;
+	uint32_t ret = FW_SERVICE_SUCCESS;
+
+	/* Initialize the global buffer */
+	(void)memset(g_ISD_TRNG_BUFFER, 0, SIZE_OF_TRNG_SERVICE);
+
+	/* Set parameter */
+	p_ISD 					= (r_icumif_isd_t *)g_ISD_TRNG_BUFFER;
+	p_ISD->service_id			= SERVICE_00_SYSTEM_INIT;
+	p_ISD->vm_id				= 0U;
+	p_ISD->req_res_status			= 0U;
+	p_ISD->service_priority			= R_ICUMIF_SERV_PRIORITY_NORMAL;
+	p_ISD->ptr.p_callbackfunc		= 0;
+	p_ISD->job_id				= 0;
+	p_ISD->req_nointerrupt			= R_ICUMIF_REQRES_INTERRPUT;
+	p_ISD->res_nointerrupt			= R_ICUMIF_REQRES_NOINTERRPUT;
+	p_ISD->prm.SYSTEM_INIT.sys_init_id	= SYS_INIT_FW_INITIALIZATION;
+
+	/* Run ICU FW Security services */
+	res = fw_service_request(p_ISD);
+	if(res != FW_SERVICE_SUCCESS) {
+		EMSG("fw_service_request error");
+		ret = TEE_ERROR_SECURITY;
+	}
+
+	return ret;
+}
+
+uint32_t fwss_lc_set_stage(uint32_t stage)
+{
+	uint32_t res;
+	r_icumif_isd_t *p_ISD;
+	uint32_t ret = FW_SERVICE_SUCCESS;
+
+	if(stage != LC_STAGE_LC1) {
+		EMSG("Currently only support for switching to LC1 stage!\n");
+		ret = TEE_ERROR_SECURITY;
+		goto out;
+	}
+
+	/* Initialize the global buffer */
+	(void)memset(g_ISD_TRNG_BUFFER, 0, SIZE_OF_TRNG_SERVICE);
+
+	/* Set parameter */
+	p_ISD = 				(r_icumif_isd_t *)g_ISD_TRNG_BUFFER;
+	p_ISD->service_id			= SERVICE_00_STAGE_TRANSITION;
+	p_ISD->ptr.p_callbackfunc		= NULL;
+	p_ISD->job_id				= 0;
+	p_ISD->prm.LIFE_CYCLE.current_stage	= (r_stage_type_t)0;
+	p_ISD->prm.LIFE_CYCLE.cluster_id	= 0;
+	p_ISD->prm.LIFE_CYCLE.cr_request	= LC_CR_NONE;
+	p_ISD->prm.LIFE_CYCLE.ptr1.p_challenge	= BIG_BUFFER[0];
+	p_ISD->prm.LIFE_CYCLE.ptr2.p_response	= BIG_BUFFER[1];
+	p_ISD->req_nointerrupt			= R_ICUMIF_REQRES_INTERRPUT;
+	p_ISD->res_nointerrupt			= R_ICUMIF_REQRES_NOINTERRPUT;
+	p_ISD->prm.LIFE_CYCLE.transition_dest	= stage;
+
+	/* Run ICU FW Security services */
+	res = fw_service_request(p_ISD);
+	if(res != FW_SERVICE_SUCCESS) {
+		EMSG("fw_service_request error");
+		ret = TEE_ERROR_SECURITY;
+	}
+
+out:
+	return ret;
+}
+#endif
+
 static uint32_t fw_service_request(r_icumif_isd_t *p_ISD)
 {
 	int32_t res;
@@ -244,6 +392,9 @@ static uint32_t fw_service_request(r_icumif_isd_t *p_ISD)
 				break;
 			}
 		} while (true);
+	} else {
+		EMSG("res = 0x%x", res);
+		ret = FW_SERVICE_FAILURE;
 	}
 
 	if (p_ISD->service_result == SERV_OK) {
