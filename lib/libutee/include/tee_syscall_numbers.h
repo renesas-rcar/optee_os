@@ -78,13 +78,14 @@
 #define TEE_SCN_SE_CHANNEL_TRANSMIT__DEPRECATED		68
 #define TEE_SCN_SE_CHANNEL_CLOSE__DEPRECATED		69
 /* End of deprecated Secure Element API syscalls */
-#define TEE_SCN_CACHE_OPERATION			70
+#define TEE_SCN_CACHE_OPERATION                        70
+#define TEE_ICUMFW_TRNG                         71
 
 #ifdef PLATFORM_rcar_gen4
-#define RCAR_SCN_ASSET_UNPACK			71
-#define TEE_SCN_MAX				71
+#define RCAR_SCN_ASSET_UNPACK			72
+#define TEE_SCN_MAX				72
 #else
-#define TEE_SCN_MAX				70
+#define TEE_SCN_MAX				71
 #endif
 
 /* Maximum number of allowed arguments for a syscall */

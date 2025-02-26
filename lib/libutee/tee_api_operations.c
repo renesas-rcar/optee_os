@@ -2414,6 +2414,15 @@ void __GP11_TEE_GenerateRandom(void *randomBuffer, uint32_t randomBufferLen)
 	TEE_GenerateRandom(randomBuffer, randomBufferLen);
 }
 
+void TEE_ICUM_TRNG(void *randomBuffer, size_t randomBufferLen)
+{
+	TEE_Result res;
+
+	res = _utee_icum_trng(randomBuffer, randomBufferLen);
+	if (res != TEE_SUCCESS)
+		TEE_Panic(res);
+}
+
 int rand(void)
 {
 	int rc;
