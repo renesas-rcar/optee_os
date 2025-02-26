@@ -123,6 +123,8 @@
 
         UTEE_SYSCALL _utee_cache_operation, TEE_SCN_CACHE_OPERATION, 3
 
+	UTEE_SYSCALL _utee_icum_trng, TEE_ICUMFW_TRNG, 2
+
 #ifdef PLATFORM_rcar_gen4
         UTEE_SYSCALL urcar_gen_asset_unpack, RCAR_SCN_ASSET_UNPACK, 6
 #endif
