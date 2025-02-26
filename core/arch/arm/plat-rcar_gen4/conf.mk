@@ -121,6 +121,15 @@ core-platform-cflags += -DTARGET_DEVICE_S4X
 core-platform-cflags += -DAARCH64
 endif
 
+CFG_TRNG_BY_ICUMX_HWENGINE ?= n
+ifeq ($(CFG_TRNG_BY_ICUMX_HWENGINE),y)
+core-platform-cflags += -DRCAR_TRNG_BY_ICUMX_HWENGINE
+CFG_ICUM_FW_SERVICE := y
+core-platform-cflags += -DTARGET_CORTEX_A
+core-platform-cflags += -DTARGET_DEVICE_V4H
+core-platform-cflags += -DAARCH64
+endif
+
 ifeq ($(CFG_VIRTUALIZATION),y)
 CFG_VIRT_GUEST_COUNT ?= 3
 CFG_RCAR_MUTEX_DELAY ?= 1

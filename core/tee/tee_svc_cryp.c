@@ -39,6 +39,9 @@
 #if defined(CFG_CRYPTO_PBKDF2)
 #include <tee/tee_cryp_pbkdf2.h>
 #endif
+#if defined(RCAR_TRNG_BY_ICUMX_HWENGINE)
+#include <rcar_fw_security_service.h>
+#endif
 
 enum cryp_state {
 	CRYP_STATE_INITIALIZED = 0,
@@ -4080,6 +4083,27 @@ TEE_Result syscall_cryp_random_number_generate(void *buf, size_t blen)
 	res = copy_to_user(buf, bbuf, blen);
 	return res;
 }
+
+#ifdef RCAR_TRNG_BY_ICUMX_HWENGINE
+TEE_Result syscall_icum_trng_generate(void *buf, size_t buf_len)
+{
+	if (!buf)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	if (buf_len == 0 || (DEF_MAX_TRNG_BLOCKS * TRNG_BLOCK_SIZE) < buf_len)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	return fwss_trng_generate(buf, buf_len);
+}
+#else
+TEE_Result syscall_icum_trng_generate(void *buf, size_t buf_len)
+{
+	(void) buf;
+	(void) buf_len;
+	/* Always returns success */
+	return TEE_SUCCESS;
+}
+#endif
 
 TEE_Result syscall_authenc_init(unsigned long state, const void *nonce,
 				size_t nonce_len, size_t tag_len,
