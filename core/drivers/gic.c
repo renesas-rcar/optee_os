@@ -45,7 +45,16 @@
 #define GICD_IPRIORITYR(n)	(0x400 + (n) * 4)
 #define GICD_ITARGETSR(n)	(0x800 + (n) * 4)
 #define GICD_IGROUPMODR(n)	(0xd00 + (n) * 4)
+#define GICD_IROUTER(n)		(0x6000 + (n) * 8)
 #define GICD_SGIR		(0xF00)
+/* Offsets from gic.gicd_base extend ID*/
+#define GICD_IGROUPR_E(n)	(0x1000 + (n) * 4)
+#define GICD_ICENABLER_E(n)	(0x1400 + (n) * 4)
+#define GICD_ICPENDR_E(n)	(0x1800 + (n) * 4)
+#define GICD_IGROUPMODR_E(n)	(0x3400 + (n) * 4)
+#define GICD_IPRIORITYR_E(n)	(0x2000 + (n) * 4)
+#define GICD_ISENABLER_E(n)	(0x1200 + (n) * 4)
+#define GICD_IROUTER_E(n)	(0x8000 + (n) * 8)
 
 #ifdef CFG_ARM_GICV3
 #define GICD_PIDR2		(0xFFE8)
@@ -102,7 +111,17 @@
 /* Number of targets in one register */
 #define NUM_TARGETS_PER_REG	4
 
+/* GICv3.1 extended SPIs INTIDs 4096 - 5119 */
+#define MIN_ESPI_ID		4096
+#define MAX_ESPI_ID		5119
+
+/* Accessors to access ITARGETSRn */
+#define ITARGETSR_FIELD_BITS	8
+#define ITARGETSR_FIELD_MASK	0xff
+
 #define GICD_TYPER_IT_LINES_NUM_MASK	0x1f
+#define GICD_TYPER_ESPI_RANGE   0xf8000000
+#define GICD_TYPER_ESPI         0x100
 #define GICC_IAR_IT_ID_MASK	0x3ff
 #define GICC_IAR_CPU_ID_MASK	0x7
 #define GICC_IAR_CPU_ID_SHIFT	10
@@ -179,6 +198,8 @@ static size_t probe_max_it(vaddr_t gicc_base __maybe_unused, vaddr_t gicd_base)
 	size_t ret = 0;
 	size_t max_regs = io_read32(gicd_base + GICD_TYPER) &
 			  GICD_TYPER_IT_LINES_NUM_MASK;
+	size_t is_espi = io_read32(gicd_base + GICD_TYPER) &
+				GICD_TYPER_ESPI;
 
 	/*
 	 * Probe which interrupt number is the largest.
@@ -190,6 +211,27 @@ static size_t probe_max_it(vaddr_t gicc_base __maybe_unused, vaddr_t gicd_base)
 	old_ctlr = io_read32(gicc_base + GICC_CTLR);
 	io_write32(gicc_base + GICC_CTLR, 0);
 #endif
+	if (is_espi) {
+		size_t max_regs_espi = (io_read32(gicd_base + GICD_TYPER) &
+					GICD_TYPER_ESPI_RANGE) >> 27;
+		uint32_t old_reg;
+		uint32_t reg;
+		int b;
+
+		for (i = max_regs_espi; i >= 0; i--) {
+			old_reg = io_read32(gicd_base + GICD_ISENABLER_E(i));
+			io_write32(gicd_base + GICD_ISENABLER_E(i), 0xffffffff);
+			reg = io_read32(gicd_base + GICD_ISENABLER_E(i));
+			io_write32(gicd_base + GICD_ICENABLER_E(i), ~old_reg);
+			for (b = NUM_INTS_PER_REG - 1; b >= 0; b--) {
+				if (BIT32(b) & reg) {
+					ret = (i * NUM_INTS_PER_REG + b) + 4096;
+					goto out;
+				}
+			}
+		}
+	}
+
 	for (i = max_regs; i >= 0; i--) {
 		uint32_t old_reg;
 		uint32_t reg;
@@ -610,20 +652,27 @@ void gic_init_v3(paddr_t gicc_base_pa, paddr_t gicd_base_pa,
 
 static void gic_it_add(struct gic_data *gd, size_t it)
 {
-	size_t idx = it / NUM_INTS_PER_REG;
-	uint32_t mask = 1 << (it % NUM_INTS_PER_REG);
+	bool is_espi = (it >= MIN_ESPI_ID) && (it <= MAX_ESPI_ID);
+	size_t idx = !is_espi ? it / NUM_INTS_PER_REG
+		: (it - MIN_ESPI_ID) / NUM_INTS_PER_REG;
+	uint32_t mask = 1 << (!is_espi ? it % NUM_INTS_PER_REG
+		: (it - MIN_ESPI_ID) % NUM_INTS_PER_REG);
 
 	assert(gd == &gic_data);
 
 	/* Disable the interrupt */
-	io_write32(gd->gicd_base + GICD_ICENABLER(idx), mask);
+	io_write32(gd->gicd_base + (!is_espi ? GICD_ICENABLER(idx)
+			: GICD_ICENABLER_E(idx)), mask);
 	/* Make it non-pending */
-	io_write32(gd->gicd_base + GICD_ICPENDR(idx), mask);
+	io_write32(gd->gicd_base + (!is_espi ? GICD_ICPENDR(idx)
+			: GICD_ICPENDR_E(idx)), mask);
 	/* Assign it to group0 */
-	io_clrbits32(gd->gicd_base + GICD_IGROUPR(idx), mask);
+	io_clrbits32(gd->gicd_base + (!is_espi ? GICD_IGROUPR(idx)
+			: GICD_IGROUPR_E(idx)), mask);
 #if defined(CFG_ARM_GICV3)
 	/* Assign it to group1S */
-	io_setbits32(gd->gicd_base + GICD_IGROUPMODR(idx), mask);
+	io_setbits32(gd->gicd_base + (!is_espi ? GICD_IGROUPMODR(idx)
+			: GICD_IGROUPMODR_E(idx)), mask);
 #endif
 }
 
@@ -653,47 +702,65 @@ static void gic_it_set_cpu_mask(struct gic_data *gd, size_t it,
 
 static void gic_it_set_prio(struct gic_data *gd, size_t it, uint8_t prio)
 {
-	size_t idx __maybe_unused = it / NUM_INTS_PER_REG;
-	uint32_t mask __maybe_unused = 1 << (it % NUM_INTS_PER_REG);
+	bool is_espi = (it >= MIN_ESPI_ID) && (it <= MAX_ESPI_ID);
+	size_t idx __maybe_unused = !is_espi ? it / NUM_INTS_PER_REG
+			: (it - MIN_ESPI_ID) / NUM_INTS_PER_REG;
+	uint32_t mask __maybe_unused = 1 << (!is_espi ? it % NUM_INTS_PER_REG
+			: (it - MIN_ESPI_ID) % NUM_INTS_PER_REG);
 
 	assert(gd == &gic_data);
 
 	/* Assigned to group0 */
-	assert(!(io_read32(gd->gicd_base + GICD_IGROUPR(idx)) & mask));
+	assert(!(io_read32(gd->gicd_base + (!is_espi ? GICD_IGROUPR(idx)
+			: GICD_IGROUPR_E(idx))) & mask));
 
 	/* Set prio it to selected CPUs */
 	DMSG("prio: writing 0x%x to 0x%" PRIxVA,
-		prio, gd->gicd_base + GICD_IPRIORITYR(0) + it);
-	io_write8(gd->gicd_base + GICD_IPRIORITYR(0) + it, prio);
+		prio, gd->gicd_base + (!is_espi ? GICD_IPRIORITYR(0)
+			+ it : GICD_IPRIORITYR_E(0) + (it - MIN_ESPI_ID)));
+	io_write8(gd->gicd_base + (!is_espi ? GICD_IPRIORITYR(0) + it
+		: GICD_IPRIORITYR_E(0) + (it - MIN_ESPI_ID)), prio);
 }
 
 static void gic_it_enable(struct gic_data *gd, size_t it)
 {
-	size_t idx = it / NUM_INTS_PER_REG;
-	uint32_t mask = 1 << (it % NUM_INTS_PER_REG);
 	vaddr_t base = gd->gicd_base;
+	bool is_espi = (it >= MIN_ESPI_ID) && (it <= MAX_ESPI_ID);
+	size_t idx = !is_espi ? it / NUM_INTS_PER_REG
+		: (it - MIN_ESPI_ID) / NUM_INTS_PER_REG;
+	uint32_t mask = 1 << (!is_espi ? it % NUM_INTS_PER_REG
+			: (it - MIN_ESPI_ID) % NUM_INTS_PER_REG);
 
 	assert(gd == &gic_data);
 
 	/* Assigned to group0 */
-	assert(!(io_read32(base + GICD_IGROUPR(idx)) & mask));
+	assert(!(io_read32(base + (!is_espi ? GICD_IGROUPR(idx)
+				: GICD_IGROUPR_E(idx))) & mask));
 
 	/* Enable the interrupt */
-	io_write32(base + GICD_ISENABLER(idx), mask);
+	io_write32(base + (!is_espi ? GICD_ISENABLER(idx)
+				: GICD_ISENABLER_E(idx)), mask);
+
 }
 
 static void gic_it_disable(struct gic_data *gd, size_t it)
 {
-	size_t idx = it / NUM_INTS_PER_REG;
-	uint32_t mask = 1 << (it % NUM_INTS_PER_REG);
+	bool is_espi = (it >= MIN_ESPI_ID) && (it <= MAX_ESPI_ID);
+	size_t idx = !is_espi ? it / NUM_INTS_PER_REG
+			: (it - MIN_ESPI_ID) / NUM_INTS_PER_REG;
+	uint32_t mask = 1 << (!is_espi ? it % NUM_INTS_PER_REG
+			: (it - MIN_ESPI_ID) % NUM_INTS_PER_REG);
 
 	assert(gd == &gic_data);
 
 	/* Assigned to group0 */
-	assert(!(io_read32(gd->gicd_base + GICD_IGROUPR(idx)) & mask));
+	assert(!(io_read32(gd->gicd_base + (!is_espi ? GICD_IGROUPR(idx)
+			: GICD_IGROUPR_E(idx))) & mask));
 
 	/* Disable the interrupt */
-	io_write32(gd->gicd_base + GICD_ICENABLER(idx), mask);
+	io_write32(gd->gicd_base + (!is_espi ? GICD_ICENABLER(idx)
+			: GICD_ICENABLER_E(idx)), mask);
+
 }
 
 static void gic_it_set_pending(struct gic_data *gd, size_t it)
