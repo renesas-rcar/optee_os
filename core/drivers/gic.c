@@ -246,6 +246,8 @@ static void gicv3_sync_redist_config(struct gic_data *gd)
 
 	grp0 = io_read32(gicr_base + GICR_IGROUPR0);
 	gmod0 = io_read32(gicr_base + GICR_IGRPMODR0);
+	gd->per_cpu_group_status = grp0;
+	gd->per_cpu_group_modifier = gmod0;
 	for (n = GIC_SGI_SEC_BASE; n < GIC_SPI_BASE; n++) {
 		/* Ignore matching bits */
 		if (!(BIT32(n) & (grp0 ^ gd->per_cpu_group_status)) &&
