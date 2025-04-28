@@ -30,6 +30,7 @@
 #include "include_secure/secure_key_gen.h"
 #include "rcar_mutex.h"
 #include "rcar_common.h"
+#include <fault_mitigation.h>
 
 
 #ifdef CFG_CRYPT_ENABLE_CEPKA
@@ -3022,6 +3023,9 @@ TEE_Result crypto_hw_acipher_rsassa_verify(uint32_t algo,
 		}
 		PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n",crys_res,res);
 	}
+
+	FTMN_CALLEE_DONE(res);
+
 	rcar_nex_mutex_unlock(&secure_asymm_mutex);
 
 	ss_free((void *)userContext_ptr);
