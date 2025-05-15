@@ -14,7 +14,11 @@
 #include <mm/mobj.h>
 #include <mm/vm.h>
 
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
+#define BOUNCE_BUFFER_SIZE      655360
+#else
 #define BOUNCE_BUFFER_SIZE	4096
+#endif
 
 extern uint8_t ldelf_data[];
 extern const unsigned int ldelf_code_size;
