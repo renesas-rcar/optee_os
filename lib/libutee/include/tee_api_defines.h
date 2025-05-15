@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2014, STMicroelectronics International N.V.
- * Copyright (c) 2016-2024, Renesas Electronics Corporation
+ * Copyright (c) 2016-2025, Renesas Electronics Corporation
  */
 
 /* Based on GP TEE Internal Core API Specification Version 1.3.1 */

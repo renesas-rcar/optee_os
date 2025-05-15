@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2016, Linaro Limited
  * Copyright (c) 2014, STMicroelectronics International N.V.
- * Copyright (c) 2016-2024, Renesas Electronics Corporation
+ * Copyright (c) 2016-2025, Renesas Electronics Corporation
  */
 
 #ifndef __KERNEL_THREAD_PRIVATE_ARCH_H
