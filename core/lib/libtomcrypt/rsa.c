@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2014-2019, 2022 Linaro Limited
- * Copyright (c) 2020-2024, Renesas Electronics Corporation
+ * Copyright (c) 2020-2025, Renesas Electronics Corporation
  */
 
 #include <crypto/crypto.h>

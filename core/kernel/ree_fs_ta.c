@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2017, 2019, Linaro Limited
  * Copyright (c) 2020, Arm Limited.
- * Copyright (c) 2017-2024, Renesas Electronics Corporation
+ * Copyright (c) 2017-2025, Renesas Electronics Corporation
  */
 
 /*
