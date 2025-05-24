@@ -96,7 +96,7 @@ static TEE_Result product_setup(void)
 		}
 		break;
 	default:
-		new_api_table = 1;	/* assume that M3N, E3 and D3 */
+		new_api_table = 1;	/* assume that M3N, M3L, E3 and D3 */
 		break;
 	}
 

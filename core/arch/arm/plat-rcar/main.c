@@ -220,6 +220,9 @@ register_phys_mem_pgdir(MEMORY9_TYPE, MEMORY9_BASE, MEMORY9_SIZE);
 #ifdef MEMORY10_BASE
 register_phys_mem_pgdir(MEMORY10_TYPE, MEMORY10_BASE, MEMORY10_SIZE);
 #endif
+#ifdef MEMORY11_BASE
+register_phys_mem_pgdir(MEMORY11_TYPE, MEMORY11_BASE, MEMORY11_SIZE);
+#endif
 #ifdef DEVICE0_PA_BASE
 register_phys_mem_pgdir(DEVICE0_TYPE, DEVICE0_PA_BASE, DEVICE0_SIZE);
 #endif

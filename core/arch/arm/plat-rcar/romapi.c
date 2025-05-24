@@ -114,7 +114,7 @@ static const paddr_t romapi_getrndvector[] = {
 	0xEB10DFC4,	/* H3 1.0/1.1, needs confirmation */
 	0xEB117134,	/* H3 2.0 */
 	0xEB11055C,	/* M3 1.0/1.05, needs confirmation */
-	0xEB100188,	/* H3 3.0, M3 1.1+, M3N, E3, D3, V3M 2.0 */
+	0xEB100188,	/* H3 3.0, M3 1.1+, M3N, M3L, E3, D3, V3M 2.0 */
 };
 
 uint32_t plat_rom_getrndvector(uint8_t rndbuff[PLAT_RND_VECTOR_SZ],

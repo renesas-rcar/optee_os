@@ -35,13 +35,18 @@
 #define PRR_PRODUCT_API_TABLE	(0x00010000U)
 #define PRR_PRODUCT_H3		(0x00004F00U)	/* R-Car H3 */
 #define PRR_PRODUCT_M3		(0x00005200U)	/* R-Car M3 */
-#define PRR_PRODUCT_M3N		(0x00005500U)	/* R-Car M3N */
+#define PRR_PRODUCT_M3N		(0x00005500U)	/* R-Car M3N and R-Car M3L */
 #define PRR_PRODUCT_E3		(0x00005700U)	/* R-Car E3 */
 #define PRR_PRODUCT_D3		(0x00005800U)	/* R-Car D3 */
 #define PRR_CUT_MASK		(0x000000FFU)
 #define PRR_CUT_10		(0x00000000U)
 #define PRR_CUT_11		(0x00000001U)
 #define PRR_CUT_20		(0x00000010U)
+
+/* R-Car M3N / M3L identification */
+#define RCAR_M3N_M3L_IDENT	p2v_ioadr(0xE6060800U, MEMORY11_PA_END - 0xE6060800U)
+#define RCAR_M3N_IDENT_VAL	(0x00000000U)
+#define RCAR_M3L_IDENT_VAL	(0x00000001U)
 
 /* Fuse Monitor Register */
 #define FUSE_DUMMY5	p2v_ioadr(0xE60603E8U, DEVICE0_PA_END - 0xE60603E8U) /*
