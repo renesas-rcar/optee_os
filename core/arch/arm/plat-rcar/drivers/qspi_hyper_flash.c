@@ -250,7 +250,7 @@ static uint32_t init_rpc_reg_depends_soc(void)
 	/*
 	 *  When PHYCNT Bit31 (CAL) is set to 1,
 	 *  if SoC type is M3, STRTIM [2:0] should be set to 110.
-	 *  If SoC type is H3, M3N, E3, D3 STRTIM [2:0] should be set to 111.
+	 *  If SoC type is H3, M3N, M3L, E3, D3 STRTIM [2:0] should be set to 111.
 	 */
 
 	phycnt_reg = 0;

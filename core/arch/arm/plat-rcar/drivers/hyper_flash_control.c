@@ -643,6 +643,7 @@ static uint32_t hyper_flash_get_rpc_clock_mode(uint32_t *mode)
 {
 	uint32_t ret = FL_DRV_OK;
 	uint32_t prr_product = product_type & PRR_PRODUCT_MASK;
+	uint32_t rcar_m3n_m3l_ident;
 
 	switch (prr_product) {
 	case PRR_PRODUCT_H3:
@@ -665,7 +666,13 @@ static uint32_t hyper_flash_get_rpc_clock_mode(uint32_t *mode)
 		break;
 	case PRR_PRODUCT_M3N:
 		*mode = RPC_CLK_160M;
-		DMSG("M3N: RPC 160MHz, mode=%d", *mode);
+		rcar_m3n_m3l_ident = io_read32(RCAR_M3N_M3L_IDENT);
+
+		if(rcar_m3n_m3l_ident == RCAR_M3L_IDENT_VAL) {
+			DMSG("M3L: RPC 160MHz, mode=%d", *mode);
+		} else {
+			DMSG("M3N: RPC 160MHz, mode=%d", *mode);
+		}
 		break;
 	case PRR_PRODUCT_E3:
 		*mode = RPC_CLK_150M;
