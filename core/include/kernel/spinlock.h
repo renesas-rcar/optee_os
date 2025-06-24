@@ -16,6 +16,10 @@
 #include <kernel/thread.h>
 #include <stdbool.h>
 
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
+extern unsigned int spin_lock __nex_data;
+#endif
+
 #ifdef CFG_TEE_CORE_DEBUG
 void spinlock_count_incr(void);
 void spinlock_count_decr(void);
