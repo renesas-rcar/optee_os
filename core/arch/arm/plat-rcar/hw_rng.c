@@ -18,7 +18,6 @@
 
 static uint8_t scratch_buf[SCRATCH_BUF_SZ] __nex_bss
 					__aligned(RCAR_CACHE_LINE_SZ);
-static unsigned int spin_lock __nex_data = SPINLOCK_UNLOCK;
 
 /*
  * It is inefficient to call ROM_GetRndVector() every time we want 8 bits of
