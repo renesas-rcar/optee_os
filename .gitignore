@@ -12,3 +12,8 @@
 !.gitattributes
 !.gitignore
 !.github
+.cproject
+cscope.*
+.project
+*.swp
+.vscode

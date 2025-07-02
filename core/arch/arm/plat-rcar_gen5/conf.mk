@@ -1,0 +1,41 @@
+PLATFORM_FLAVOR ?= X5H
+include core/arch/arm/cpu/cortex-armv8-0.mk
+
+$(call force,CFG_SECURE_TIME_SOURCE_CNTPCT,y)
+$(call force,CFG_WITH_ARM_TRUSTED_FW,y)
+$(call force,CFG_SCIF,y)
+$(call force,CFG_GIC,y)
+$(call force,CFG_CORE_LARGE_PHYS_ADDR,y)
+$(call force,CFG_CORE_ARM64_PA_BITS,36)
+# Disable core ASLR for two reasons:
+# 1. There is no source for ALSR seed, as Rcar platform
+# does not provide DTB to OP-TEE. Also, there is no
+# publically available documentation on integrated
+# hardware RNG, so we can't use it either.
+# 2. OP-TEE crashes during boot with enabled CFG_CORE_ASLR.
+$(call force,CFG_CORE_ASLR,n)
+$(call force,CFG_ARM64_core,y)
+$(call force,CFG_WITH_LPAE,y)
+ifeq ($(PLATFORM_FLAVOR), X5H)
+$(call force,CFG_RCAR_GEN5, y)
+endif
+
+CFG_ARM_GICV3 ?= y
+CFG_CRYPTO_WITH_CE ?= n
+CFG_TZDRAM_START ?= 0x8C300000
+CFG_TZDRAM_SIZE  ?= 0x02000000
+supported-ta-targets = ta_arm64
+CFG_DT ?= n
+CFG_WITH_SOFTWARE_PRNG ?= y
+CFG_TEE_CORE_DEBUG ?= n
+
+ifeq ($(CFG_RCAR_GEN5), y)
+# 1xx - for SCIFxx
+# 2xx - for HSCIFxx
+CFG_RCAR_UART ?= 200
+$(call force,CFG_CORE_CLUSTER_SHIFT,2) #log2(2) = 4 --> 4(cores/per cluster)
+$(call force,CFG_TEE_CORE_NB_CORE,32)
+CFG_NUM_THREADS ?= $(CFG_TEE_CORE_NB_CORE)
+CFG_MMAP_REGIONS ?= 21
+endif
+

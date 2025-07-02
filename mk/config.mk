@@ -963,7 +963,7 @@ ifneq ($(CFG_INSECURE),$(CFG_WARN_INSECURE))
 $(error Inconsistent CFG_INSECURE=$(CFG_INSECURE) and CFG_WARN_INSECURE=$(CFG_WARN_INSECURE))
 endif
 endif # CFG_WARN_INSECURE defined
-CFG_INSECURE ?= y
+CFG_INSECURE ?= n
 
 ifneq ($(CFG_INSECURE),y)
 ifneq ($(CFG_CORE_ASLR_SEED),)
