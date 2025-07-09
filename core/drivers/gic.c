@@ -102,10 +102,6 @@
 /* Number of targets in one register */
 #define NUM_TARGETS_PER_REG	4
 
-/* Accessors to access ITARGETSRn */
-#define ITARGETSR_FIELD_BITS	8
-#define ITARGETSR_FIELD_MASK	0xff
-
 #define GICD_TYPER_IT_LINES_NUM_MASK	0x1f
 #define GICC_IAR_IT_ID_MASK	0x3ff
 #define GICC_IAR_CPU_ID_MASK	0x7

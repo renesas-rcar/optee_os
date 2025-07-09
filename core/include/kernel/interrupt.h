@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2016-2019, Linaro Limited
+ * Copyright (c) 2025, Renesas Electronics Corporation
  */
 #ifndef __KERNEL_INTERRUPT_H
 #define __KERNEL_INTERRUPT_H
@@ -541,4 +542,8 @@ static inline TEE_Result interrupt_dt_get(const void *fdt, int node,
 {
 	return interrupt_dt_get_by_index(fdt, node, 0, chip, itr_num);
 }
+
+#ifdef PLATFORM_rcar_gen5
+void itr_set_all_cpu_mask(uint32_t cpu_mask);
+#endif
 #endif /*__KERNEL_INTERRUPT_H*/

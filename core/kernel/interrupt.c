@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2016-2019, Linaro Limited
+ * Copyright (c) 2025, Renesas Electronics Corporation
  */
 
 #include <kernel/dt.h>
@@ -11,6 +12,7 @@
 #include <stdlib.h>
 #include <trace.h>
 #include <assert.h>
+#include <drivers/gic.h>
 
 /*
  * NOTE!
@@ -350,3 +352,18 @@ TEE_Result interrupt_dt_get_by_name(const void *fdt, int node, const char *name,
 	return interrupt_dt_get_by_index(fdt, node, idx, chip, itr_num);
 }
 #endif /*CFG_DT*/
+
+#ifdef PLATFORM_rcar_gen5
+void itr_set_all_cpu_mask(uint32_t cpu_mask)
+{
+	struct itr_handler *h;
+
+	while ((cpu_mask & ITARGETSR_FIELD_MASK) == 0)
+		cpu_mask = cpu_mask >> ITARGETSR_FIELD_BITS;
+
+	SLIST_FOREACH(h, &itr_main_chip->handlers, link) {
+		itr_main_chip->ops->set_affinity(itr_main_chip,
+				h->it, cpu_mask);
+	}
+}
+#endif

@@ -15,6 +15,11 @@
 #include <sm/optee_smc.h>
 #include <tee/entry_fast.h>
 #include <tee/tee_cryp_utl.h>
+#include <kernel/boot.h>
+#include <trace.h>
+#include <kernel/misc.h>
+#include <kernel/spinlock.h>
+#include <util.h>
 
 #include "rcar_log_func.h"
 #include "rcar-common.h"
@@ -58,6 +63,48 @@ static struct hscif_uart_data console_data __nex_bss;
 uint32_t rcar_prr_value __nex_bss;
 #endif
 
+uint32_t cpu_on_core_lock __nex_bss = (uint32_t)SPINLOCK_UNLOCK;
+uint32_t cpu_on_core_bit __nex_bss;
+static void main_secondary_init_gic(void);
+
+void main_secondary_init_gic(void)
+{
+	uint32_t exceptions;
+	uint32_t cpu_mask;
+
+	DMSG("IN cpu_on_core_bit=0x%x, get_core_pos()=%lu",
+	     cpu_on_core_bit, get_core_pos());
+	exceptions = cpu_spin_lock_xsave(&cpu_on_core_lock);
+
+	cpu_on_core_bit |= BIT32(get_core_pos());
+	cpu_mask = cpu_on_core_bit;
+
+	itr_set_all_cpu_mask(cpu_mask);
+
+	cpu_spin_unlock_xrestore(&cpu_on_core_lock, exceptions);
+	DMSG("OUT cpu_mask=0x%x", cpu_mask);
+}
+
+unsigned long thread_cpu_off_handler(unsigned long a0 __unused,
+				     unsigned long a1 __unused)
+{
+	uint32_t exceptions;
+	uint32_t cpu_mask;
+
+	DMSG("IN cpu_on_core_bit=0x%x, get_core_pos()=%lu",
+	     cpu_on_core_bit, get_core_pos());
+	exceptions = cpu_spin_lock_xsave(&cpu_on_core_lock);
+
+	cpu_on_core_bit &= ~(BIT32(get_core_pos()));
+	cpu_mask = cpu_on_core_bit;
+
+	itr_set_all_cpu_mask(cpu_mask);
+
+	cpu_spin_unlock_xrestore(&cpu_on_core_lock, exceptions);
+	DMSG("OUT cpu_mask=0x%x", cpu_mask);
+	return 0;
+}
+
 void plat_console_init(void)
 {
 #ifdef CFG_SCIF
@@ -92,6 +139,7 @@ void boot_primary_init_intc(void)
 void boot_secondary_init_intc(void)
 {
 	gic_init_per_cpu();
+	main_secondary_init_gic();
 }
 
 #ifdef CFG_WITH_SOFTWARE_PRNG /* using the SW RNG supported*/
