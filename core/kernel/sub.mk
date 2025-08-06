@@ -19,9 +19,7 @@ ifneq ($(CFG_CORE_FFA),y)
 srcs-$(CFG_CORE_DYN_SHM) += msg_param.c
 endif
 srcs-y += panic.c
-ifeq ($(PLATFORM_rcar_gen4),n)
 srcs-y += trace_ext.c
-endif
 srcs-y += refcount.c
 srcs-y += delay.c
 srcs-y += tee_time.c
