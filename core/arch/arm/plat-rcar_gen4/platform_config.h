@@ -38,6 +38,10 @@
 #define GICC_BASE		0xF1060000U
 #define GICD_BASE		0xF1000000U
 
+#if CFG_RCAR_UART == 200        /* HSCIF0 */
+#define CONSOLE_UART_START      0xE6540000
+#endif
+
 /*
  * Last part of DRAM is reserved as secure dram, note that the last 2MiB
  * of DRAM0 is used by SCP dor DDR retraining.
@@ -85,6 +89,10 @@
 #define MFIS_BASE		(0xE6260000U)	/* MFIS address */
 #define RPC_ADDR_MAP_BASE	(0x08000000U)	/* RPC Internal address	*/
 #define RPC_ADDR_MAP_SIZE	(0x04000000U)	/* RPC Address Map size */
+
+/* for HSCIF Register mapping function */
+#define HSCIF_BASE        (0xE6540000)
+#define HSCIF_SIZE        (0x00020000)
 
 #define MEM_SECTION_SIZE	(0x00100000U)
 
@@ -165,5 +173,10 @@
 #define MEMORY10_BASE		ROUNDDOWN(MFIS_BASE, MEM_SECTION_SIZE)
 #define MEMORY10_SIZE		(MEM_SECTION_SIZE)
 #define MEMORY10_TYPE		MEM_AREA_IO_SEC
+
+/* HSCIF Address Map */
+#define MEMORY11_BASE		ROUNDDOWN(HSCIF_BASE, HSCIF_SIZE)
+#define MEMORY11_SIZE		HSCIF_SIZE
+#define MEMORY11_TYPE           MEM_AREA_IO_SEC
 
 #endif /*PLATFORM_CONFIG_H*/

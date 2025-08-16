@@ -31,14 +31,14 @@ void trace_ext_puts(const char *str)
 		cpu_spin_lock_no_dldetect(&puts_lock);
 	}
 
-#ifdef PLATFORM_rcar_gen4
+#ifndef CFG_SCIF
 	if (mmu_enabled)
 		cpu_spin_unlock(&puts_lock);
 	thread_unmask_exceptions(itr_status);
 #endif
 	plat_trace_ext_puts(str);
 
-#ifdef PLATFORM_rcar_gen4
+#ifndef CFG_SCIF
 	return;
 #endif
 	console_flush();

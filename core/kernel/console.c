@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 /*
  * Copyright (c) 2017, Linaro Limited
+ * Copyright (c) 2025, Renesas Electronics Corporation
  */
 
 #include <compiler.h>
@@ -34,7 +35,7 @@ void __weak console_init(void)
 		plat_console_init();
 }
 
-void __weak console_putc(int ch)
+void __weak console_putc(uint8_t ch)
 {
 	if (!serial_console)
 		return;

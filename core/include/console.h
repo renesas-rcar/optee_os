@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * Copyright (c) 2014, Linaro Limited
+ * Copyright (c) 2025, Renesas Electronics Corporation
  */
 
 #ifndef __CONSOLE_H
@@ -11,7 +12,7 @@
 
 
 void console_init(void);
-void console_putc(int ch);
+void console_putc(uint8_t ch);
 void console_flush(void);
 
 void plat_console_init(void);

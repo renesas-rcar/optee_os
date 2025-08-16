@@ -10,6 +10,7 @@
 #include "rcar_log_func.h"
 #include "rcar_common.h"
 
+#ifndef CFG_SCIF
 const char trace_ext_prefix[] = "TEE-CORE";
 int trace_level = TRACE_LEVEL;
 
@@ -84,3 +85,4 @@ void plat_trace_ext_puts(const char *str)
 #endif
 	}
 }
+#endif

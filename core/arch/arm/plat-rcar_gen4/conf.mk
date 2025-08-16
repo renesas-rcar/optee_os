@@ -4,7 +4,6 @@ include core/arch/arm/cpu/cortex-armv8-0.mk
 
 $(call force,CFG_SECURE_TIME_SOURCE_CNTPCT,y)
 $(call force,CFG_WITH_ARM_TRUSTED_FW,y)
-$(call force,CFG_SCIF,y)
 $(call force,CFG_CORE_LARGE_PHYS_ADDR,y)
 $(call force,CFG_CORE_ARM64_PA_BITS,36)
 $(call force,CFG_GIC,y)
@@ -137,3 +136,9 @@ CFG_RCAR_MUTEX_DELAY ?= 1
 core-platform-cflags += -DCFG_RCAR_MUTEX_DELAY=$(CFG_RCAR_MUTEX_DELAY)
 CFG_CORE_RESERVED_SHM ?= n
 endif
+
+# SCIF/HSCIF configuration
+# 1xx - for SCIFxx
+# 2xx - for HSCIFxx
+CFG_RCAR_UART ?= 200
+CFG_SCIF ?= n

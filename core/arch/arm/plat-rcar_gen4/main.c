@@ -34,7 +34,7 @@
 #include <mm/core_memprot.h>
 #include <platform_config.h>
 #include <stdint.h>
-#include <drivers/scif.h>
+#include <drivers/hscif.h>
 #include <drivers/gic.h>
 #include <kernel/boot.h>
 #include <trace.h>
@@ -205,6 +205,9 @@ register_phys_mem_pgdir(MEMORY9_TYPE, MEMORY9_BASE, MEMORY9_SIZE);
 #ifdef MEMORY10_BASE
 register_phys_mem_pgdir(MEMORY10_TYPE, MEMORY10_BASE, MEMORY10_SIZE);
 #endif
+#ifdef MEMORY11_BASE
+register_phys_mem_pgdir(MEMORY11_TYPE, MEMORY11_BASE, MEMORY11_SIZE);
+#endif
 #ifdef DEVICE0_PA_BASE
 register_phys_mem_pgdir(DEVICE0_TYPE, DEVICE0_PA_BASE, DEVICE0_SIZE);
 #endif
@@ -213,6 +216,10 @@ register_phys_mem_pgdir(DEVICE1_TYPE, DEVICE1_PA_BASE, DEVICE1_SIZE);
 #endif
 #ifdef DEVICE2_PA_BASE
 register_phys_mem_pgdir(DEVICE2_TYPE, DEVICE2_PA_BASE, DEVICE2_SIZE);
+#endif
+
+#ifdef CFG_SCIF
+static struct hscif_uart_data console_data __nex_bss;
 #endif
 
 #if defined(CFG_CORE_DYN_SHM) && !defined(CFG_CORE_RESERVED_SHM)
@@ -229,8 +236,10 @@ void main_init_gic(void)
 	main_itr_ops.add = main_hook_gic_add;
 	gic_data.chip.ops = (const struct itr_ops *)&main_itr_ops;
 
+#ifndef CFG_SCIF
 	// Initialize logging feature
 	log_buf_init();
+#endif
 }
 
 static void main_hook_gic_add(struct itr_chip *chip, size_t it, uint32_t flags, uint32_t prio)
@@ -253,9 +262,12 @@ static void main_hook_gic_add(struct itr_chip *chip, size_t it, uint32_t flags, 
 void interrupt_main_handler(void){ }
 */
 
-void console_init(void)
+void plat_console_init(void)
 {
-	/* No Operation */
+#ifdef CFG_SCIF
+	hscif_uart_init(&console_data, CONSOLE_UART_START);
+	register_serial_console(&console_data.chip);
+#endif
 }
 
 void boot_primary_init_intc(void)
