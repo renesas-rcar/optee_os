@@ -32,21 +32,27 @@
 #ifndef PLATFORM_CONFIG_H
 #define PLATFORM_CONFIG_H
 
+/* Region-ID helper macros */
+#define ADDR_RGID(a)                    (((a) & 0xF) * 0x1000000000)
+#define ADDR_RGID_MASK                  (0x000000F000000000)
+#define ADDR_PA_MASK                    (0x0000000FFFFFFFFF)
+#define ADDR_ASSIGN_RGID(a,b)           (((a) & ADDR_PA_MASK) | (ADDR_RGID(b) & ADDR_RGID_MASK))
+
 /* Make stacks aligned to data cache line length */
 #define STACK_ALIGNMENT		64
 
-#define GICC_BASE		0xF1060000U
-#define GICD_BASE		0xF1000000U
+#define GICC_BASE		ADDR_ASSIGN_RGID(0xF1060000U,CFG_RCAR_RGID)
+#define GICD_BASE		ADDR_ASSIGN_RGID(0xF1000000U,CFG_RCAR_RGID)
 
 #if CFG_RCAR_UART == 200        /* HSCIF0 */
-#define CONSOLE_UART_START      0xE6540000
+#define CONSOLE_UART_START      ADDR_ASSIGN_RGID(0xE6540000, CFG_RCAR_RGID)
 #endif
 
 /*
  * Last part of DRAM is reserved as secure dram, note that the last 2MiB
  * of DRAM0 is used by SCP dor DDR retraining.
  */
-#define TZDRAM_BASE		(0x44000000U)
+#define TZDRAM_BASE		ADDR_ASSIGN_RGID(0x44000000U,CFG_RCAR_RGID)
 
 /*
  * Should be
@@ -58,40 +64,40 @@
 
 #define TEE_RAM_VA_SIZE		(1024 * 1024 * 3)
 
-#define TEE_RAM_START		(0x44100000)	/* TEE RAM address	*/
+#define TEE_RAM_START		ADDR_ASSIGN_RGID(0x44100000,CFG_RCAR_RGID)	/* TEE RAM address	*/
 #define TEE_RAM_PH_SIZE		(0x00300000U)	/* TEE RAM size		*/
 
-#define TA_RAM_START		(0x44400000U)	/* TA RAM address	*/
+#define TA_RAM_START		ADDR_ASSIGN_RGID(0x44400000U,CFG_RCAR_RGID)	/* TA RAM address	*/
 #define TA_RAM_SIZE		(0x01800000U)	/* TA RAM size		*/
 
-#define TEE_SHMEM_START		(0x47E00000U)	/* Share Memory address	*/
+#define TEE_SHMEM_START		ADDR_ASSIGN_RGID(0x47E00000U,CFG_RCAR_RGID)	/* Share Memory address	*/
 #define TEE_SHMEM_SIZE		(0x00100000U)	/* Share Memory size	*/
 
-#define OPTEE_LOG_BASE		(0x45E00000U)	/* OP-TEE Log Area address */
-#define OPTEE_LOG_NS_BASE	(0x47FEC000U)	/* OP-TEE Log Area NS addr */
+#define OPTEE_LOG_BASE		ADDR_ASSIGN_RGID(0x45E00000U,CFG_RCAR_RGID)	/* OP-TEE Log Area address */
+#define OPTEE_LOG_NS_BASE	ADDR_ASSIGN_RGID(0x47FEC000U,CFG_RCAR_RGID)	/* OP-TEE Log Area NS addr */
 #define OPTEE_LOG_NS_SIZE	(0x00014000U)   /* OP-TEE Log Area NS size */
 
-#define TA_VERIFICATION_BASE	(0x41E00000U)	/* TA area for verification */
+#define TA_VERIFICATION_BASE	ADDR_ASSIGN_RGID(0x41E00000U,CFG_RCAR_RGID)	/* TA area for verification */
 #define TA_VERIFICATION_SIZE	(0x00100000U)	/* TA verification size */
-#define CRYPTOENGINE_WORK_BASE	(0x46000000U)	/* Crypto Enegine Work area */
+#define CRYPTOENGINE_WORK_BASE	ADDR_ASSIGN_RGID(0x46000000U,CFG_RCAR_RGID)	/* Crypto Enegine Work area */
 
-#define NONCACHE_WORK_BASE	(0x45F00000U)	/* Non Cache Area address */
+#define NONCACHE_WORK_BASE	ADDR_ASSIGN_RGID(0x45F00000U,CFG_RCAR_RGID)	/* Non Cache Area address */
 #define NONCACHE_WORK_SIZE	(0x00100000U)	/* Non Cache Area Size */
 
-#define ICU_FW_SHMEM_BASE	(0x41C00000U)	/* ICU FW Share Memory address */
+#define ICU_FW_SHMEM_BASE	ADDR_ASSIGN_RGID(0x41C00000U,CFG_RCAR_RGID)	/* ICU FW Share Memory address */
 #define ICU_FW_SHMEM_SIZE	(0x00100000U)	/* ICU FW Share Memory size */
 
-#define LIFEC_BASE		(0xE6110000U)	/* Life Cycle address	*/
-#define RST_BASE		(0xE6160000U)	/* Reset address	*/
-#define CE_BASE			(0xE6600000U)	/* Crypto Engine address */
-#define RPC_BASE		(0xEE200000U)	/* RPC address		*/
-#define PRR_BASE		(0xFFF00000U)	/* Product Register address */
-#define MFIS_BASE		(0xE6260000U)	/* MFIS address */
-#define RPC_ADDR_MAP_BASE	(0x08000000U)	/* RPC Internal address	*/
+#define LIFEC_BASE		ADDR_ASSIGN_RGID(0xE6110000U,CFG_RCAR_RGID) 	/* Life Cycle address	*/
+#define RST_BASE		ADDR_ASSIGN_RGID(0xE6160000U,CFG_RCAR_RGID) 	/* Reset address	*/
+#define CE_BASE			ADDR_ASSIGN_RGID(0xE6600000U,CFG_RCAR_RGID) 	/* Crypto Engine address */
+#define RPC_BASE		ADDR_ASSIGN_RGID(0xEE200000U,CFG_RCAR_RGID) 	/* RPC address		*/
+#define PRR_BASE		ADDR_ASSIGN_RGID(0xFFF00000U,CFG_RCAR_RGID) 	/* Product Register address */
+#define MFIS_BASE		ADDR_ASSIGN_RGID(0xE6260000U,CFG_RCAR_RGID) 	/* MFIS address */
+#define RPC_ADDR_MAP_BASE	ADDR_ASSIGN_RGID(0x08000000U,CFG_RCAR_RGID)	/* RPC Internal address	*/
 #define RPC_ADDR_MAP_SIZE	(0x04000000U)	/* RPC Address Map size */
 
 /* for HSCIF Register mapping function */
-#define HSCIF_BASE        (0xE6540000)
+#define HSCIF_BASE        ADDR_ASSIGN_RGID(0xE6540000, CFG_RCAR_RGID)
 #define HSCIF_SIZE        (0x00020000)
 
 #define MEM_SECTION_SIZE	(0x00100000U)
@@ -102,9 +108,9 @@
 #endif
 
 #ifdef CFG_CORE_DYN_SHM
-#define NSEC_DDR_0_BASE		0x48000000
+#define NSEC_DDR_0_BASE		ADDR_ASSIGN_RGID(0x48000000,CFG_RCAR_RGID)
 #define NSEC_DDR_0_SIZE		0x78000000
-#define NSEC_DDR_1_BASE		0x480000000U
+#define NSEC_DDR_1_BASE		ADDR_ASSIGN_RGID(0x480000000U,CFG_RCAR_RGID)
 #define NSEC_DDR_1_SIZE		0x80000000U
 #endif
 
