@@ -44,3 +44,11 @@ RCAR_DEBUG_LOG ?= 0
 ifneq ($(RCAR_DEBUG_LOG),0)
 core-platform-cflags += -DRCAR_DEBUG_LOG
 endif
+
+# For virtualization
+ifeq ($(CFG_NS_VIRTUALIZATION),y)
+CFG_VIRT_GUEST_COUNT ?= 3
+CFG_RCAR_MUTEX_DELAY ?= 1
+core-platform-cflags += -DCFG_RCAR_MUTEX_DELAY=$(CFG_RCAR_MUTEX_DELAY)
+CFG_CORE_RESERVED_SHM ?= n
+endif
