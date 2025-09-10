@@ -80,12 +80,13 @@
 /* End of deprecated Secure Element API syscalls */
 #define TEE_SCN_CACHE_OPERATION                        70
 #define TEE_ICUMFW_TRNG                         71
+#define TEE_ICUMFW_INSTALL_KEY			72
 
 #ifdef PLATFORM_rcar_gen4
-#define RCAR_SCN_ASSET_UNPACK			72
-#define TEE_SCN_MAX				72
+#define RCAR_SCN_ASSET_UNPACK			73
+#define TEE_SCN_MAX				73
 #else
-#define TEE_SCN_MAX				71
+#define TEE_SCN_MAX				72
 #endif
 
 /* Maximum number of allowed arguments for a syscall */
