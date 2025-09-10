@@ -125,6 +125,7 @@
 
 	UTEE_SYSCALL _utee_icum_trng, TEE_ICUMFW_TRNG, 2
 
+	UTEE_SYSCALL _utee_icum_install_key, TEE_ICUMFW_INSTALL_KEY, 2
 #ifdef PLATFORM_rcar_gen4
         UTEE_SYSCALL urcar_gen_asset_unpack, RCAR_SCN_ASSET_UNPACK, 6
 #endif

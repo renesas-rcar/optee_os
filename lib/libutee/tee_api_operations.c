@@ -2423,6 +2423,12 @@ void TEE_ICUM_TRNG(void *randomBuffer, size_t randomBufferLen)
 		TEE_Panic(res);
 }
 
+TEE_Result TEE_ICUM_InstallKey(uint8_t *keyBuffer, size_t keyBufferLen)
+{
+	DMSG("Call %s\n", __func__);
+	return _utee_icum_install_key(keyBuffer, keyBufferLen);
+}
+
 int rand(void)
 {
 	int rc;
