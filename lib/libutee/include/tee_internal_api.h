@@ -493,6 +493,8 @@ void TEE_ICUM_TRNG(void *randomBuffer, size_t randomBufferLen);
 
 void TEE_ICUM_INSTALL_KEY(uint8_t *keyBuffer, size_t keyBufferLen);
 
+void TEE_ICUM_CLEAR_DATA(void);
+
 void __GP11_TEE_GenerateRandom(void *randomBuffer, uint32_t randomBufferLen);
 
 /* Date & Time API */

@@ -2432,6 +2432,15 @@ void TEE_ICUM_INSTALL_KEY(uint8_t *keyBuffer, size_t keyBufferLen)
 		TEE_Panic(res);
 }
 
+void TEE_ICUM_CLEAR_DATA(void)
+{
+	TEE_Result res;
+
+	res = _utee_icum_clear_data();
+	if (res != TEE_SUCCESS)
+		TEE_Panic(res);
+}
+
 int rand(void)
 {
 	int rc;

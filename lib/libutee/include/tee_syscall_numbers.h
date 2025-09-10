@@ -81,12 +81,13 @@
 #define TEE_SCN_CACHE_OPERATION                        70
 #define TEE_ICUMFW_TRNG                         71
 #define TEE_ICUMFW_INSTALL_KEY			72
+#define TEE_ICUMFW_CLEAR_DATA			73
 
 #ifdef PLATFORM_rcar_gen4
-#define RCAR_SCN_ASSET_UNPACK			73
-#define TEE_SCN_MAX				73
+#define RCAR_SCN_ASSET_UNPACK			74
+#define TEE_SCN_MAX				74
 #else
-#define TEE_SCN_MAX				72
+#define TEE_SCN_MAX				73
 #endif
 
 /* Maximum number of allowed arguments for a syscall */
