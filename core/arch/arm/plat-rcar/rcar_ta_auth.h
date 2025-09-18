@@ -41,7 +41,10 @@
 #define TA_OBJ_SIZE			((TA_KEY_CERT_ADDR - \
 					NONCACHE_STACK_AREA_SIZE -  \
 					TA_VERIFICATION_BASE) / CERT_BLOCK_SIZE)
-
+#define CERT_FLAGS_KEY_NUM_BIT		(0x00100000U)
+#define CERT_FLAGS_KEY_NUM_SHIFT	(20U)
+#define CERT_FLAGS_KEY_SIZE_BIT		(0x00600000U)
+#define CERT_FLAGS_KEY_SIZE_SHIFT	(21U)
 TEE_Result rcar_auth_ta_certificate(const struct shdr *key_cert,
 				struct shdr **secmem_ta, size_t ta_size);
 
