@@ -27,16 +27,24 @@ static uint32_t get_key_cert_size(const uint32_t *cert_header)
 	uint32_t cert_size = 0U;
 	uint32_t hdr_tmp;
 	uint32_t sig_size;
+	uint32_t hdr_key_number;
 
-
-
-	hdr_tmp = (cert_header[CERT_IDX_FLAG] & 0x00600000U) >> 21U;
+	hdr_key_number = (cert_header[CERT_IDX_FLAG] & CERT_FLAGS_KEY_NUM_BIT) >>
+		CERT_FLAGS_KEY_NUM_SHIFT;
+	hdr_tmp = (cert_header[CERT_IDX_FLAG] & CERT_FLAGS_KEY_SIZE_BIT) >>
+		CERT_FLAGS_KEY_SIZE_SHIFT;
 	sig_size = CERT_SIGNATURE_SIZE;
 
 	if (hdr_tmp == 1U) {
 		sig_size += CERT_SIGNATURE_SIZE / 2U;
 	} else if (hdr_tmp == 2U) {
 		sig_size += CERT_SIGNATURE_SIZE;
+	} else {
+		/* no operation */
+	}
+
+	if (hdr_key_number == 1U) {
+		sig_size <<= 2U;
 	} else {
 		/* no operation */
 	}
