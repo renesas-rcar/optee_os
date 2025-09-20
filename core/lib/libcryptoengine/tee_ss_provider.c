@@ -31,7 +31,7 @@
 #include "rcar_mutex.h"
 #include "rcar_common.h"
 #include <fault_mitigation.h>
-
+#include <io.h>
 
 #ifdef CFG_CRYPT_ENABLE_CEPKA
 #include "include_pka/crys_pka_suspend_to_ram.h"
@@ -6265,6 +6265,8 @@ void crypto_hw_aes_ccm_final(void)
  * param[in]	outSize		- Byte size of the output data buffer.
  * return	TEE_Result	- TEE internal API error code.
  */
+#define MFISARIMBR7 p2v_ioadr(MFIS_BASE + 0x045CU, DEVICE0_PA_END - (MFIS_BASE + 0x045CU)) // 0xE626045C
+#define CC63_RNG_ISR_ERR_BITS_MASK	0xE //bits: 1st, 2nd, 3rd
 TEE_Result crypto_hw_rng_read(void *outPtr, size_t outSize)
 {
 	SSError_t res;
@@ -6274,6 +6276,14 @@ TEE_Result crypto_hw_rng_read(void *outPtr, size_t outSize)
 	uint8_t *compOutPtr = (uint8_t *)outPtr;
 
 	PROV_DMSG("crysOutSize=%ld  outPtr=%p\n", outSize, outPtr);
+
+	/* check error bit from saved value of rng_isr in MFIS.MFISARIMBR7 H'E626 045C */
+	if (CC63_RNG_ISR_ERR_BITS_MASK & io_read32((vaddr_t) MFISARIMBR7)) {
+		res = crypto_hw_rng_init();
+		if (res) {
+			return TEE_ERROR_NO_DATA;
+		}
+	}
 
 	while ((remain != 0U) && (crys_res == (CRYSError_t)CRYS_OK)) {
 		if (remain > 0xFFC0U) {
