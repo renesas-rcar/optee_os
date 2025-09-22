@@ -44,8 +44,8 @@
 #endif
 #if defined(CFG_SECURE_STORAGE_BY_ICUMX_HWENGINE)
 #include <rcar_storage_key.h>
+#include <rcar_asset_secure.h>
 #endif
-
 enum cryp_state {
 	CRYP_STATE_INITIALIZED = 0,
 	CRYP_STATE_UNINITIALIZED
@@ -4850,6 +4850,11 @@ TEE_Result syscall_rcar_asset_unpack(uint32_t assetId __maybe_unused,
 #if defined(CFG_CRYPT_HW_CRYPTOENGINE)
 	TEE_Result ret;
 	ret = crypto_hw_asset_unpack(assetId, pAssetPackage, assetPackagLen,
+			pAssetData, pAssetDataLen, pUserData);
+	return ret;
+#elif defined(CFG_SECURE_STORAGE_BY_ICUMX_HWENGINE)
+	TEE_Result ret;
+	ret = rcar_asset_unpack(assetId, pAssetPackage, assetPackagLen,
 			pAssetData, pAssetDataLen, pUserData);
 	return ret;
 #else
