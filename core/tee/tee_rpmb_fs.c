@@ -31,6 +31,7 @@
 #include <tee/tee_svc_storage.h>
 #include <trace.h>
 #include <util.h>
+#include <rcar_asset_secure.h>
 
 #define RPMB_STORAGE_START_ADDRESS      0
 #define RPMB_FS_FAT_START_ADDRESS       512
@@ -46,9 +47,6 @@
 
 #define TEE_RPMB_FS_FILENAME_LENGTH 224
 
-#if !defined(CFG_CRYPT_HW_CRYPTOENGINE) || (CFG_CRYPT_HW_CRYPTOENGINE == 0)
-#error "RPMB requires Crypto Engine."
-#endif /* PLATFORM_rcar_gen4 */
 #define TMP_BLOCK_SIZE			4096U
 
 #define RPMB_MAX_RETRIES		10
@@ -151,6 +149,8 @@ struct tee_fs_dir {
 
 static struct rpmb_fs_parameters *fs_par;
 static struct rpmb_fat_entry_dir *fat_entry_dir;
+
+static uint8_t is_rpmb_key_import = 0;
 
 /*
  * Lower interface to RPMB device
@@ -315,15 +315,24 @@ out:
 static TEE_Result tee_rpmb_key_gen(uint16_t dev_id __unused,
 				   uint8_t *key, uint32_t len)
 {
-#ifndef PLATFORM_rcar_gen4
+#ifndef CFG_CRYPT_HW_CRYPTOENGINE
 	uint8_t message[RPMB_EMMC_CID_SIZE];
 #endif
 	if (!key || RPMB_KEY_MAC_SIZE != len)
 		return TEE_ERROR_BAD_PARAMETERS;
 
 	IMSG("RPMB: Using generated key");
-#ifdef PLATFORM_rcar_gen4
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
 	return crypto_hw_rpmb_derivekey(key, len);
+#elif CFG_STORAGE_DATA_BY_ICUMX_HWENGINE
+	TEE_Result res = TEE_SUCCESS;
+	res = rcar_icum_rpmb_getkey(key, len);
+	if ((res == TEE_SUCCESS) && !is_rpmb_key_import) {
+		res = fwss_hmac_import(key, len, 2);
+		if(res == TEE_SUCCESS)
+			is_rpmb_key_import = 1;
+	}
+	return res;
 #else
 	/*
 	 * PRV/CRC would be changed when doing eMMC FFU
@@ -374,7 +383,7 @@ static void get_op_result_bits(uint8_t *bytes, uint8_t *res)
 	*res = *(bytes + 1) & RPMB_RESULT_MASK;
 }
 
-#ifdef PLATFORM_rcar_gen4
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
 static TEE_Result tee_rpmb_mac_calc(uint8_t *mac, uint32_t macsize,
 				    uint8_t *key __unused, uint32_t keysize __unused,
 				    struct rpmb_data_frame *datafrms,
@@ -387,11 +396,11 @@ static TEE_Result tee_rpmb_mac_calc(uint8_t *mac, uint32_t macsize,
 #endif
 {
 	TEE_Result res = TEE_ERROR_GENERIC;
-#ifndef PLATFORM_rcar_gen4
+#ifndef CFG_CRYPT_HW_CRYPTOENGINE
 	int i;
 	void *ctx = NULL;
 #endif
-#ifdef PLATFORM_rcar_gen4
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
 	uint16_t i;
 	size_t listsize;
 	uint64_t *listfrm = NULL;
@@ -720,7 +729,7 @@ static TEE_Result tee_rpmb_data_cpy_mac_calc(struct rpmb_data_frame *datafrm,
 {
 	TEE_Result res = TEE_ERROR_GENERIC;
 	int i;
-#ifndef PLATFORM_rcar_gen4
+#ifndef CFG_CRYPT_HW_CRYPTOENGINE
 	void *ctx = NULL;
 #endif
 	uint16_t offset;
@@ -728,7 +737,7 @@ static TEE_Result tee_rpmb_data_cpy_mac_calc(struct rpmb_data_frame *datafrm,
 	uint8_t *data;
 	uint16_t start_idx;
 	struct rpmb_data_frame localfrm;
-#ifdef PLATFORM_rcar_gen4
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
 	size_t listsize;
 	uint64_t *listfrm = NULL;
 #endif
@@ -743,7 +752,7 @@ static TEE_Result tee_rpmb_data_cpy_mac_calc(struct rpmb_data_frame *datafrm,
 
 	data = rawdata->data;
 
-#ifdef PLATFORM_rcar_gen4
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
 	listsize = sizeof(void *) * (size_t)nbr_frms;
 	listfrm = malloc(listsize);
 
@@ -758,7 +767,7 @@ static TEE_Result tee_rpmb_data_cpy_mac_calc(struct rpmb_data_frame *datafrm,
 	res = crypto_mac_init(ctx, rpmb_ctx->key, RPMB_KEY_MAC_SIZE);
 	if (res != TEE_SUCCESS)
 		goto func_exit;
-#endif /* PLATFORM_rcar_gen4 */
+#endif /* CFG_CRYPT_HW_CRYPTOENGINE */
 	/*
 	 * Note: JEDEC JESD84-B51: "In every packet the address is the start
 	 * address of the full access (not address of the individual half a
@@ -775,7 +784,7 @@ static TEE_Result tee_rpmb_data_cpy_mac_calc(struct rpmb_data_frame *datafrm,
 		 */
 		memcpy(&localfrm, &datafrm[i], RPMB_DATA_FRAME_SIZE);
 
-#ifdef PLATFORM_rcar_gen4
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
 		/* Add list */
 		listfrm[i] = (uint64_t)&datafrm[i].data;
 #else
@@ -783,7 +792,7 @@ static TEE_Result tee_rpmb_data_cpy_mac_calc(struct rpmb_data_frame *datafrm,
 					RPMB_MAC_PROTECT_DATA_SIZE);
 		if (res != TEE_SUCCESS)
 			goto func_exit;
-#endif /* PLATFORM_rcar_gen4 */
+#endif /* CFG_CRYPT_HW_CRYPTOENGINE */
 		if (i == 0) {
 			/* First block */
 			offset = rawdata->byte_offset;
@@ -811,7 +820,7 @@ static TEE_Result tee_rpmb_data_cpy_mac_calc(struct rpmb_data_frame *datafrm,
 	if (res != TEE_SUCCESS)
 		goto func_exit;
 
-#ifdef PLATFORM_rcar_gen4
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
 	/* Add list against the last block */
 	listfrm[nbr_frms -1U] = (uint64_t)lastfrm->data;
 	res = crypto_hw_rpmb_signframes(listfrm, (uint32_t)nbr_frms,
@@ -833,7 +842,7 @@ func_exit:
 
 func_exit:
 	crypto_mac_free_ctx(ctx);
-#endif /* PLATFORM_rcar_gen4 */
+#endif /* CFG_CRYPT_HW_CRYPTOENGINE */
 	return res;
 }
 

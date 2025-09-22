@@ -95,6 +95,31 @@ out:
 	return ret;
 }
 
+TEE_Result rcar_icum_rpmb_getkey(uint8_t *out, size_t outSize)
+{
+	uint32_t ret = TEE_SUCCESS;
+	uint32_t res;
+	uint8_t *rpmb_key;
+
+	if (!out)
+		TEE_ERROR_BAD_PARAMETERS;
+
+	/* Init ICUM Firmware interface */
+	res = fwss_service_init();
+	if(res != FW_SERVICE_SUCCESS) {
+		EMSG("fwss_service_init() error");
+		ret = TEE_ERROR_SECURITY;
+	}
+
+	/* Get RPMB key buffer */
+	ret = fwss_get_key_data(KEY_GRP_AES, 5, (uint8_t *)out, outSize);
+	if (ret != TEE_SUCCESS) {
+		goto out;
+	}
+out:
+	return ret;
+}
+
 TEE_Result rcar_asset_unpack(uint32_t assetId,
 		uint8_t *pAssetPackage, uint32_t assetPackageLen,
 		uint8_t *pAssetData, uint32_t *pAssetDataLen,
