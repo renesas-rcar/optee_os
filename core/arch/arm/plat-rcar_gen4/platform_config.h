@@ -101,6 +101,7 @@
 #define MFIS_BASE		ADDR_ASSIGN_RGID(0xE6260000U,CFG_RCAR_RGID) 	/* MFIS address */
 #define RPC_ADDR_MAP_BASE	ADDR_ASSIGN_RGID(0x08000000U,CFG_RCAR_RGID)	/* RPC Internal address	*/
 #define RPC_ADDR_MAP_SIZE	(0x04000000U)	/* RPC Address Map size */
+#define EXTERNAL_FLASH_ADDR	(0x00340000u)	/* ICU FW external flash memory address */
 
 /* for HSCIF Register mapping function */
 #define HSCIF_BASE        ADDR_ASSIGN_RGID(0xE6540000, CFG_RCAR_RGID)

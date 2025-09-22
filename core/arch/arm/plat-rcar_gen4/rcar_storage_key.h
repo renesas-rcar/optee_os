@@ -18,6 +18,8 @@
  *  * Function & variable prototypes
  *   ******************************************************************************/
 TEE_Result rcar_install_user_key(void *key_buf,size_t key_len);
+TEE_Result icum_write_secure_data(void);
+TEE_Result icum_clear_secure_data(void);
 
 static const uint8_t key_update_enc_c[NUM_OF_CONSTANT][SIZE_OF_CONSTANT] =
 {

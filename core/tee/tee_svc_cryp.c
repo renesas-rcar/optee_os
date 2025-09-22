@@ -4119,11 +4119,22 @@ TEE_Result syscall_icum_install_key(void *buf, size_t buf_len)
 
 	return rcar_install_user_key(buf, buf_len);
 }
+
+TEE_Result syscall_icum_clear_data(void)
+{
+	return icum_clear_secure_data();
+}
 #else
 TEE_Result syscall_icum_install_key(void *buf, size_t buf_len)
 {
 	(void) buf;
 	(void) buf_len;
+	/* Always returns success */
+	return TEE_SUCCESS;
+}
+
+TEE_Result syscall_icum_clear_data(void)
+{
 	/* Always returns success */
 	return TEE_SUCCESS;
 }
