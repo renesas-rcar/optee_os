@@ -42,6 +42,9 @@
 #if defined(RCAR_TRNG_BY_ICUMX_HWENGINE)
 #include <rcar_fw_security_service.h>
 #endif
+#if defined(CFG_SECURE_STORAGE_BY_ICUMX_HWENGINE)
+#include <rcar_storage_key.h>
+#endif
 
 enum cryp_state {
 	CRYP_STATE_INITIALIZED = 0,
@@ -4097,6 +4100,27 @@ TEE_Result syscall_icum_trng_generate(void *buf, size_t buf_len)
 }
 #else
 TEE_Result syscall_icum_trng_generate(void *buf, size_t buf_len)
+{
+	(void) buf;
+	(void) buf_len;
+	/* Always returns success */
+	return TEE_SUCCESS;
+}
+#endif
+
+#ifdef RCAR_SECURE_STORAGE_BY_ICUMX_HWENGINE
+TEE_Result syscall_icum_install_key(void *buf, size_t buf_len)
+{
+	if (!buf)
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	if ((buf_len != AES_KEY_LEN_128) && (buf_len != AES_KEY_LEN_256))
+		return TEE_ERROR_BAD_PARAMETERS;
+
+	return rcar_install_user_key(buf, buf_len);
+}
+#else
+TEE_Result syscall_icum_install_key(void *buf, size_t buf_len)
 {
 	(void) buf;
 	(void) buf_len;

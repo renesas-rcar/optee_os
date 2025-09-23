@@ -118,6 +118,7 @@ static const struct syscall_entry tee_syscall_table[] = {
 	SYSCALL_ENTRY(syscall_not_supported),
 	SYSCALL_ENTRY(syscall_cache_operation),
 	SYSCALL_ENTRY(syscall_icum_trng_generate),
+	SYSCALL_ENTRY(syscall_icum_install_key),
 #ifdef PLATFORM_rcar_gen4
 	SYSCALL_ENTRY(syscall_rcar_asset_unpack),
 #endif

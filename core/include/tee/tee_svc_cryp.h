@@ -60,6 +60,8 @@ TEE_Result syscall_cryp_random_number_generate(void *buf, size_t blen);
 
 TEE_Result syscall_icum_trng_generate(void *buf, size_t buf_len);
 
+TEE_Result syscall_icum_install_key(void *buf, size_t buf_len);
+
 TEE_Result syscall_authenc_init(unsigned long state, const void *nonce,
 			size_t nonce_len, size_t tag_len,
 			size_t aad_len, size_t payload_len);
