@@ -142,8 +142,8 @@ endif
 CFG_RCAR_UART ?= 200
 CFG_SCIF ?= n
 # Region-ID configuration
-ifndef CFG_RCAR_RGID
-CFG_RCAR_RGID = 0
+CFG_RCAR_RGID_ENABLE ?= n
+ifeq ($(CFG_RCAR_RGID_ENABLE),n)
 $(call force,CFG_CORE_ARM64_PA_BITS,36)
 $(call force,CFG_LPAE_ADDR_SPACE_BITS,32)
 else

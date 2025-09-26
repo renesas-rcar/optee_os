@@ -33,6 +33,12 @@
 #define PLATFORM_CONFIG_H
 
 /* Region-ID helper macros */
+#ifndef CFG_RCAR_RGID_ENABLE
+#define CFG_RCAR_RGID	0
+#else
+#define CFG_RCAR_RGID	2
+#endif
+
 #define ADDR_RGID(a)                    (((a) & 0xF) * 0x1000000000)
 #define ADDR_RGID_MASK                  (0x000000F000000000)
 #define ADDR_PA_MASK                    (0x0000000FFFFFFFFF)
