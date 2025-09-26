@@ -20,7 +20,7 @@
  *  MEM_AREA_IO_SEC attribute.
  */
 #define p2v_ioadr(r, len)		((vaddr_t)(phys_to_virt((r), MEM_AREA_IO_SEC, (len))))
-#define p2v_regadr(r, len)		((phys_to_virt((r), MEM_AREA_IO_SEC, (len))))
+#define p2v_regadr(r, len)		((vaddr_t)(phys_to_virt((r), MEM_AREA_IO_SEC, (len))))
 
 /* Interrupt ID */
 #define INTID_PKA		(65U  + 32U)	/* Crypto Engine PKA sec */

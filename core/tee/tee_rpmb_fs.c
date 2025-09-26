@@ -315,7 +315,9 @@ out:
 static TEE_Result tee_rpmb_key_gen(uint16_t dev_id __unused,
 				   uint8_t *key, uint32_t len)
 {
-#ifndef CFG_CRYPT_HW_CRYPTOENGINE
+#ifdef CFG_STORAGE_DATA_BY_ICUMX_HWENGINE
+	TEE_Result res = TEE_SUCCESS;
+#else
 	uint8_t message[RPMB_EMMC_CID_SIZE];
 #endif
 	if (!key || RPMB_KEY_MAC_SIZE != len)
@@ -325,7 +327,6 @@ static TEE_Result tee_rpmb_key_gen(uint16_t dev_id __unused,
 #ifdef CFG_CRYPT_HW_CRYPTOENGINE
 	return crypto_hw_rpmb_derivekey(key, len);
 #elif CFG_STORAGE_DATA_BY_ICUMX_HWENGINE
-	TEE_Result res = TEE_SUCCESS;
 	res = rcar_icum_rpmb_getkey(key, len);
 	if ((res == TEE_SUCCESS) && !is_rpmb_key_import) {
 		res = fwss_hmac_import(key, len, 2);

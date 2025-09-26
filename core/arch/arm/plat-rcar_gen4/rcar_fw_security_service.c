@@ -466,7 +466,7 @@ out:
 	return ret;
 }
 
-uint32_t fwss_calculate_MP(void *key_buf, size_t key_len, void* const_buf,
+uint32_t fwss_calculate_MP(void *key_buf, size_t key_len, const uint8_t* const_buf,
 		size_t const_len, void* deriv_key_buf, size_t *deriv_key_len)
 {
 	uint32_t res;
@@ -493,7 +493,7 @@ uint32_t fwss_calculate_MP(void *key_buf, size_t key_len, void* const_buf,
 	(void)memset(g_ISD_SEC_SVC_BUFFER, 0, SIZE_OF_SEC_SRV);
 
 	p_ISD		= (r_icumif_isd_t *)g_ISD_SEC_SVC_BUFFER;
-	data1		= (uint32_t *)p_ISD + NEXT_ADDR_ALIGN4(sizeof(r_icumif_isd_t));
+	data1		= (uint8_t *)p_ISD + NEXT_ADDR_ALIGN4(sizeof(r_icumif_isd_t));
 	data2		= data1 + SHE_SINGLE_MESS_SIZE;
 	data3		= data2 + SHE_SINGLE_MESS_SIZE;
 
@@ -534,9 +534,8 @@ uint32_t fwss_aes_cipher(cipher_direction_t direction, cipher_modes_t mode,
 	r_icumif_isd_t *p_ISD;
 	uint32_t ret = FW_SERVICE_SUCCESS;
 	uint32_t *aes_output;
-	uint8_t *iv_share;
-	uint8_t *input_share;
-	uint8_t *output_share;
+	uint32_t *iv_share;
+	uint32_t *input_share;
 
 	/* Check input data */
 	if(!iv || !input || !output || !buf_len) {
@@ -554,8 +553,8 @@ uint32_t fwss_aes_cipher(cipher_direction_t direction, cipher_modes_t mode,
 
 	p_ISD 		= (r_icumif_isd_t *)g_ISD_SEC_SVC_BUFFER;
 	iv_share 	= (uint32_t *)p_ISD + NEXT_ADDR_ALIGN4(sizeof(r_icumif_isd_t));
-	input_share 	= (uint8_t *)iv_share + buf_len;
-	aes_output 	= (uint8_t *)input_share + buf_len;
+	input_share 	= (uint32_t *)iv_share + buf_len;
+	aes_output 	= (uint32_t *)input_share + buf_len;
 
 	memcpy((uint8_t *)iv_share, (uint8_t *)iv, 32);
 	memcpy((uint8_t *)input_share, (uint8_t *)input, 32);
@@ -570,9 +569,9 @@ uint32_t fwss_aes_cipher(cipher_direction_t direction, cipher_modes_t mode,
 	p_ISD->prm.AES_CIPHER.cipher_mode	= mode;
 	p_ISD->prm.AES_CIPHER.key_group		= group;
 	p_ISD->prm.AES_CIPHER.key_id		= key_id;
-	p_ISD->prm.AES_CIPHER.ptr1.p_iv		= (uint32_t*)iv_share;
-	p_ISD->prm.AES_CIPHER.ptr2.p_block_in	= (uint32_t*)input_share;
-	p_ISD->prm.AES_CIPHER.ptr3.p_block_out	= (uint32_t*)aes_output;
+	p_ISD->prm.AES_CIPHER.ptr1.p_iv		= (uint32_t *)iv_share;
+	p_ISD->prm.AES_CIPHER.ptr2.p_block_in	= (uint32_t *)input_share;
+	p_ISD->prm.AES_CIPHER.ptr3.p_block_out	= (uint32_t *)aes_output;
 	p_ISD->prm.AES_CIPHER.size.nb_blocks	= byte_to_block(buf_len);
 	p_ISD->prm.AES_CIPHER.job_slice		= 0;
 	p_ISD->prm.AES_CIPHER.job_cycle		= JOB_ALL_AT_ONCE;
@@ -614,7 +613,7 @@ uint32_t fwss_plain_key_update(r_key_group_t group, uint8_t key_id, void *key_bu
 	(void)memset(g_ISD_SEC_SVC_BUFFER, 0, SIZE_OF_SEC_SRV);
 
 	p_ISD			= (r_icumif_isd_t *)g_ISD_SEC_SVC_BUFFER;
-	input_key_share		= (uint32_t *)p_ISD + NEXT_ADDR_ALIGN4(sizeof(r_icumif_isd_t));
+	input_key_share		= (uint8_t *)p_ISD + NEXT_ADDR_ALIGN4(sizeof(r_icumif_isd_t));
 
 	memcpy((uint8_t *)input_key_share, (uint8_t *)key_buf, key_len);
 
@@ -653,8 +652,8 @@ uint32_t fwss_aes_cmac(r_key_group_t group, r_key_index_t key_id, void *mess_buf
 	uint32_t res;
 	r_icumif_isd_t *p_ISD;
 	uint32_t ret = FW_SERVICE_SUCCESS;
-	uint8_t *p_mess_share;
-	uint8_t *output_share;
+	uint32_t *p_mess_share;
+	uint32_t *output_share;
 
 	/* Check input data */
 	if(!mess_buf || !mess_len || !out_buf || !out_len) {
@@ -730,7 +729,7 @@ uint32_t fwss_she_key_update(uint8_t she_key_index, void *mess_buf, size_t mess_
 	(void)memset(g_ISD_SEC_SVC_BUFFER, 0, SIZE_OF_SEC_SRV);
 
 	p_ISD			= (r_icumif_isd_t *)g_ISD_SEC_SVC_BUFFER;
-	p_mess_share		= (uint32_t *)p_ISD + NEXT_ADDR_ALIGN4(sizeof(r_icumif_isd_t));
+	p_mess_share		= (SHE_key_update_type *)p_ISD + NEXT_ADDR_ALIGN4(sizeof(r_icumif_isd_t));
 
 	memcpy((uint8_t *)p_mess_share, (uint8_t *)mess_buf, mess_len);
 
@@ -793,7 +792,7 @@ out:
 	return ret;
 }
 
-uint32_t fwss_auth_aes_cipher(cipher_direction_t direction, cipher_modes_t mode,
+uint32_t fwss_auth_aes_cipher(cipher_direction_t direction, auth_cipher_modes_t mode,
 		r_key_group_t group, r_key_index_t key_id, void *iv_buf, size_t iv_len,
 		void *auth_buf, size_t auth_len, void *in_buf, size_t in_len,
 		void *out_buf, void *tag_buf, size_t tag_len)
@@ -801,11 +800,11 @@ uint32_t fwss_auth_aes_cipher(cipher_direction_t direction, cipher_modes_t mode,
 	uint32_t res;
 	r_icumif_isd_t *p_ISD;
 	uint32_t ret = FW_SERVICE_SUCCESS;
-	uint8_t *iv_share;
-	uint8_t *auth_share;
-	uint8_t *input_share;
-	uint8_t *output_share;
-	uint8_t *tag_share;
+	uint32_t *iv_share;
+	uint32_t *auth_share;
+	uint32_t *input_share;
+	uint32_t *output_share;
+	uint32_t *tag_share;
 
 	/* Check input data */
 	if(!iv_buf || !auth_buf || !in_buf || !out_buf || !tag_buf)
@@ -821,10 +820,10 @@ uint32_t fwss_auth_aes_cipher(cipher_direction_t direction, cipher_modes_t mode,
 
 	p_ISD		= (r_icumif_isd_t *)g_ISD_SEC_SVC_BUFFER;
 	iv_share	= (uint32_t *)p_ISD + NEXT_ADDR_ALIGN4(sizeof(r_icumif_isd_t));
-	auth_share	= (uint8_t *)iv_share + iv_len;
-	input_share	= (uint8_t *)auth_share + auth_len;
-	output_share	= (uint8_t *)input_share + in_len;
-	tag_share	= (uint8_t *)output_share + in_len;
+	auth_share	= (uint32_t *)iv_share + iv_len;
+	input_share	= (uint32_t *)auth_share + auth_len;
+	output_share	= (uint32_t *)input_share + in_len;
+	tag_share	= (uint32_t *)output_share + in_len;
 
 	memcpy((uint8_t *)iv_share, (uint8_t *)iv_buf, iv_len);
 	memcpy((uint8_t *)auth_share, (uint8_t *)auth_buf, auth_len);
@@ -888,7 +887,7 @@ uint32_t fwss_get_id(void *uid_buf, size_t *uid_len) {
 	(void)memset(g_ISD_SEC_SVC_BUFFER, 0, SIZE_OF_SEC_SRV);
 
 	p_ISD		= (r_icumif_isd_t *)g_ISD_SEC_SVC_BUFFER;
-	challenge_share	= (uint32_t *)p_ISD + NEXT_ADDR_ALIGN4(sizeof(r_icumif_isd_t));
+	challenge_share	= (uint8_t *)p_ISD + NEXT_ADDR_ALIGN4(sizeof(r_icumif_isd_t));
 
 	memcpy((uint8_t *)challenge_share, (uint8_t *)CHALLENGE, 16);
 
@@ -938,7 +937,7 @@ uint32_t fwss_get_key_data(r_key_group_t group, r_key_index_t key_id,
 	(void)memset(g_ISD_SEC_SVC_BUFFER, 0, SIZE_OF_SEC_SRV);
 
 	p_ISD		= (r_icumif_isd_t *)g_ISD_SEC_SVC_BUFFER;
-	key_share 	= (uint32_t *)p_ISD + NEXT_ADDR_ALIGN4(sizeof(r_icumif_isd_t));
+	key_share 	= (r_aes_key_t *)p_ISD + NEXT_ADDR_ALIGN4(sizeof(r_icumif_isd_t));
 
 	/* Set parameter */
 	p_ISD->service_id		= (r_icumif_service_id_t)(16 * 16 + 5);
@@ -956,7 +955,7 @@ uint32_t fwss_get_key_data(r_key_group_t group, r_key_index_t key_id,
 	res = fw_service_request(p_ISD);
 	if(res != FW_SERVICE_SUCCESS) {
 		EMSG("fw_service_request error");
-		ret = TEE_ERROR_SECURITY;
+		ret = 2;
 	}
 	memcpy((uint8_t *)key_buf, (uint8_t *)key_share->key_value, key_len);
 out:
@@ -983,7 +982,7 @@ uint32_t fwss_hmac_import(void *key_buf, size_t key_len, uint8_t hmac_key_id)
 	(void)memset(g_ISD_SEC_SVC_BUFFER, 0, SIZE_OF_SEC_SRV);
 
 	p_ISD			= (r_icumif_isd_t *)g_ISD_SEC_SVC_BUFFER;
-	key_share		= (uint32_t *)p_ISD + NEXT_ADDR_ALIGN4(sizeof(r_icumif_isd_t));
+	key_share		= (uint8_t *)p_ISD + NEXT_ADDR_ALIGN4(sizeof(r_icumif_isd_t));
 
 	memcpy((uint8_t *)key_share, (uint8_t *)key_buf, key_len);
 
@@ -1030,7 +1029,7 @@ uint32_t fwss_hmac_generation(uint8_t hmac_key_id, uint8_t hash_primitive, void 
 	(void)memset(g_ISD_SEC_SVC_BUFFER, 0, SIZE_OF_SEC_SRV);
 
 	p_ISD			= (r_icumif_isd_t *)g_ISD_SEC_SVC_BUFFER;
-	msg_share		= (uint32_t *)p_ISD + NEXT_ADDR_ALIGN4(sizeof(r_icumif_isd_t));
+	msg_share		= (uint8_t *)p_ISD + NEXT_ADDR_ALIGN4(sizeof(r_icumif_isd_t));
 	mac_share		= msg_share + msg_len;
 
 	memcpy((uint8_t *)msg_share, (uint8_t *)msg_buf, msg_len);

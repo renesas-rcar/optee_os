@@ -56,7 +56,7 @@ typedef struct
 	uint8_t M5[SHE_SINGLE_MESS_SIZE];
 } SHE_key_update_type;
 
-typedef struct
+typedef struct __attribute__((__may_alias__))
 {
 	uint32_t     data01;
 	uint32_t     data02;
@@ -140,8 +140,9 @@ extern uint8_t is_init_icum;
 
 uint32_t fwss_trng_generate(void *buf, size_t buf_len);
 uint32_t fwss_sys_fw_init(void);
+uint32_t fwss_get_current_stage(uint32_t *stage);
 uint32_t fwss_lc_set_stage(uint32_t stage);
-uint32_t fwss_calculate_MP(void *key_buf, size_t key_len, void* const_buf,
+uint32_t fwss_calculate_MP(void *key_buf, size_t key_len, const uint8_t* const_buf,
 		size_t const_len, void* deriv_key_buf, size_t *deriv_key_len);
 uint32_t fwss_aes_cipher(cipher_direction_t direction, cipher_modes_t mode,
 		r_key_group_t group, r_key_index_t key_id, void *iv, void *input,
@@ -152,7 +153,7 @@ uint32_t fwss_aes_cmac(r_key_group_t group, r_key_index_t key_id, void *mess_buf
 		size_t mess_len, void *out_buf, size_t *out_len);
 uint32_t fwss_she_key_update(uint8_t she_key_index, void *mess_buf, size_t mess_len);
 uint32_t fwss_ext_flash_write(void);
-uint32_t fwss_auth_aes_cipher(cipher_direction_t direction, cipher_modes_t mode,
+uint32_t fwss_auth_aes_cipher(cipher_direction_t direction, auth_cipher_modes_t mode,
 		r_key_group_t group, r_key_index_t key_id, void *iv_buf, size_t iv_len,
 		void *auth_buf, size_t auth_len, void *in_buf, size_t in_len,
 		void *out_buf, void *tag_buf, size_t tag_len);
@@ -165,7 +166,7 @@ uint32_t fwss_hmac_generation(uint8_t hmac_key_id, uint8_t hash_primitive, void 
 uint32_t check_icum_init(void);
 uint8_t she_key_to_logical_index(uint8_t she_key_index);
 
-static uint8_t CHALLENGE[16] = {
+static uint8_t __attribute__((unused)) CHALLENGE[16] = {
 	0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF
 };
 #endif

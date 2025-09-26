@@ -9,9 +9,19 @@
 #include "rcar_storage_key.h"
 #include "pe_target_device.h"
 #include "drivers/qspi_hyper_flash.h"
+
 static uint8_t *p_auth_key;
 
+void write_bit(uint8_t *buf, uint32_t bit_index, uint8_t value);
+void set_counter(uint8_t *buf, uint32_t counter_value);
+const uint8_t* get_key_update_const(uint8_t she_key_index, uint8_t update_type);
 uint8_t she_get_key_id(uint8_t she_key_index);
+TEE_Result she_gen_m1(uint8_t auth_key_id, uint8_t she_key_id,
+		void *uid_buf, size_t uid_size, void *she_m1_buf);
+TEE_Result she_gen_m2(uint8_t she_key_id, void *plain_key_buf,
+		size_t plain_key_size, void *she_m2_buf);
+TEE_Result she_gen_m3(uint8_t she_key_id, void *she_m1_buf,
+		void *she_m2_buf, void *she_m3_buf);
 TEE_Result create_she_enc_message(uint8_t auth_key_id, uint8_t she_key_id,
 		void *plain_key_buf, size_t plain_key_size, void *uid_buf,
 		size_t uid_size, SHE_key_update_type *she_mess);
@@ -33,7 +43,7 @@ void set_counter(uint8_t *buf, uint32_t counter_value) {
 	}
 }
 
-uint8_t* get_key_update_const(uint8_t she_key_index, uint8_t update_type)
+const uint8_t* get_key_update_const(uint8_t she_key_index, uint8_t update_type)
 {
 	uint8_t logical_index = she_key_to_logical_index(she_key_index);
 	uint8_t update_index = 0;
@@ -47,7 +57,7 @@ uint8_t* get_key_update_const(uint8_t she_key_index, uint8_t update_type)
 		return key_update_mac_c[update_index];
 	} else {
 		/* No operation */
-		return;
+		return NULL;
 	}
 }
 
@@ -76,16 +86,16 @@ TEE_Result she_gen_m1(uint8_t auth_key_id, uint8_t she_key_id,
 	id_value = (id_value << 4)|auth_key_id;
 
 	/* Gen SHE M1 = UID (120 bits) + key ID (4 bits) + Auth key ID */
-	memcpy(she_m1_buf, (uint8_t *)uid_buf, uid_size);
-	memcpy(she_m1_buf + 15, (uint8_t *)&id_value, 1);
+	memcpy((uint8_t *)she_m1_buf, (uint8_t *)uid_buf, uid_size);
+	memcpy((uint8_t *)she_m1_buf + 15, (uint8_t *)&id_value, 1);
 
-	return TEE_SUCCESS;
+	return ret;
 }
 
 TEE_Result she_gen_m2(uint8_t she_key_id, void *plain_key_buf,
 		size_t plain_key_size, void *she_m2_buf) {
 	uint8_t ret = TEE_SUCCESS;
-	uint8_t *p_update_enc;
+	const uint8_t *p_update_enc;
 	uint8_t *p_plain_m2;
 	uint8_t *p_k1;
 	uint8_t *iv;
@@ -139,7 +149,7 @@ TEE_Result she_gen_m3(uint8_t she_key_id, void *she_m1_buf,
 		void *she_m2_buf, void *she_m3_buf)
 {
 	uint8_t ret = TEE_SUCCESS;
-	uint8_t *p_update_mac;
+	const uint8_t *p_update_mac;
 	uint8_t *p_plain_m3;
 	uint8_t *p_k2;
 	size_t k2_size;
@@ -253,7 +263,7 @@ TEE_Result icum_write_secure_data(void)
 {
 	TEE_Result ret = TEE_SUCCESS;
 	uint32_t res;
-	uint8_t *p_export_area = (uint8_t *)MEM_INFO_EXPORT_DATA_ADDR;
+	uint8_t *p_export_area =(uint8_t *)(uintptr_t)MEM_INFO_EXPORT_DATA_ADDR;
 	uint32_t export_size = (MEM_INFO_EXPORT_DATA_SIZE + (MEM_INFO_EXPORT_DATA_SIZE % sizeof(uint32_t)));
 
 	res = qspi_hyper_flash_init();
@@ -278,8 +288,8 @@ TEE_Result rcar_install_user_key(void *key_buf,size_t key_len)
 	uint32_t res;
 	uint32_t ret = FW_SERVICE_SUCCESS;
 	SHE_key_update_type she_mess;
-	uint8_t *p_trng_key;
-	uint8_t *p_uid;
+	uint8_t *p_trng_key = NULL;
+	uint8_t *p_uid = NULL;
 	size_t uid_size;
 
 	/* Init ICUM Firmware interface */
@@ -344,7 +354,7 @@ TEE_Result rcar_install_user_key(void *key_buf,size_t key_len)
 	if (ret != TEE_SUCCESS) {
 		goto out;
 	} else {
-		IMSG("SHE_KEY_10 has been updated !!!");
+		IMSG("SHE_KEY_10 has been updated !");
 	}
 
 	/* Init the true random key buffer */
@@ -368,7 +378,7 @@ TEE_Result rcar_install_user_key(void *key_buf,size_t key_len)
 	if (ret != TEE_SUCCESS) {
 		goto out;
 	} else {
-		IMSG("TRNG key has been updated !!!");
+		IMSG("TRNG key has been updated !");
 	}
 
 	/* Exports secure data to export area */

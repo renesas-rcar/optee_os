@@ -8,6 +8,11 @@
 TEE_Result icum_asset_unpack(uint32_t assetId,
 		uint8_t *pAssetPackage, uint32_t assetPackageLen,
 		uint8_t *pAssetData, uint32_t *pAssetDataLen,
+		uint32_t *pUserData);
+
+TEE_Result icum_asset_unpack(uint32_t assetId,
+		uint8_t *pAssetPackage, uint32_t assetPackageLen,
+		uint8_t *pAssetData, uint32_t *pAssetDataLen,
 		uint32_t *pUserData)
 {
 	uint32_t res;
@@ -72,7 +77,8 @@ TEE_Result icum_asset_unpack(uint32_t assetId,
 
 	/* Decrypt the Asset data within asset buffer using AES-CCM  */
 	assetMacOffset = ASSET_PKG_EN_DATA_OFFSET+enAssetDataSize;
-	ret = fwss_auth_aes_cipher(CIPHER_DIR_DECRYPTION, AUTH_CIPHER_MOD_CCM,
+	ret = fwss_auth_aes_cipher(CIPHER_DIR_DECRYPTION,
+			(auth_cipher_modes_t)AUTH_CIPHER_MOD_CCM,
 			KEY_GRP_AES_RAM, 4,
 			&(pAssetPackage[ASSET_PKG_CCM_NONCE_OFFSET]),
 			ASSET_PKG_CCM_NONCE_SIZE,
@@ -99,10 +105,9 @@ TEE_Result rcar_icum_rpmb_getkey(uint8_t *out, size_t outSize)
 {
 	uint32_t ret = TEE_SUCCESS;
 	uint32_t res;
-	uint8_t *rpmb_key;
 
 	if (!out)
-		TEE_ERROR_BAD_PARAMETERS;
+		return TEE_ERROR_BAD_PARAMETERS;
 
 	/* Init ICUM Firmware interface */
 	res = fwss_service_init();
@@ -127,7 +132,6 @@ TEE_Result rcar_asset_unpack(uint32_t assetId,
 {
 	uint32_t ret = TEE_SUCCESS;
 	uint32_t dataOutLen;
-	uint32_t check_crys_res;
 
 	IMSG("START: do_asset_unpack\n");
 	if ((pAssetPackage == NULL) || (pAssetData == NULL) ||
