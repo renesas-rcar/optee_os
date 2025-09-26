@@ -265,9 +265,23 @@ uint32_t qspi_hyper_flash_init_rpc(void)
 {
 	uint32_t ret;
 	uint32_t dataL;
+	uint32_t reg;
 	/* wait: tRPH(30us) >= tRP(200ns) + tRH(150ns) */
 	const uint32_t wait_time_us_tRP_margin = 1U;
 	const uint32_t wait_time_us_tRH_margin = 29U;
+
+	/* Enable MSTP of RPC */
+	reg = io_read32((vaddr_t)CPG_MSTPCR6);
+
+	/* CPG_MSTPCR6_RPC: Bit29; 0: Enable; 1: Disable */
+	if ((reg & BIT29) != 0U) {
+		dataL = reg & CPG_MSTPCR6_RPC_ENABLE;
+		io_write32((vaddr_t)CPG_CPGWPR, ~dataL);
+		io_write32((vaddr_t)CPG_MSTPCR6, dataL);
+
+		reg = io_read32((vaddr_t)CPG_MSTPSR6);
+		DMSG("MSTP of RPC is already enabled, CPG_MSTPSR6: 0x%x\n", reg);
+	}
 
 	ret = set_rpc_clock_mode(rpc_clock_mode);
 

@@ -64,10 +64,12 @@
 /* Write Buffer output base address */
 #define RPC_WB_OUT_BASE p2v_ioadr(RPC_BASE + 0x8000U, MEMORY7_SIZE)
 
-#define CPG_CPGWPR	p2v_regadr(0xE6150000U, DEVICE0_SIZE)
-#define CPG_RPCCKCR	p2v_ioadr(0xE6150874U, DEVICE0_SIZE)
-#define CPG_SRCR6	p2v_regadr(0xE6152C18U, DEVICE0_SIZE)
-#define CPG_SRSTCLR6	p2v_regadr(0xE6152C98U, DEVICE0_SIZE)
+#define CPG_CPGWPR	p2v_regadr(CPG_BASE + 0x0000U, DEVICE0_SIZE)
+#define CPG_RPCCKCR	p2v_ioadr(CPG_BASE + 0x0874U, DEVICE0_SIZE)
+#define CPG_SRCR6	p2v_regadr(CPG_BASE + 0x2C18U, DEVICE0_SIZE)
+#define CPG_SRSTCLR6	p2v_regadr(CPG_BASE + 0x2C98U, DEVICE0_SIZE)
+#define CPG_MSTPCR6	p2v_regadr(CPG_BASE + 0x2D18U, DEVICE0_SIZE)
+#define CPG_MSTPSR6	p2v_regadr(CPG_BASE + 0x2E18U, DEVICE0_SIZE)
 
 /* device id */
 /* QSPI_ONBOARD : S25FS512S */
@@ -122,6 +124,7 @@
 #define BIT1	((uint32_t)0x00000002U)
 #define BIT5	((uint32_t)0x00000020U)
 #define BIT7	((uint32_t)0x00000080U)
+#define BIT29	((uint32_t)0x20000000U)
 #define EXT_ADDR_MASK	((uint32_t)0xFC000000U)
 
 /* Volatile Status and Configuration Registers (CR3V) */
@@ -173,6 +176,12 @@
 
 /* Software Reset Register 6 (SRT029) */
 #define CPG_SRCR6_SRT029	(0x20000000U)
+
+/* Module Stop Control register */
+/* 0: Enable; 1: Disable */
+/* CPG_MSTPCR6_RPC: Bit29 */
+#define CPG_MSTPCR6_RPC_DISABLE	(0x20000000U)
+#define CPG_MSTPCR6_RPC_ENABLE	(~(0x20000000U))
 
 /* RPC-IF Clock Frequency Control Register */
 /* RPC-IF clock (RPC, RPCD2) Frequency Division Ratio */
