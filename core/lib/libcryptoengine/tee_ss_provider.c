@@ -1999,6 +1999,10 @@ static SSError_t ss_build_priv_key(CRYS_RSAUserPrivKey_t **userPrivKey,
 	}
 	if (res == SS_SUCCESS) {
 		if ((bn_num_bytes(key->p) == 0U)
+		    || (bn_num_bytes(key->q) == 0U)
+		    || (bn_num_bytes(key->dp) == 0U)
+		    || (bn_num_bytes(key->dq) == 0U)
+		    || (bn_num_bytes(key->qp) == 0U)
 				|| ((bn_num_bytes(key->n) >= MAX_RSA_KEY_SIZE))) {
 			PROV_DMSG("key->e=%p\n", key->e);
 			res = ss_copy_bn2bin_uint16(key->e, &e_ptr, &eSize);
