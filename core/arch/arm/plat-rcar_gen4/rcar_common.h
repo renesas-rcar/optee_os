@@ -30,7 +30,7 @@
 #define TEE_RPC_DEBUG_LOG	(0x3F000000U)
 
 /* Product Register */
-#define PRR			p2v_ioadr(0xFFF00044U,MEMORY5_SIZE)
+#define PRR			p2v_ioadr(PRR_BASE + 0x0044U, MEMORY5_SIZE)
 
 /* Stack switching */
 uint32_t asm_switch_stack_pointer(uintptr_t jump, uint32_t stack, void *arg);
