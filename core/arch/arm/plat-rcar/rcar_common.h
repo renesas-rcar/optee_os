@@ -101,4 +101,6 @@ extern void hw_engine_unlock(uint32_t lock);
 #define hw_engine_unlock(lock)	(void)(lock)
 #endif /* CFG_CRYPT_HW_CRYPTOENGINE */
 
+void *rcar_phys_to_virt(paddr_t pa, enum teecore_memtypes m, size_t len);
+
 #endif /* RCAR_COMMON_H */
