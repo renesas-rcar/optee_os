@@ -267,4 +267,15 @@
 #define MEMORY11_SIZE		(MEM_SECTION_SIZE)
 #define MEMORY11_TYPE		MEM_AREA_IO_SEC
 #define MEMORY11_PA_END		(RCAR_M3N_M3L_IDENT_BASE + MEMORY11_SIZE)
+
+/* Settings to wait for completion of Crypto Engine */
+/* Below macros are used by DX_HAL_WaitInterrupt in Crypto Engine driver */
+
+/* Time until polling times out [msec] */
+#define HAL_TIMEOUT  600U
+/* Time until polling is suspended by a RPC command [msec] */
+#define HAL_DELAYTIME 10U
+/* Time when polling is temporarily suspended in Normal World [msec] */
+#define HAL_WAITTIME 500U
+
 #endif /*PLATFORM_CONFIG_H*/
