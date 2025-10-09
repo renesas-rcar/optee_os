@@ -24,6 +24,7 @@
 #include <mm/core_mmu.h>
 #include <console.h>
 #include <io.h>
+#include <types_ext.h>
 
 #include <sm/optee_smc.h>
 #include <kernel/spinlock.h>
@@ -271,4 +272,12 @@ void console_init(void)
 	register_serial_console(&console_data.chip);
 	IMSG("Init SCIF driver before mmu enable");
 #endif
+}
+
+/** This function exports same interface to map physical address to logical address
+ * between version 3.13 and later version as 3.22 and later.
+ */
+void *rcar_phys_to_virt(paddr_t pa, enum teecore_memtypes m, __maybe_unused size_t len)
+{
+	return phys_to_virt(pa, m);
 }
