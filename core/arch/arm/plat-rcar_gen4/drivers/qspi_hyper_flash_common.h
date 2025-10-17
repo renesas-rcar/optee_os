@@ -203,8 +203,8 @@ struct flash_control_operations {
 	uint32_t (*erase)(uint32_t sector_addr);
 	uint32_t (*set_ext_addr_read_mode)(uint32_t read_ext_top_addr,
 			uint32_t r_flash_addr, uint8_t *buf, size_t rsize);
-	uint32_t (*write)(uint32_t buf_addr,
-				uint32_t flash_addr, uint32_t wsize);
+	uint32_t (*write)(vaddr_t buf_addr,
+			  uint32_t flash_addr, uint32_t wsize);
 };
 
 uint32_t common_wait_spi_transfer(uint32_t *dataL);

@@ -16,7 +16,7 @@
 static uint32_t qspi_onboard_erase_main(uint32_t sector_addr);
 static uint32_t qspi_onboard_set_ext_addr_read_mode(uint32_t read_ext_top_addr,
 			uint32_t r_flash_addr, uint8_t *buf, size_t rsize);
-static uint32_t qspi_onboard_write_main(uint32_t buf_addr,
+static uint32_t qspi_onboard_write_main(vaddr_t buf_addr,
 					uint32_t flash_addr, uint32_t wsize);
 static uint32_t qspi_onboard_set_sector_erase_size(uint32_t sector_size_bit);
 static uint32_t qspi_onboard_read_register_data(uint32_t manual_set_addr,
@@ -24,9 +24,9 @@ static uint32_t qspi_onboard_read_register_data(uint32_t manual_set_addr,
 static uint32_t qspi_onboard_read_flash_data4Byte(uint32_t readFlAddr,
 							uint32_t *readData);
 static uint32_t qspi_onboard_request_write_buffer(uint32_t flash_addr,
-						uint32_t write_data_addr);
+						vaddr_t write_data_addr);
 static uint32_t qspi_onboard_write_buffer(uint32_t manual_set_addr,
-						uint32_t write_data_addr);
+						vaddr_t write_data_addr);
 static uint32_t qspi_onboard_write_register_data(uint32_t manual_set_addr,
 						uint8_t write_data);
 
@@ -115,7 +115,7 @@ static uint32_t qspi_onboard_set_ext_addr_read_mode(uint32_t read_ext_top_addr,
 	return ret;
 }
 
-static uint32_t qspi_onboard_write_main(uint32_t buf_addr,
+static uint32_t qspi_onboard_write_main(vaddr_t buf_addr,
 					uint32_t flash_addr, uint32_t wsize)
 {
 	uint32_t wbuf_size;
@@ -123,7 +123,7 @@ static uint32_t qspi_onboard_write_main(uint32_t buf_addr,
 	uint32_t write_num;
 	uint32_t rest_wsize;
 	uint32_t work_flash_addr;
-	uint32_t write_data_addr;
+	vaddr_t write_data_addr;
 	uint32_t work_flash_256top;
 	uint32_t w_offset;
 	uint8_t wbuff[WRITE_BUFF_SIZE];
@@ -349,7 +349,7 @@ static uint32_t qspi_onboard_read_flash_data4Byte(uint32_t readFlAddr,
 }
 
 static uint32_t qspi_onboard_request_write_buffer(uint32_t flash_addr,
-						uint32_t write_data_addr)
+						vaddr_t write_data_addr)
 {
 	uint32_t read_status = 0U;
 	uint32_t ret;
@@ -370,7 +370,7 @@ static uint32_t qspi_onboard_request_write_buffer(uint32_t flash_addr,
 }
 
 static uint32_t qspi_onboard_write_buffer(uint32_t manual_set_addr,
-						uint32_t write_data_addr)
+						vaddr_t write_data_addr)
 {
 	uintptr_t offset;
 	uint32_t ret;

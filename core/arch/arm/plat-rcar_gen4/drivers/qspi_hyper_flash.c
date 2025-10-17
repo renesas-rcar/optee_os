@@ -23,7 +23,7 @@ uint32_t phycnt_reg __nex_bss;
 static uint32_t erase_flash_unsupported(uint32_t sector_addr);
 static uint32_t ext_addr_read_mode_flash_unsupported(uint32_t read_ext_top_addr,
 			uint32_t flash_addr, uint8_t *buf, size_t rsize);
-static uint32_t write_flash_unsupported(uint32_t buf_addr,
+static uint32_t write_flash_unsupported(vaddr_t buf_addr,
 					uint32_t flash_addr, uint32_t wsize);
 static uint32_t init_rpc_reg_depends_soc(void);
 
@@ -227,19 +227,17 @@ static uint32_t ext_addr_read_mode_flash_unsupported
 			uint8_t *buf __maybe_unused,
 			size_t rsize __maybe_unused)
 {
-	EMSG("Not execute ext_addr_read_mode. "
-			"Unsupport device. read_ext_addr=%x",
-							read_ext_top_addr);
+	EMSG("Not execute ext_addr_read_mode. Unsupport device. read_ext_addr=%x",
+		read_ext_top_addr);
 	EMSG("flash_addr=%x , buf=%p, rsize=%zu", flash_addr, buf, rsize);
 	return FL_DRV_ERR_UNSUPPORT_DEV;
 }
 
-static uint32_t write_flash_unsupported(uint32_t buf_addr __maybe_unused,
-			uint32_t flash_addr __maybe_unused,
-			uint32_t wsize __maybe_unused)
+static uint32_t write_flash_unsupported(vaddr_t buf_addr __maybe_unused,
+					uint32_t flash_addr __maybe_unused,
+					uint32_t wsize __maybe_unused)
 {
-	EMSG("Not execute write.Unsupport device."
-		"buf_addr=%x flash_addr=%x wsize=%d",
+	EMSG("Not execute write. Unsupport device. buf_addr=%lx flash_addr=%x wsize=%d",
 		buf_addr, flash_addr, wsize);
 
 	return FL_DRV_ERR_UNSUPPORT_DEV;

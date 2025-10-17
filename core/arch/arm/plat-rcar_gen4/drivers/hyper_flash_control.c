@@ -15,7 +15,7 @@ static uint32_t hyper_flash_erase_sector(uint32_t sector_addr);
 static uint32_t hyper_flash_set_ext_addr_read_mode(uint32_t read_ext_top_addr,
 						   uint32_t r_flash_addr,
 						   uint8_t *buf, size_t rsize);
-static uint32_t hyper_flash_write_main(uint32_t buf_addr,
+static uint32_t hyper_flash_write_main(vaddr_t buf_addr,
 				       uint32_t flash_addr, uint32_t wsize);
 static void hyper_flash_set_control_ops(struct flash_control_operations *ops);
 static uint32_t hyper_flash_set_command(uint32_t manual_set_addr,
@@ -27,11 +27,11 @@ static uint32_t hyper_flash_read_register_data(uint32_t manual_set_addr,
 					       uint32_t byte_count);
 static uint32_t hyper_flash_read_device_id(uint32_t *read_device_id);
 static uint32_t hyper_flash_request_write_buffer(uint32_t flash_addr,
-						 uint32_t write_data_addr);
+						 vaddr_t write_data_addr);
 static uint32_t hyper_flash_write_buffer_control(uint32_t flash_addr,
-						 uint32_t write_data_addr);
+						 vaddr_t write_data_addr);
 static uint32_t hyper_flash_write_buffer(uint32_t manual_set_addr,
-					 uint32_t write_data_addr);
+					 vaddr_t write_data_addr);
 static uint32_t hyper_flash_get_rpc_clock_mode(uint32_t *mode);
 
 uint32_t hyper_flash_init(struct flash_control_operations *ops)
@@ -161,15 +161,15 @@ static uint32_t hyper_flash_set_ext_addr_read_mode(uint32_t read_ext_top_addr,
 	return ret;
 }
 
-static uint32_t hyper_flash_write_main(uint32_t buf_addr,
-					uint32_t flash_addr, uint32_t wsize)
+static uint32_t hyper_flash_write_main(vaddr_t buf_addr,
+				       uint32_t flash_addr, uint32_t wsize)
 {
 	uint32_t wbuf_size;
 	uint32_t wcount;
 	uint32_t write_num;
 	uint32_t rest_wsize;
 	uint32_t work_flash_addr;
-	uint32_t write_data_addr;
+	vaddr_t write_data_addr;
 	uint32_t work_flash_256top;
 	uint32_t w_offset;
 	uint8_t wbuff[WRITE_BUFF_SIZE];
@@ -470,7 +470,7 @@ static uint32_t hyper_flash_read_device_id(uint32_t *read_device_id)
 }
 
 static uint32_t hyper_flash_request_write_buffer(uint32_t flash_addr,
-						uint32_t write_data_addr)
+						vaddr_t write_data_addr)
 {
 	uint32_t status = 0U;
 	uint32_t ret;
@@ -487,7 +487,7 @@ static uint32_t hyper_flash_request_write_buffer(uint32_t flash_addr,
 }
 
 static uint32_t hyper_flash_write_buffer_control(uint32_t flash_addr,
-						uint32_t write_data_addr)
+						vaddr_t write_data_addr)
 {
 	uint32_t ret;
 
@@ -517,7 +517,7 @@ static uint32_t hyper_flash_write_buffer_control(uint32_t flash_addr,
 }
 
 static uint32_t hyper_flash_write_buffer(uint32_t manual_set_addr,
-						uint32_t write_data_addr)
+						vaddr_t write_data_addr)
 {
 	uintptr_t offset;
 	uint32_t ret;
