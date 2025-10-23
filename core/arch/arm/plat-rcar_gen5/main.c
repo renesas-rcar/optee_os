@@ -79,7 +79,7 @@ void main_secondary_init_gic(void)
 	cpu_on_core_bit |= BIT32(get_core_pos());
 	cpu_mask = cpu_on_core_bit;
 
-	itr_set_all_cpu_mask(cpu_mask);
+	itr_set_all_cpu_on_mask(cpu_mask);
 
 	cpu_spin_unlock_xrestore(&cpu_on_core_lock, exceptions);
 	DMSG("OUT cpu_mask=0x%x", cpu_mask);
@@ -98,7 +98,7 @@ unsigned long thread_cpu_off_handler(unsigned long a0 __unused,
 	cpu_on_core_bit &= ~(BIT32(get_core_pos()));
 	cpu_mask = cpu_on_core_bit;
 
-	itr_set_all_cpu_mask(cpu_mask);
+	itr_set_all_cpu_off_mask(cpu_mask);
 
 	cpu_spin_unlock_xrestore(&cpu_on_core_lock, exceptions);
 	DMSG("OUT cpu_mask=0x%x", cpu_mask);

@@ -354,11 +354,24 @@ TEE_Result interrupt_dt_get_by_name(const void *fdt, int node, const char *name,
 #endif /*CFG_DT*/
 
 #ifdef PLATFORM_rcar_gen5
-void itr_set_all_cpu_mask(uint32_t cpu_mask)
+void itr_set_all_cpu_on_mask(uint32_t cpu_mask)
 {
 	struct itr_handler *h;
 
-	while ((cpu_mask & ITARGETSR_FIELD_MASK) == 0)
+	while ((cpu_mask & ITARGETSR_FIELD_MASK) == 0xff)
+		cpu_mask = cpu_mask >> ITARGETSR_FIELD_BITS;
+
+	SLIST_FOREACH(h, &itr_main_chip->handlers, link) {
+		itr_main_chip->ops->set_affinity(itr_main_chip,
+				h->it, cpu_mask);
+	}
+}
+
+void itr_set_all_cpu_off_mask(uint32_t cpu_mask)
+{
+	struct itr_handler *h;
+
+	while (((cpu_mask != 0) && (cpu_mask & ITARGETSR_FIELD_MASK) == 0))
 		cpu_mask = cpu_mask >> ITARGETSR_FIELD_BITS;
 
 	SLIST_FOREACH(h, &itr_main_chip->handlers, link) {

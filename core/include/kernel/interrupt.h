@@ -544,6 +544,7 @@ static inline TEE_Result interrupt_dt_get(const void *fdt, int node,
 }
 
 #ifdef PLATFORM_rcar_gen5
-void itr_set_all_cpu_mask(uint32_t cpu_mask);
+void itr_set_all_cpu_on_mask(uint32_t cpu_mask);
+void itr_set_all_cpu_off_mask(uint32_t cpu_mask);
 #endif
 #endif /*__KERNEL_INTERRUPT_H*/
