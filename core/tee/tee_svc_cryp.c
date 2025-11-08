@@ -38,6 +38,9 @@
 #if defined(CFG_CRYPTO_PBKDF2)
 #include <tee/tee_cryp_pbkdf2.h>
 #endif
+#if defined(RCAR_TRNG_BY_RSIPM_HWENGINE)
+#include <rcar_trng.h>
+#endif
 
 enum cryp_state {
 	CRYP_STATE_INITIALIZED = 0,
@@ -4079,6 +4082,34 @@ TEE_Result syscall_cryp_random_number_generate(void *buf, size_t blen)
 	res = copy_to_user(buf, bbuf, blen);
 	return res;
 }
+
+#ifdef RCAR_TRNG_BY_RSIPM_HWENGINE
+TEE_Result syscall_rsipm_trng_generate(uint8_t *buf, uint32_t blen)
+{
+	TEE_Result res = TEE_SUCCESS;
+
+	/* Check input parameter */
+	if (!buf) {
+		res = TEE_ERROR_BAD_PARAMETERS;
+		return res;
+	}
+	if (blen == 0 || blen > (TRNG_MAX_WORD * TRNG_BLOCK_SIZE)) {
+		res = TEE_ERROR_BAD_PARAMETERS;
+		return res;
+	}
+	rsipm_trng_generate(buf, blen);
+	return res;
+}
+#else
+TEE_Result syscall_rsipm_trng_generate(uint8_t *buf, uint32_t blen)
+{
+	(void)buf;
+	(void)blen;
+
+	/* Always returns success */
+	return TEE_SUCCESS;
+}
+#endif
 
 TEE_Result syscall_authenc_init(unsigned long state, const void *nonce,
 				size_t nonce_len, size_t tag_len,

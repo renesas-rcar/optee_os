@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include <drivers/hscif.h>
 #include <drivers/gic.h>
+#include "drivers/comm_shared.h"
 #include <sm/optee_smc.h>
 #include <tee/entry_fast.h>
 #include <tee/tee_cryp_utl.h>
@@ -65,6 +66,13 @@ uint32_t rcar_prr_value __nex_bss;
 
 uint32_t cpu_on_core_lock __nex_bss = (uint32_t)SPINLOCK_UNLOCK;
 uint32_t cpu_on_core_bit __nex_bss;
+
+#ifdef RCAR_TRNG_BY_RSIPM_HWENGINE
+volatile shared_flag_t *p_shared_flag;
+volatile r_lsc_comm_payload_t *p_shared_payload;
+volatile void *p_shared_data;
+#endif
+
 static void main_secondary_init_gic(void);
 
 void main_secondary_init_gic(void)

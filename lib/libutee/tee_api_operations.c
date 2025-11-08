@@ -2403,6 +2403,17 @@ void TEE_GenerateRandom(void *randomBuffer, size_t randomBufferLen)
 		TEE_Panic(res);
 }
 
+/* For rsipm algorithms */
+void TEE_RSIPM_TRNG(uint8_t *randomBuffer, uint32_t randomBufferLen)
+{
+	TEE_Result res;
+
+	res = _utee_rsipm_trng(randomBuffer, randomBufferLen);
+	if (res != TEE_SUCCESS) {
+		TEE_Panic(res);
+	}
+}
+
 void __GP11_TEE_GenerateRandom(void *randomBuffer, uint32_t randomBufferLen)
 {
 	TEE_GenerateRandom(randomBuffer, randomBufferLen);

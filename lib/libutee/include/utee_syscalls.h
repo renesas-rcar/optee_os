@@ -131,6 +131,8 @@ TEE_Result _utee_cryp_derive_key(unsigned long state,
 				 unsigned long derived_key);
 
 TEE_Result _utee_cryp_random_number_generate(void *buf, size_t blen);
+/* for rsipm function*/
+TEE_Result _utee_rsipm_trng(void *buf, size_t blen);
 
 TEE_Result _utee_authenc_init(unsigned long state, const void *nonce,
 			      size_t nonce_len, size_t tag_len, size_t aad_len,

@@ -488,6 +488,9 @@ void __GP11_TEE_DeriveKey(TEE_OperationHandle operation,
 /* Cryptographic Operations API - Random Number Generation Functions */
 
 void TEE_GenerateRandom(void *randomBuffer, size_t randomBufferLen);
+
+void TEE_RSIPM_TRNG(uint8_t *randomBuffer, uint32_t randomBufferLen);
+
 void __GP11_TEE_GenerateRandom(void *randomBuffer, uint32_t randomBufferLen);
 
 /* Date & Time API */

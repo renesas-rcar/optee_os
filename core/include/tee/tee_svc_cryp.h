@@ -58,6 +58,8 @@ TEE_Result syscall_cryp_derive_key(unsigned long state,
 
 TEE_Result syscall_cryp_random_number_generate(void *buf, size_t blen);
 
+TEE_Result syscall_rsipm_trng_generate(uint8_t *buf, uint32_t blen);
+
 TEE_Result syscall_authenc_init(unsigned long state, const void *nonce,
 			size_t nonce_len, size_t tag_len,
 			size_t aad_len, size_t payload_len);

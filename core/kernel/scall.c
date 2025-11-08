@@ -117,6 +117,7 @@ static const struct syscall_entry tee_syscall_table[] = {
 	SYSCALL_ENTRY(syscall_not_supported),
 	SYSCALL_ENTRY(syscall_not_supported),
 	SYSCALL_ENTRY(syscall_cache_operation),
+	SYSCALL_ENTRY(syscall_rsipm_trng_generate),
 };
 
 /*
