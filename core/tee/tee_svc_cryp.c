@@ -4090,7 +4090,7 @@ TEE_Result syscall_icum_trng_generate(void *buf, size_t buf_len)
 	if (!buf)
 		return TEE_ERROR_BAD_PARAMETERS;
 
-	if (buf_len == 0 || (DEF_MAX_TRNG_BLOCKS * TRNG_BLOCK_SIZE) < buf_len)
+	if (buf_len == 0 || (DEF_MAX_TRNG_BLOCKS * WORD_BLOCK_SIZE) < buf_len)
 		return TEE_ERROR_BAD_PARAMETERS;
 
 	return fwss_trng_generate(buf, buf_len);
