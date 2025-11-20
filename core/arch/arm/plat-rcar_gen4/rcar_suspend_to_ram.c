@@ -34,7 +34,7 @@ static void suspend_to_ram_call_cbfunc(enum suspend_to_ram_state s2r_state)
 		SUSPEND_TO_RAM_ALIGN);
 	if (0U != cbfunc_obj_num) {
 		const backup_call_t *cbfunc;
-		uint32_t cpu_id;
+		size_t cpu_id;
 		volatile uintptr_t cbfunc_ptr;
 		uint8_t i;
 

@@ -42,8 +42,8 @@
 
 struct log_buf_header_t {
 	int8_t prefix[LOG_SEC_PREFIX_LEN];
-	uint32_t index;
-	uint32_t size;
+	size_t index;
+	size_t size;
 	uint32_t reserve;
 };
 

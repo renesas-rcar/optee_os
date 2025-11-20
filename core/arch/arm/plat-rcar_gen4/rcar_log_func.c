@@ -52,7 +52,7 @@ void log_buf_init(void)
 void log_buf_write(const struct msg_block_t *msg_block, int32_t msg_block_num)
 {
 	int8_t *log_area = NULL;
-	uint32_t end_index;
+	size_t end_index;
 	size_t ram_wsize;
 	size_t total_wsize = 0U;
 	size_t index_wsize;
@@ -107,7 +107,7 @@ void log_debug_send(const struct msg_block_t *msg_block, int32_t msg_block_num)
 {
 	static size_t send_log_size[CFG_TEE_CORE_NB_CORE] = {0U};
 	struct thread_param params;
-	uint32_t cpu_id;
+	size_t cpu_id;
 	int8_t *log_area;
 	size_t log_offs = 0U;
 	size_t memcpy_size;
