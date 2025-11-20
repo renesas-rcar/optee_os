@@ -54,6 +54,9 @@
 	outWord = (*inPtr<<24) | (*(inPtr+1)<<16) | (*(inPtr+2)<<8) | (*(inPtr+3)); \
 }
 
+#define KEY_DERIVATION_4_RPMB	0x01,0x52,0x50,0x4D,0x42,0x20,0x4B,0x45,0x59,0x00,0x01,0x00
+#define RPMB_KEY_SIZE		32u
+
 /*******************************************************************************
  * Function & variable prototypes
  ******************************************************************************/
@@ -61,5 +64,5 @@ TEE_Result rcar_asset_unpack(uint32_t assetId,
 		uint8_t *pAssetPackage, uint32_t assetPackagLen,
 		uint8_t *pAssetData, uint32_t *pAssetDataLen,
 		uint32_t *pUserData);
-TEE_Result rcar_icum_rpmb_getkey(uint8_t *out, size_t outSize);
+TEE_Result rcar_icum_rpmb_derivekey(uint8_t *out, uint32_t outSize);
 #endif /* RCAR_ASSET_SECURE_H */

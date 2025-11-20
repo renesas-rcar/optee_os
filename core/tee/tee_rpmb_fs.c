@@ -31,6 +31,7 @@
 #include <tee/tee_svc_storage.h>
 #include <trace.h>
 #include <util.h>
+#include <rcar_asset_secure.h>
 
 #define RPMB_STORAGE_START_ADDRESS      0
 #define RPMB_FS_FAT_START_ADDRESS       512
@@ -46,9 +47,6 @@
 
 #define TEE_RPMB_FS_FILENAME_LENGTH 224
 
-#if !defined(CFG_CRYPT_HW_CRYPTOENGINE) || (CFG_CRYPT_HW_CRYPTOENGINE == 0)
-#error "RPMB requires Crypto Engine."
-#endif /* PLATFORM_rcar_gen4 */
 #define TMP_BLOCK_SIZE			4096U
 
 #define RPMB_MAX_RETRIES		10
@@ -151,6 +149,8 @@ struct tee_fs_dir {
 
 static struct rpmb_fs_parameters *fs_par;
 static struct rpmb_fat_entry_dir *fat_entry_dir;
+
+bool is_rpmb_key_imported = false;
 
 /*
  * Lower interface to RPMB device
@@ -315,15 +315,28 @@ out:
 static TEE_Result tee_rpmb_key_gen(uint16_t dev_id __unused,
 				   uint8_t *key, uint32_t len)
 {
-#ifndef PLATFORM_rcar_gen4
+#if !defined(CFG_CRYPT_HW_CRYPTOENGINE) \
+	&& !defined(CFG_SECURE_STORAGE_BY_ICUMX_HWENGINE)
 	uint8_t message[RPMB_EMMC_CID_SIZE];
+#endif
+
+#ifdef CFG_SECURE_STORAGE_BY_ICUMX_HWENGINE
+	TEE_Result res = TEE_SUCCESS;
 #endif
 	if (!key || RPMB_KEY_MAC_SIZE != len)
 		return TEE_ERROR_BAD_PARAMETERS;
 
 	IMSG("RPMB: Using generated key");
-#ifdef PLATFORM_rcar_gen4
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
 	return crypto_hw_rpmb_derivekey(key, len);
+#elif CFG_SECURE_STORAGE_BY_ICUMX_HWENGINE
+	res = rcar_icum_rpmb_derivekey(key, len);
+	if ((res == TEE_SUCCESS) && !is_rpmb_key_imported) {
+		res = fwss_hmac_import(key, len, 3);
+		if (res == TEE_SUCCESS)
+			is_rpmb_key_imported = true;
+	}
+	return res;
 #else
 	/*
 	 * PRV/CRC would be changed when doing eMMC FFU
@@ -374,7 +387,8 @@ static void get_op_result_bits(uint8_t *bytes, uint8_t *res)
 	*res = *(bytes + 1) & RPMB_RESULT_MASK;
 }
 
-#ifdef PLATFORM_rcar_gen4
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE) \
+	|| defined(CFG_SECURE_STORAGE_BY_ICUMX_HWENGINE)
 static TEE_Result tee_rpmb_mac_calc(uint8_t *mac, uint32_t macsize,
 				    uint8_t *key __unused, uint32_t keysize __unused,
 				    struct rpmb_data_frame *datafrms,
@@ -387,15 +401,18 @@ static TEE_Result tee_rpmb_mac_calc(uint8_t *mac, uint32_t macsize,
 #endif
 {
 	TEE_Result res = TEE_ERROR_GENERIC;
-#ifndef PLATFORM_rcar_gen4
 	int i;
-	void *ctx = NULL;
-#endif
-#ifdef PLATFORM_rcar_gen4
-	uint16_t i;
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
 	size_t listsize;
 	uint64_t *listfrm = NULL;
+#elif CFG_SECURE_STORAGE_BY_ICUMX_HWENGINE
+	size_t listsize;
+	uint8_t *listfrm = NULL;
+#else
+	void *ctx = NULL;
+#endif
 
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
 	if ((mac == NULL) || (datafrms == NULL) || (blkcnt == 0U)) {
 		return TEE_ERROR_BAD_PARAMETERS;
 	}
@@ -412,6 +429,35 @@ static TEE_Result tee_rpmb_mac_calc(uint8_t *mac, uint32_t macsize,
 		listfrm[i] = (uint64_t)&datafrms[i].data;
 	}
 	res = crypto_hw_rpmb_signframes(listfrm, (uint32_t)blkcnt, mac, macsize);
+
+	free(listfrm);
+#elif CFG_SECURE_STORAGE_BY_ICUMX_HWENGINE
+	if ((mac == NULL) || (datafrms == NULL) || (blkcnt == 0U)) {
+		return TEE_ERROR_BAD_PARAMETERS;
+	}
+
+	listsize = RPMB_MAC_PROTECT_DATA_SIZE * (size_t)blkcnt;
+	listfrm = malloc(listsize);
+
+	if (listfrm == NULL) {
+		return TEE_ERROR_OUT_OF_MEMORY;
+	}
+
+	for (i = 0; i < blkcnt; i++) {
+		/* Add list */
+		memcpy(&listfrm[i * RPMB_MAC_PROTECT_DATA_SIZE],
+				datafrms[i].data, RPMB_MAC_PROTECT_DATA_SIZE);
+	}
+
+	/* Init ICUM Firmware interface */
+	res = fwss_service_init();
+	if (res != FW_SERVICE_SUCCESS) {
+		EMSG("fwss_service_init() error");
+		return  TEE_ERROR_SECURITY;
+	}
+
+	res = fwss_hmac_generation(3, HASH_PRIMITIVE_SHA2_256, (uint8_t *)listfrm,
+			blkcnt * RPMB_MAC_PROTECT_DATA_SIZE, mac, macsize, 0);
 
 	free(listfrm);
 #else
@@ -720,17 +766,19 @@ static TEE_Result tee_rpmb_data_cpy_mac_calc(struct rpmb_data_frame *datafrm,
 {
 	TEE_Result res = TEE_ERROR_GENERIC;
 	int i;
-#ifndef PLATFORM_rcar_gen4
-	void *ctx = NULL;
-#endif
 	uint16_t offset;
 	uint32_t size;
 	uint8_t *data;
 	uint16_t start_idx;
 	struct rpmb_data_frame localfrm;
-#ifdef PLATFORM_rcar_gen4
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
 	size_t listsize;
 	uint64_t *listfrm = NULL;
+#elif CFG_SECURE_STORAGE_BY_ICUMX_HWENGINE
+	size_t listsize;
+	uint8_t *listfrm = NULL;
+#else
+	void *ctx = NULL;
 #endif
 
 	if (!datafrm || !rawdata || !nbr_frms || !lastfrm)
@@ -743,8 +791,15 @@ static TEE_Result tee_rpmb_data_cpy_mac_calc(struct rpmb_data_frame *datafrm,
 
 	data = rawdata->data;
 
-#ifdef PLATFORM_rcar_gen4
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
 	listsize = sizeof(void *) * (size_t)nbr_frms;
+	listfrm = malloc(listsize);
+
+	if (listfrm == NULL) {
+		return TEE_ERROR_OUT_OF_MEMORY;
+	}
+#elif CFG_SECURE_STORAGE_BY_ICUMX_HWENGINE
+	listsize = RPMB_MAC_PROTECT_DATA_SIZE *(size_t)nbr_frms;
 	listfrm = malloc(listsize);
 
 	if (listfrm == NULL) {
@@ -758,7 +813,7 @@ static TEE_Result tee_rpmb_data_cpy_mac_calc(struct rpmb_data_frame *datafrm,
 	res = crypto_mac_init(ctx, rpmb_ctx->key, RPMB_KEY_MAC_SIZE);
 	if (res != TEE_SUCCESS)
 		goto func_exit;
-#endif /* PLATFORM_rcar_gen4 */
+#endif /* CFG_CRYPT_HW_CRYPTOENGINE */
 	/*
 	 * Note: JEDEC JESD84-B51: "In every packet the address is the start
 	 * address of the full access (not address of the individual half a
@@ -775,15 +830,18 @@ static TEE_Result tee_rpmb_data_cpy_mac_calc(struct rpmb_data_frame *datafrm,
 		 */
 		memcpy(&localfrm, &datafrm[i], RPMB_DATA_FRAME_SIZE);
 
-#ifdef PLATFORM_rcar_gen4
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
 		/* Add list */
 		listfrm[i] = (uint64_t)&datafrm[i].data;
+#elif CFG_SECURE_STORAGE_BY_ICUMX_HWENGINE
+		memcpy(&listfrm[i * RPMB_MAC_PROTECT_DATA_SIZE],
+				datafrm[i].data, RPMB_MAC_PROTECT_DATA_SIZE);
 #else
 		res = crypto_mac_update(ctx, localfrm.data,
 					RPMB_MAC_PROTECT_DATA_SIZE);
 		if (res != TEE_SUCCESS)
 			goto func_exit;
-#endif /* PLATFORM_rcar_gen4 */
+#endif /* CFG_CRYPT_HW_CRYPTOENGINE */
 		if (i == 0) {
 			/* First block */
 			offset = rawdata->byte_offset;
@@ -811,12 +869,28 @@ static TEE_Result tee_rpmb_data_cpy_mac_calc(struct rpmb_data_frame *datafrm,
 	if (res != TEE_SUCCESS)
 		goto func_exit;
 
-#ifdef PLATFORM_rcar_gen4
+#ifdef CFG_CRYPT_HW_CRYPTOENGINE
 	/* Add list against the last block */
 	listfrm[nbr_frms -1U] = (uint64_t)lastfrm->data;
 	res = crypto_hw_rpmb_signframes(listfrm, (uint32_t)nbr_frms,
 						rawdata->key_mac,
 						RPMB_KEY_MAC_SIZE);
+func_exit:
+	free(listfrm);
+#elif CFG_SECURE_STORAGE_BY_ICUMX_HWENGINE
+	memcpy(&listfrm[(nbr_frms -1U) * RPMB_MAC_PROTECT_DATA_SIZE],
+			lastfrm->data, RPMB_MAC_PROTECT_DATA_SIZE);
+
+	/* Init ICUM Firmware interface */
+	res = fwss_service_init();
+	if (res != FW_SERVICE_SUCCESS) {
+		EMSG("fwss_service_init() error");
+		return TEE_ERROR_SECURITY;
+	}
+
+	res = fwss_hmac_generation(3, HASH_PRIMITIVE_SHA2_256, (uint8_t *)listfrm,
+			RPMB_MAC_PROTECT_DATA_SIZE * nbr_frms, rawdata->key_mac,
+			RPMB_KEY_MAC_SIZE, 0);
 func_exit:
 	free(listfrm);
 #else
@@ -833,7 +907,7 @@ func_exit:
 
 func_exit:
 	crypto_mac_free_ctx(ctx);
-#endif /* PLATFORM_rcar_gen4 */
+#endif /* CFG_CRYPT_HW_CRYPTOENGINE */
 	return res;
 }
 

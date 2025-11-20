@@ -102,6 +102,54 @@ out:
 	return ret;
 }
 
+TEE_Result rcar_icum_rpmb_derivekey(uint8_t *out, uint32_t outSize)
+{
+	uint32_t ret = TEE_SUCCESS;
+	uint32_t res;
+	uint8_t dataIn[] = {KEY_DERIVATION_4_RPMB};
+	uint32_t rpmbKeySize = RPMB_KEY_SIZE;
+	/* check parameters validity */
+	if (!out) {
+		EMSG("But Parameters out=%p", out);
+		return TEE_ERROR_BAD_PARAMETERS;
+	}
+
+	if (outSize < RPMB_KEY_SIZE) {
+		EMSG("Short Buffer outSize=%d rpmbKeySize=%d",
+				outSize, rpmbKeySize);
+		return TEE_ERROR_SHORT_BUFFER;
+	}
+
+	/* Init ICUM Firmware interface */
+	res = fwss_service_init();
+	if (res != FW_SERVICE_SUCCESS) {
+		EMSG("fwss_service_init() error");
+		ret = TEE_ERROR_SECURITY;
+	}
+
+	/* Start deriving RPMB key
+	 * call fwss_aes_cmac with key id 5, group KEY_GRP_AES to
+	 * calculate the first 16 bytes of the key
+	 */
+	ret = fwss_aes_cmac(KEY_GRP_AES, 5, (uint8_t *)dataIn, sizeof(dataIn), out);
+	if (ret != TEE_SUCCESS) {
+		EMSG("RPMB key derivation step 1 failed");
+		goto out;
+	}
+
+	/* Call fwss_aes_cmac with key id 5, group KEY_GRP_AES to
+	 * calculate the second 16 bytes of the key
+	 */
+	dataIn[0] = 0x02;
+	ret = fwss_aes_cmac(KEY_GRP_AES, 5, dataIn, sizeof(dataIn), out + RPMB_KEY_SIZE/2);
+	if (ret != TEE_SUCCESS) {
+		EMSG("RPMB key derivation step 2 failed");
+		goto out;
+	}
+out:
+	return ret;
+}
+
 TEE_Result rcar_asset_unpack(uint32_t assetId,
 		uint8_t *pAssetPackage, uint32_t assetPackageLen,
 		uint8_t *pAssetData, uint32_t *pAssetDataLen,
