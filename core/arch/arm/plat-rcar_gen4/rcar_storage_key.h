@@ -10,4 +10,5 @@
  * Function & variable prototypes
  ******************************************************************************/
 TEE_Result rcar_install_user_key(void *key_buf, size_t key_len);
+TEE_Result icum_write_secure_data(void);
 #endif /* RCAR_STORAGE_KEY_H */

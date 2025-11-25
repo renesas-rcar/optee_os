@@ -2,10 +2,39 @@
 #include <tee_api_defines.h>
 #include <stdlib.h>
 #include <string.h>
+#include <platform_config.h>
 
 #include "r_icumif_api.h"
 #include "r_icumif_pub.h"
 #include "rcar_storage_key.h"
+
+#include "pe_target_device.h"
+#include "drivers/qspi_hyper_flash.h"
+
+TEE_Result icum_write_secure_data(void)
+{
+	TEE_Result ret = TEE_SUCCESS;
+	uint32_t res;
+	uint8_t *p_export_area = (uint8_t *)(uintptr_t)MEM_INFO_EXPORT_DATA_ADDR;
+	uint32_t align = sizeof(uint32_t);
+	uint32_t export_size = ((MEM_INFO_EXPORT_DATA_SIZE + align - 1) / align) * align;
+
+	res = qspi_hyper_flash_init();
+	if (res != FL_DRV_OK) {
+		ret = TEE_ERROR_TARGET_DEAD;
+	}
+
+	res = qspi_hyper_flash_write(EXTERNAL_FLASH_ADDR, p_export_area, export_size);
+	if (res == FL_DRV_OK) {
+		ret = TEE_SUCCESS;
+	} else if (res == FL_DRV_ERR_OUT_OF_MEMORY) {
+		ret = TEE_ERROR_OUT_OF_MEMORY;
+	} else {
+		ret = TEE_ERROR_TARGET_DEAD;
+	}
+
+	return ret;
+}
 
 TEE_Result rcar_install_user_key(void *key_buf, size_t key_len)
 {
@@ -60,6 +89,13 @@ TEE_Result rcar_install_user_key(void *key_buf, size_t key_len)
 	ret = fwss_ext_flash_write();
 	if (ret != TEE_SUCCESS) {
 		DMSG("Failed to export secure data !");
+		goto out;
+	}
+
+	/* Write ICUM secure data to External Flash memory */
+	ret = icum_write_secure_data();
+	if (ret != TEE_SUCCESS) {
+		DMSG("Failed to write ICUM secure data to External FLash memory !");
 		goto out;
 	}
 out:
