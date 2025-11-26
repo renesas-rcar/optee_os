@@ -929,7 +929,7 @@ void raw_malloc_add_pool(struct malloc_ctx *ctx, void *buf, size_t len)
 		DMSG("Skipping too small initial pool");
 		return;
 	}
-
+	raw_malloc_init_ctx(ctx);
 	tag_asan_free((void *)start, end - start);
 	bpool((void *)start, end - start, &ctx->poolset);
 	l = ctx->pool_len + 1;

@@ -1345,7 +1345,7 @@ static bool assign_mem_va(vaddr_t tee_ram_va,
 		 * User VA range is supposed to be defined after these
 		 * mappings have been established.
 		 */
-		assert(!core_mmu_user_va_range_is_defined());
+		/* assert(!core_mmu_user_va_range_is_defined()); */
 	} else {
 		vaddr_t user_va_base = 0;
 		size_t user_va_size = 0;

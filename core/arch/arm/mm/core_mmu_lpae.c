@@ -806,6 +806,8 @@ void core_init_mmu(struct tee_mmap_region *mm)
 #endif
 	COMPILE_TIME_ASSERT(XLAT_TABLES_SIZE == sizeof(xlat_tables));
 
+	default_partition.xlat_tables_used = 0;
+	default_partition.asid = 0;
 	/* Initialize default pagetables */
 	core_init_mmu_prtn_tee(&default_partition, mm);
 
