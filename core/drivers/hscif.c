@@ -18,6 +18,7 @@
 #define SCFDR_T_SHIFT		8
 #define SCIF_TX_FIFO_SIZE	16
 
+static void reset_regs_4lpm(void);
 static void hscif_uart_putc(struct serial_chip *chip, uint8_t outchar);
 static vaddr_t chip_to_base(struct serial_chip *chip)
 {
@@ -77,6 +78,8 @@ DECLARE_KEEP_PAGER(hscif_uart_ops);
 
 void hscif_uart_init(struct hscif_uart_data *pd, paddr_t pbase)
 {
+	reset_regs_4lpm();
+
 	pd->base.pa = pbase;
 	pd->chip.ops = &hscif_uart_ops;
 	hscif_console_init();
@@ -95,3 +98,11 @@ void hscif_console_init(void)
 	io_setbits16(HSCIF_HSSCR, SCSCR_TE);
 }
 
+void reset_regs_4lpm(void)
+{
+	io_write8(HSCIF_HSBRR, 0x11);
+	io_write16(HSCIF_HSSCR, 0x30);
+	io_write8(HSCIF_HSFTDR, 0x3d);
+	io_write16(HSCIF_HSFSR, 0x60);
+	io_write16(HSCIF_HSSRR, 0x8007);
+}
