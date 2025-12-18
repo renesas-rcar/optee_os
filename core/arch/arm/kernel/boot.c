@@ -24,6 +24,7 @@
 #include <kernel/misc.h>
 #include <kernel/panic.h>
 #include <kernel/tee_misc.h>
+#include <kernel/tee_ta_manager.h>
 #include <kernel/thread.h>
 #include <kernel/tpm.h>
 #include <kernel/transfer_list.h>
@@ -1019,6 +1020,7 @@ void __weak boot_init_primary_late(unsigned long fdt __unused,
 			fdt_size = tl_e->data_size;
 	}
 
+	tee_ta_manager_init();
 	init_external_dt(boot_arg_fdt, fdt_size);
 	reinit_manifest_dt();
 #ifdef CFG_CORE_SEL1_SPMC

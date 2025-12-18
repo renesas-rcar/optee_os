@@ -51,6 +51,16 @@ struct mutex tee_ta_mutex = MUTEX_INITIALIZER;
 struct condvar tee_ta_init_cv = CONDVAR_INITIALIZER;
 struct tee_ta_ctx_head tee_ctxes = TAILQ_HEAD_INITIALIZER(tee_ctxes);
 
+void tee_ta_manager_init(void)
+{
+	tee_ta_mutex.wq.slh_first = NULL;
+
+	tee_ta_init_cv.m = NULL;
+
+	tee_ctxes.tqh_first = NULL;
+	tee_ctxes.tqh_last = &tee_ctxes.tqh_first;
+}
+
 #ifdef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
 #include "rcar_mutex.h"
 struct mutex g_ta_area_for_verification_mutex __nex_data = MUTEX_INITIALIZER;

@@ -173,4 +173,6 @@ static inline struct tee_ta_ctx *__noprof to_ta_ctx(struct ts_ctx *ctx)
 TEE_Result tee_ta_instance_stats(void *buff, size_t *buff_size);
 #endif
 
+void tee_ta_manager_init(void);
+
 #endif
