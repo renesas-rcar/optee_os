@@ -50,4 +50,8 @@ extern uint32_t prr_cut;
 extern uint32_t cpu_on_core_lock;
 extern uint32_t cpu_on_core_bit;
 
+/* Define a constant for the initialization flag */
+#define INIT_FLAG_UNINITIALIZED		(0U)
+#define INIT_FLAG_INITIALIZED		(1U)
+
 #endif /* RCAR_COMMON_H */
