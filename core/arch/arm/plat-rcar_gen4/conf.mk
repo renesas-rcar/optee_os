@@ -57,8 +57,6 @@ CFG_NUM_THREADS = 4
 CFG_CORE_CLUSTER_SHIFT = 2
 endif
 
-$(call force,CFG_CRYPT_HW_CRYPTOENGINE,n)
-
 $(info "-- Build for ${LSI} --")
 
 CFG_TZDRAM_START ?= 0x44100000
