@@ -138,6 +138,14 @@ base-prefix :=
 core-platform-cflags += -DENABLE_CRYPTOENGINE
 core-platform-cflags += -DDX_CC_TEE -DCRYS_NO_CRYS_COMBINED_SUPPORT
 
+libname = crypto_engine_hal
+libdir = core/lib/libcryptoengine/hal
+include mk/lib.mk
+
+libname = crypto_engine_pal
+libdir = core/lib/libcryptoengine/pal
+include mk/lib.mk
+
 libname = crypto_engine_secure
 libdir = core/lib/libcryptoengine
 include core/lib/libcryptoengine/libcc.mk
