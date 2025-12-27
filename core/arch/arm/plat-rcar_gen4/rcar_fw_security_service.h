@@ -8,6 +8,7 @@
 
 #include "r_icumif_api.h"
 #include <stdbool.h>
+#include "platform_config.h"
 
 #define BOOTROMAPI_OK				(0U)
 #define ROM_ERR_IMG_VERIFIER_NO_ENCRYPT_IMG	(0xF100001DU)
@@ -30,7 +31,7 @@
 #define BUF_OFS_HASH		(BUF_OFS_CMAC + 32U)
 
 #if defined(RCAR_TRNG_BY_ICUMX_HWENGINE) || defined(RCAR_SECURE_STORAGE_BY_ICUMX_HWENGINE)
-#define ICUM_FW_SHARED_AREA_SEC_SRV_ADDR	0x41C00480u
+#define ICUM_FW_SHARED_AREA_SEC_SRV_ADDR	ADDR_ASSIGN_RGID(0x41C00480u, CFG_RCAR_RGID)
 #define SIZE_OF_SEC_SRV				512
 
 #define DEF_MAX_TRNG_BLOCKS	32
