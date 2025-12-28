@@ -90,7 +90,7 @@
 #define NONCACHE_WORK_BASE	ADDR_ASSIGN_RGID(0x45F00000U,CFG_RCAR_RGID)	/* Non Cache Area address */
 #define NONCACHE_WORK_SIZE	(0x00100000U)	/* Non Cache Area Size */
 
-#define ICU_FW_SHMEM_BASE	ADDR_ASSIGN_RGID(0x41C00000U,CFG_RCAR_RGID)	/* ICU FW Share Memory address */
+#define ICU_FW_SHMEM_BASE	ADDR_ASSIGN_RGID(0x41D00000U, CFG_RCAR_RGID)	/* ICU FW Share Memory address */
 #define ICU_FW_SHMEM_SIZE	(0x00100000U)	/* ICU FW Share Memory size */
 
 #define LIFEC_BASE		ADDR_ASSIGN_RGID(0xE6110000U,CFG_RCAR_RGID) 	/* Life Cycle address	*/
