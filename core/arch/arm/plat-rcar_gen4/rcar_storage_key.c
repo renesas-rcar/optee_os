@@ -74,7 +74,7 @@ TEE_Result rcar_install_user_key(void *key_buf, size_t key_len)
 
 	/* Install Kut into key group KEY_GRP_AES, id = 11 */
 	ret = fwss_plain_key_update(KEY_GRP_AES, 11, (uint8_t *)key_buf,
-			key_len, ENABLE_KEY_WRITE_PROTECT);
+			key_len, DISABLE_KEY_WRITE_PROTECT);
 	if (ret != TEE_SUCCESS) {
 		DMSG("Failed to install User-Transported Key !");
 		goto out;
@@ -102,7 +102,6 @@ TEE_Result rcar_install_user_key(void *key_buf, size_t key_len)
 			(uint16_t)AES_KEY_LEN_256, ENABLE_KEY_WRITE_PROTECT);
 	if (ret != TEE_SUCCESS) {
 		DMSG("Failed to install TRNG Key !");
-		goto out;
 	} else {
 		IMSG("TRNG key installed successfully !");
 	}
