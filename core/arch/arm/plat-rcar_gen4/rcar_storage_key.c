@@ -11,6 +11,28 @@
 #include "pe_target_device.h"
 #include "drivers/qspi_hyper_flash.h"
 
+TEE_Result icum_clear_secure_data(void)
+{
+	TEE_Result ret = TEE_SUCCESS;
+	uint32_t res;
+
+	res = qspi_hyper_flash_init();
+	if (res != FL_DRV_OK) {
+		ret = TEE_ERROR_TARGET_DEAD;
+	}
+
+	res = qspi_hyper_flash_erase(EXTERNAL_FLASH_ADDR);
+	if (res == FL_DRV_OK) {
+		ret = TEE_SUCCESS;
+	} else if (res == FL_DRV_ERR_OUT_OF_MEMORY) {
+		ret = TEE_ERROR_OUT_OF_MEMORY;
+	} else {
+		ret = TEE_ERROR_TARGET_DEAD;
+	}
+
+	return ret;
+}
+
 TEE_Result icum_write_secure_data(void)
 {
 	TEE_Result ret = TEE_SUCCESS;
@@ -93,6 +115,12 @@ TEE_Result rcar_install_user_key(void *key_buf, size_t key_len)
 	}
 
 	/* Write ICUM secure data to External Flash memory */
+	ret = icum_clear_secure_data();
+	if (ret != TEE_SUCCESS) {
+		DMSG("Failed to clear ICUM secure data in External FLash memory !");
+		goto out;
+	}
+
 	ret = icum_write_secure_data();
 	if (ret != TEE_SUCCESS) {
 		DMSG("Failed to write ICUM secure data to External FLash memory !");
