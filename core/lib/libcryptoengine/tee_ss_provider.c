@@ -30,6 +30,7 @@
 #include "rcar_mutex.h"
 #include "rcar_common.h"
 #include <fault_mitigation.h>
+#include <mempool.h>
 
 
 typedef struct {
@@ -2668,10 +2669,6 @@ TEE_Result crypto_hw_acipher_rsaes_decrypt(uint32_t algo, struct rsa_keypair *ke
 	PROV_DMSG("Input src  src_len=%ld\n",src_len);
 	PROV_DHEXDUMP(src,src_len);
 
-	l = (uint8_t *)label;
-	dataIn_ptr = (uint8_t *)src;
-	output_ptr = (uint8_t *)dst;
-
 	if (NULL == key) {
 		res = SS_ERROR_GENERIC;
 		PROV_EMSG("GENERIC key is NULL\n");
@@ -2685,6 +2682,10 @@ TEE_Result crypto_hw_acipher_rsaes_decrypt(uint32_t algo, struct rsa_keypair *ke
 		}
 	}
 
+	if (res == SS_SUCCESS) {
+		res = ss_get_rsa_hash((const uint32_t)algo, &rsa_hashMode,
+				&hashSize, &mgf, &version);
+	}
 	if (res == SS_SUCCESS){
 		modulas_size = bn_num_bytes(key->n);
 		if (src_len < 0xFFFFU) {
@@ -2694,16 +2695,24 @@ TEE_Result crypto_hw_acipher_rsaes_decrypt(uint32_t algo, struct rsa_keypair *ke
 			PROV_EMSG("OVERFLOW(src_len)\n");
 		}
 	}
+
+	l = (uint8_t *)label;
+	dataIn_ptr = (uint8_t *)src;
+	if (res == SS_SUCCESS) {
+		if (version == CRYS_PKCS1_VER15) {
+			outputSize = (uint16_t)(modulas_size - 11U);
+		} else {
+			outputSize = (uint16_t)src_len;
+		}
+		output_ptr = mempool_alloc(mempool_default, outputSize); //  temp. allocate buffer source length
+		if (!output_ptr) {
+			res = TEE_ERROR_OUT_OF_MEMORY;
+		}
+	}
 	if (res == SS_SUCCESS){
 		if(dst_len == NULL){
 			res = SS_ERROR_GENERIC;
 			PROV_EMSG("GENERIC(dst_len=%p)\n", key);
-		} else {
-			if (*dst_len < 0xFFFFU) {
-				outputSize = (uint16_t)*dst_len;
-			} else {
-				outputSize = 0xFFFFU;
-			}
 		}
 	}
 	if (res == SS_SUCCESS) {
@@ -2729,38 +2738,32 @@ TEE_Result crypto_hw_acipher_rsaes_decrypt(uint32_t algo, struct rsa_keypair *ke
 			res = SS_ERROR_GENERIC;
 		}
 	}
-	if (res == SS_SUCCESS) {
-		res = ss_get_rsa_hash((const uint32_t)algo, &rsa_hashMode,
-				&hashSize, &mgf, &version);
-	}
+
 	if (res == SS_SUCCESS) {
 		if (version == CRYS_PKCS1_VER15) {
-			if (outputSize >= (modulas_size - 11U)) {
-				PROV_DMSG("CALL: CRYS_RSA_PKCS1v15_Decrypt()\n");
-				crys_res = CRYS_RSA_PKCS1v15_Decrypt(
-						userPrivKey_ptr, primeData_ptr,
-						dataIn_ptr, dataInSize,
-						output_ptr, &outputSize);
-			} else {
-				*dst_len = modulas_size;
-				res = SS_ERROR_SHORT_BUFFER;
-				PROV_EMSG("SHORT_BUFFER(PKCS)\n");
-			}
+			// With outputSize is: modulas_size - 11U
+			PROV_DMSG("CALL: CRYS_RSA_PKCS1v15_Decrypt()\n");
+			crys_res = CRYS_RSA_PKCS1v15_Decrypt(
+					userPrivKey_ptr, primeData_ptr,
+					dataIn_ptr, dataInSize,
+					output_ptr, &outputSize);
 		} else {
-			if (outputSize >= (modulas_size - (2U * hashSize) - 2U)) {
-				CONV_HASHMODE_TO_OAEP(rsa_hashMode);
-				PROV_DMSG("CALL: CRYS_RSA_OAEP_Decrypt()\n");
-				crys_res = CRYS_RSA_OAEP_Decrypt(
-						userPrivKey_ptr, primeData_ptr,
-						rsa_hashMode, l, llen, mgf,
-						dataIn_ptr, dataInSize,
-						output_ptr, &outputSize);
-			} else {
-				*dst_len = modulas_size;
-				res = SS_ERROR_SHORT_BUFFER;
-				PROV_EMSG("SHORT_BUFFER(OAEP)\n");
-			}
+			// With outputSize >= (modulas_size - (2U * hashSize) - 2U))
+			CONV_HASHMODE_TO_OAEP(rsa_hashMode);
+			PROV_DMSG("CALL: CRYS_RSA_OAEP_Decrypt()\n");
+			crys_res = CRYS_RSA_OAEP_Decrypt(
+					userPrivKey_ptr, primeData_ptr,
+					rsa_hashMode, l, llen, mgf,
+					dataIn_ptr, dataInSize,
+					output_ptr, &outputSize);
 		}
+
+		if (*dst_len < (size_t)outputSize) {
+			*dst_len = modulas_size;
+			res = SS_ERROR_SHORT_BUFFER;
+			PROV_EMSG("SHORT_BUFFER(OAEP)\n");
+		} // else condition has copy work, it should be after mutex
+
 		if (res != SS_ERROR_SHORT_BUFFER){
 			if (crys_res == (CRYSError_t)CRYS_OK) {
 				res = SS_SUCCESS;
@@ -2777,21 +2780,26 @@ TEE_Result crypto_hw_acipher_rsaes_decrypt(uint32_t algo, struct rsa_keypair *ke
 			} else {
 				res = SS_ERROR_GENERIC;
 			}
-			PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n",crys_res,res);
+			PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n", crys_res, res);
 		}
 	}
 	rcar_nex_mutex_unlock(&secure_asymm_mutex);
 
 	if (res == SS_SUCCESS) {
-		*dst_len = (size_t)outputSize;
-		PROV_DMSG("Output dst   dst_len=%ld\n",*dst_len);
+		if (*dst_len >= (size_t)outputSize) {
+			*dst_len = (size_t)outputSize;
+			memcpy(dst, output_ptr, *dst_len);
+			PROV_DMSG("Output dst   dst_len=%ld\n", *dst_len);
+		}
 	}
 
 	ss_free((void *)userPrivKey_ptr);
 	ss_free((void *)primeData_ptr);
 	tee_res = ss_translate_error_ss2tee(res);
 	PROV_DHEXDUMP(dst,*dst_len);
-	PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n",res,tee_res);
+	PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n", res, tee_res);
+	if (output_ptr)
+		mempool_free(mempool_default, output_ptr);
 	return tee_res;
 }
 
