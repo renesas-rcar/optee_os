@@ -105,5 +105,7 @@ void file_put(struct file *f);
  */
 struct file_slice *file_find_slice(struct file *f, unsigned int page_offset);
 
+void tee_file_init(void);
+
 #endif /*__MM_FILE_H*/
 

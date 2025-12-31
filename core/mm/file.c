@@ -43,6 +43,14 @@ struct file {
 static struct mutex file_mu = MUTEX_INITIALIZER;
 static TAILQ_HEAD(, file) file_head = TAILQ_HEAD_INITIALIZER(file_head);
 
+void tee_file_init(void)
+{
+	file_mu.wq.slh_first = NULL;
+
+	file_head.tqh_first = NULL;
+	file_head.tqh_last = &file_head.tqh_first;
+}
+
 static int file_tag_cmp(const struct file *f, const uint8_t *tag,
 			unsigned int taglen)
 {

@@ -33,6 +33,7 @@
 #include <memtag.h>
 #include <mm/core_memprot.h>
 #include <mm/core_mmu.h>
+#include <mm/file.h>
 #include <mm/fobj.h>
 #include <mm/tee_mm.h>
 #include <mm/tee_pager.h>
@@ -1021,6 +1022,7 @@ void __weak boot_init_primary_late(unsigned long fdt __unused,
 	}
 
 	tee_ta_manager_init();
+	tee_file_init();
 	init_external_dt(boot_arg_fdt, fdt_size);
 	reinit_manifest_dt();
 #ifdef CFG_CORE_SEL1_SPMC
