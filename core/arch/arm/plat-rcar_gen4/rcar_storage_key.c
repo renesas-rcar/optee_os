@@ -76,10 +76,10 @@ TEE_Result rcar_install_user_key(void *key_buf, size_t key_len)
 	ret = fwss_plain_key_update(KEY_GRP_AES, 11, (uint8_t *)key_buf,
 			key_len, DISABLE_KEY_WRITE_PROTECT);
 	if (ret != TEE_SUCCESS) {
-		DMSG("Failed to install User-Transported Key !");
+		IMSG("Failed to install User-Transported Key !");
 		goto out;
 	} else {
-		DMSG("User-Transport Key installed successfully !");
+		IMSG("User-Transport Key installed successfully !");
 	}
 
 	/* Init the true random key buffer */
@@ -101,7 +101,7 @@ TEE_Result rcar_install_user_key(void *key_buf, size_t key_len)
 	ret = fwss_plain_key_update(KEY_GRP_AES, 5, (uint8_t *)p_trng_key,
 			(uint16_t)AES_KEY_LEN_256, ENABLE_KEY_WRITE_PROTECT);
 	if (ret != TEE_SUCCESS) {
-		DMSG("Failed to install TRNG Key !");
+		IMSG("Failed to install TRNG Key !");
 	} else {
 		IMSG("TRNG key installed successfully !");
 	}
