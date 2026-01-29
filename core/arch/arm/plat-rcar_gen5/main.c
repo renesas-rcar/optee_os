@@ -28,13 +28,13 @@
 register_phys_mem_pgdir(MEMORY1_TYPE, MEMORY1_BASE, MEMORY1_SIZE);
 #endif
 #ifdef MEMORY2_BASE
-register_phys_mem(MEMORY2_TYPE, MEMORY2_BASE, MEMORY2_SIZE);
+register_phys_mem_pgdir(MEMORY2_TYPE, MEMORY2_BASE, MEMORY2_SIZE);
 #endif
 #ifdef MEMORY3_BASE
 register_phys_mem_pgdir(MEMORY3_TYPE, MEMORY3_BASE, MEMORY3_SIZE);
 #endif
 #ifdef MEMORY4_BASE
-register_phys_mem(MEMORY4_TYPE, MEMORY4_BASE, MEMORY4_SIZE);
+register_phys_mem_pgdir(MEMORY4_TYPE, MEMORY4_BASE, MEMORY4_SIZE);
 #endif
 #ifdef MEMORY5_BASE
 register_phys_mem_pgdir(MEMORY5_TYPE, MEMORY5_BASE, MEMORY5_SIZE);
