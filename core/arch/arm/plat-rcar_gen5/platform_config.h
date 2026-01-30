@@ -54,15 +54,14 @@
 				  + 0x3F00000U) /* OP-TEE Log Area NS addr */
 #define OPTEE_LOG_NS_SIZE       (0x00014000U)   /* OP-TEE Log Area NS size */
 
-#define TA_VERIFICATION_BASE    (RCAR_SRAM_BASE	\
-				  + 0x1800000U) /* TA area for verification */
+#define TA_VERIFICATION_BASE    (0x10000000U)	/* TA for verification a */
 #define TA_VERIFICATION_SIZE    (0x00100000U)   /* TA for verification size */
 
 #define NONCACHE_WORK_BASE      (RCAR_SRAM_BASE	\
 				 + 0x1F00000U) /* Non Cache Area address   */
 #define NONCACHE_WORK_SIZE      (0x00100000U)   /* Non Cache Area Size  */
 
-#define RSIPM_FW_SHMEM_BASE    (0x41C00000U) /* RSIPM FW Share Memory address */
+#define RSIPM_FW_SHMEM_BASE    (0x18500000U) /* RSIPM FW Share Memory address */
 #define RSIPM_FW_SHMEM_SIZE    (0x00100000U) /* RSIPM FW Share Memory size */
 
 /* for Soc Register mapping function */
