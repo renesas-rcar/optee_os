@@ -64,6 +64,8 @@
 #define RSIPM_FW_SHMEM_BASE    (0x18500000U) /* RSIPM FW Share Memory address */
 #define RSIPM_FW_SHMEM_SIZE    (0x00100000U) /* RSIPM FW Share Memory size */
 
+#define SYSSS_MAIN_REGION_0_BASE	(0xC1320000)
+
 /* for Soc Register mapping function */
 #define MAP_DEVICE_REG_RCAR_BASE	(0xC0400000)
 #define MAP_DEVICE_REG_RCAR_SIZE	(0x1FC00000)

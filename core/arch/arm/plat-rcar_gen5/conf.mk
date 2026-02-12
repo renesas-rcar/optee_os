@@ -65,3 +65,9 @@ RCAR_TRNG_BY_RSIPM_HWENGINE = y
 core-platform-cflags += -DRCAR_TRNG_BY_RSIPM_HWENGINE
 endif
 
+# For Dynamic TA Authentication
+CFG_DYNAMIC_TA_AUTH_BY_HWENGINE ?= n
+ifeq ($(CFG_DYNAMIC_TA_AUTH_BY_HWENGINE),y)
+core-platform-cflags += -DRCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
+endif
+

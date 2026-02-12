@@ -12,7 +12,7 @@
 
 #define SHARED_FLAG_SIZE          (16U)
 #define SHARED_DATA_SIZE          (104U)
-#define SHARED_PAYLOAD_SIZE       (64U)
+#define SHARED_PAYLOAD_SIZE       (76U)
 
 #define REQ_STATE_NONE         (0xA5A5A500u)
 #define REQ_STATE_REQUEST      (0xA5A5A505u)  /* Trigger request */

@@ -57,6 +57,10 @@
 #include <tee_api_types.h>
 #include <utee_defines.h>
 
+#ifdef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
+#include "rcar_ta_auth.h"
+#endif
+
 struct ree_fs_ta_handle {
 	struct shdr *nw_ta; /* Non-secure (shared memory) */
 	size_t nw_ta_size;
@@ -79,6 +83,9 @@ struct ver_db_hdr {
 	uint32_t nb_entries;
 };
 
+#if !defined(PLATFORM_rcar_gen5) || \
+	(!defined(CFG_RCAR_UNSUPPORT_TA_VER_DB) && \
+	 !defined(RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE))
 static const char ta_ver_db[] = "ta_ver.db";
 static const char subkey_ver_db[] = "subkey_ver.db";
 static struct mutex ver_db_mutex = MUTEX_INITIALIZER;
@@ -182,6 +189,7 @@ out:
 	mutex_unlock(&ver_db_mutex);
 	return res;
 }
+#endif
 
 /*
  * Load a TA via RPC with UUID defined by input param @uuid. The virtual
@@ -261,6 +269,12 @@ static TEE_Result ree_fs_ta_open(const TEE_UUID *uuid,
 	if (res != TEE_SUCCESS)
 		goto error;
 
+#ifdef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
+	res = rcar_auth_ta_certificate(ta, &ta, ta_size);
+	if (res != TEE_SUCCESS)
+		goto error_free_payload;
+#endif
+
 	/* Make secure copy of signed header */
 	shdr = shdr_alloc_and_copy(0, ta, ta_size);
 	if (!shdr) {
@@ -304,9 +318,12 @@ static TEE_Result ree_fs_ta_open(const TEE_UUID *uuid,
 		max_depth = pub_key.max_depth;
 		memcpy(next_uuid, pub_key.next_uuid, sizeof(TEE_UUID));
 		next_uuid_ptr = next_uuid;
-
+#if !defined(PLATFORM_rcar_gen5) || \
+		(!defined(CFG_RCAR_UNSUPPORT_TA_VER_DB) && \
+		 !defined(RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE))
 		res = check_update_version(subkey_ver_db, pub_key.uuid,
 					   pub_key.version);
+#endif
 		if (res) {
 			res = TEE_ERROR_SECURITY;
 			shdr_free_pub_key(&pub_key);
@@ -363,6 +380,7 @@ static TEE_Result ree_fs_ta_open(const TEE_UUID *uuid,
 	 * Initialize a hash context and run the algorithm over the signed
 	 * header (less the final file hash and its signature of course)
 	 */
+#ifndef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
 	res = crypto_hash_alloc_ctx(&hash_ctx,
 				    TEE_DIGEST_HASH_TO_ALGO(shdr->algo));
 	if (res != TEE_SUCCESS)
@@ -373,7 +391,7 @@ static TEE_Result ree_fs_ta_open(const TEE_UUID *uuid,
 	res = crypto_hash_update(hash_ctx, (uint8_t *)shdr, sizeof(*shdr));
 	if (res != TEE_SUCCESS)
 		goto error_free_hash;
-
+#endif
 	if (shdr->img_type == SHDR_BOOTSTRAP_TA ||
 	    shdr->img_type == SHDR_ENCRYPTED_TA) {
 		TEE_UUID bs_uuid = { };
@@ -403,15 +421,16 @@ static TEE_Result ree_fs_ta_open(const TEE_UUID *uuid,
 			res = TEE_ERROR_SECURITY;
 			goto error_free_hash;
 		}
-
+#ifndef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
 		res = crypto_hash_update(hash_ctx, (uint8_t *)bs_hdr,
 					 sizeof(*bs_hdr));
 		if (res != TEE_SUCCESS)
 			goto error_free_hash;
+#endif
 		offs += sizeof(*bs_hdr);
 		handle->bs_hdr = bs_hdr;
 	}
-
+#ifndef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
 	if (shdr->img_type == SHDR_ENCRYPTED_TA) {
 		struct shdr_encrypted_ta img_ehdr = { };
 		size_t sz = shdr_sz;
@@ -470,7 +489,7 @@ static TEE_Result ree_fs_ta_open(const TEE_UUID *uuid,
 		res = TEE_ERROR_SECURITY;
 		goto error_free_hash;
 	}
-
+#endif
 	handle->nw_ta = ta;
 	handle->nw_ta_size = ta_size;
 	handle->offs = offs;
@@ -522,6 +541,7 @@ static TEE_Result ree_fs_ta_get_tag(const struct ts_store_handle *h,
 	return TEE_SUCCESS;
 }
 
+#ifndef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
 static TEE_Result check_digest(struct ree_fs_ta_handle *h)
 {
 	void *digest = NULL;
@@ -542,6 +562,7 @@ out:
 	free(digest);
 	return res;
 }
+#endif
 
 static TEE_Result ree_fs_ta_read(struct ts_store_handle *h, void *data_core,
 				 void *data_user, size_t len)
@@ -590,12 +611,15 @@ static TEE_Result ree_fs_ta_read(struct ts_store_handle *h, void *data_core,
 		} else {
 			memcpy(dst, src + num_bytes, n);
 		}
-
+#ifdef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
+		res = TEE_SUCCESS;
+#else
 		res = crypto_hash_update(handle->hash_ctx, dst, n);
 		if (res) {
 			res = TEE_ERROR_SECURITY;
 			goto out;
 		}
+#endif
 		if (data_user) {
 			res = copy_to_user((uint8_t *)data_user + num_bytes,
 					   dst, n);
@@ -608,6 +632,7 @@ static TEE_Result ree_fs_ta_read(struct ts_store_handle *h, void *data_core,
 	}
 
 	handle->offs = next_offs;
+#ifndef RCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
 	if (handle->offs == handle->nw_ta_size) {
 		if (handle->shdr->img_type == SHDR_ENCRYPTED_TA) {
 			/*
@@ -628,12 +653,14 @@ static TEE_Result ree_fs_ta_read(struct ts_store_handle *h, void *data_core,
 		res = check_digest(handle);
 		if (res != TEE_SUCCESS)
 			goto out;
-
+#if !defined(PLATFORM_rcar_gen5) || !defined(CFG_RCAR_UNSUPPORT_TA_VER_DB)
 		if (handle->bs_hdr)
 			res = check_update_version(ta_ver_db,
 						   handle->bs_hdr->uuid,
 						   handle->bs_hdr->ta_version);
+#endif
 	}
+#endif
 out:
 	bb_free(bb, bb_len);
 	return res;
