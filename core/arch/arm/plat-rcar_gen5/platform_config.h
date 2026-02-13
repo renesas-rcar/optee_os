@@ -72,9 +72,10 @@
 
 #define LIFEC_BASE              (0x1C020000)    /* Life Cycle address   */
 #define PRR_BASE                (0xFFF00000U)   /* Product Register address */
-#define MFIS_BASE               (0x18800000U)   /* MFIS address */
+#define MFIS_BASE               (0x189E0000U)   /* MFIS address */
 
 #define MEM_SECTION_SIZE        (0x00100000U)
+#define MEM_SECTION_MFIS_SIZE	(0x00010000U)
 #ifdef CFG_WITH_LPAE
 #define MAX_XLAT_TABLES         CFG_MMAP_REGIONS
 #endif
@@ -128,9 +129,10 @@
 #define MEMORY7_TYPE		MEM_AREA_IO_SEC
 
 /* MFIS Address Map */
-#define MEMORY8_BASE		ROUNDDOWN(MFIS_BASE, MEM_SECTION_SIZE)
+#define MEMORY8_BASE		ROUNDDOWN(MFIS_BASE, MEM_SECTION_MFIS_SIZE)
 #define MEMORY8_SIZE		(MEM_SECTION_SIZE)
 #define MEMORY8_TYPE		MEM_AREA_IO_SEC
+#define MEMORY8_PA_END		(MFIS_BASE + MEMORY8_SIZE)
 #endif	/* CFG_RCAR_GEN5 */
 
 #endif /*PLATFORM_CONFIG_H*/

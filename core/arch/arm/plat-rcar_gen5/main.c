@@ -21,6 +21,7 @@
 #include <kernel/misc.h>
 #include <kernel/spinlock.h>
 #include <util.h>
+#include <drivers/mfis.h>
 
 #include "rcar_log_func.h"
 #include "rcar-common.h"
@@ -116,6 +117,7 @@ unsigned long thread_cpu_off_handler(unsigned long a0 __unused,
 void plat_console_init(void)
 {
 #ifdef CFG_SCIF
+	rcar_mfis_init();
 	hscif_uart_init(&console_data, CONSOLE_UART_START);
 	register_serial_console(&console_data.chip);
 #endif
