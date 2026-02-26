@@ -8,6 +8,6 @@
 
 #include <stdint.h>
 
-#define VERSION_OF_RENESAS	"1.2.0"
+#define VERSION_OF_RENESAS	"1.3.0"
 
 #endif /* RCAR_VERSION_H */
