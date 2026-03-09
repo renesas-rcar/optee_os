@@ -20,12 +20,11 @@
 #define CONSOLE_UART_START	0xC0710000
 #endif
 /* config for MMU mapping */
-#define RCAR_SRAM_BASE		    0x8C300000U
+#define RCAR_SRAM_BASE		    0x8C400000
 #define TZDRAM_BASE             RCAR_SRAM_BASE
 #define TZDRAM_SIZE             (0x02000000U) /* 1024*1024*32 */
 
-#define CFG_TEE_RAM_VA_SIZE         (1024 * 1024 * 3) /* = 300000*/
-#define TEE_RAM_START     (0x8C400000)  /* TEE RAM address */
+#define TEE_RAM_START     (RCAR_SRAM_BASE)  /* TEE RAM address */
 #define TEE_RAM_SIZE      (0x00300000U) /* TEE RAM size*/
 
 #ifdef CFG_TEE_RAM_VA_SIZE
@@ -40,26 +39,24 @@
 #define TEE_LOAD_ADDR   TEE_RAM_START
 #endif
 
-#define TA_RAM_START            (RCAR_SRAM_BASE	\
-				  + 0x400000U)   /* TA RAM address */
+#define TA_RAM_START            (TEE_RAM_START	\
+				  + TEE_RAM_SIZE)   /* TA RAM address */
 #define TA_RAM_SIZE             (0x01400000U)	/* TA RAM size */
-
-#define TEE_SHMEM_START         (RCAR_SRAM_BASE	\
-				  + 0x3E00000U) /* Share Memory address */
+#define OPTEE_LOG_BASE          (TA_RAM_START	\
+				  + TA_RAM_SIZE) /* OP-TEE Log Area address */
+#define OPTEE_LOG_SIZE		(0x900000U)	/* OP-TEE Log Area address size */
+#define NONCACHE_WORK_BASE      (OPTEE_LOG_BASE	\
+				 + OPTEE_LOG_SIZE) /* Non Cache Area address   */
+#define NONCACHE_WORK_SIZE      (0x00100000U)   /* Non Cache Area Size  */
+#define TEE_SHMEM_START         (NONCACHE_WORK_BASE	\
+				  + 0x1D00000U) /* Share Memory address */
 #define TEE_SHMEM_SIZE          (0x00100000U) /* Share Memory size    */
-
-#define OPTEE_LOG_BASE          (RCAR_SRAM_BASE	\
-				  + 0x1E00000U) /* OP-TEE Log Area address */
-#define OPTEE_LOG_NS_BASE       (RCAR_SRAM_BASE	\
-				  + 0x3F00000U) /* OP-TEE Log Area NS addr */
+#define OPTEE_LOG_NS_BASE       (TEE_SHMEM_START	\
+				  + TEE_SHMEM_SIZE) /* OP-TEE Log Area NS addr */
 #define OPTEE_LOG_NS_SIZE       (0x00014000U)   /* OP-TEE Log Area NS size */
 
 #define TA_VERIFICATION_BASE    (0x10000000U)	/* TA for verification a */
 #define TA_VERIFICATION_SIZE    (0x00100000U)   /* TA for verification size */
-
-#define NONCACHE_WORK_BASE      (RCAR_SRAM_BASE	\
-				 + 0x1F00000U) /* Non Cache Area address   */
-#define NONCACHE_WORK_SIZE      (0x00100000U)   /* Non Cache Area Size  */
 
 #define RSIPM_FW_SHMEM_BASE    (0x18500000U) /* RSIPM FW Share Memory address */
 #define RSIPM_FW_SHMEM_SIZE    (0x00100000U) /* RSIPM FW Share Memory size */
