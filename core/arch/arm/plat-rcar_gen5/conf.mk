@@ -71,3 +71,7 @@ ifeq ($(CFG_DYNAMIC_TA_AUTH_BY_HWENGINE),y)
 core-platform-cflags += -DRCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
 endif
 
+# For MFIS mutex lock/unlock by HSCIF0
+ifeq ($(CFG_SCIF),y)
+CFG_MFIS_DRV = y
+endif
