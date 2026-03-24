@@ -14,57 +14,35 @@
 #include "drivers/comm.h"
 
 /* Declaration of internal function */
-static uint32_t get_cert_size(uint8_t type, const uint32_t *cert_header);
+static uint32_t get_cert_size(const uint32_t *cert_header);
 static uint32_t get_object_size(const uint32_t *content_cert);
-static uint64_t check_object_addr(const uint32_t *cert_header);
+static uint64_t check_object_addr(const uint32_t *content_cert);
 static uint32_t get_auth_mode(void);
 
-static uint32_t get_cert_size(uint8_t type, const uint32_t *cert_header)
+static uint32_t get_cert_size(const uint32_t *cert_header)
 {
 	sb_cert_t cert;
 	uint32_t cert_size = 0;
-	uint32_t header_size = 0;
 
+	/* Get TLV Length value */
 	cert.base   = (const uint32_t *)cert_header;
 	cert.tlv_length = (const uint32_t *)
 		(cert.base +(CERT_HEADER_SIZE / 4));
 
-	switch (type) {
-	case TYPE_KEYCERT:
-	     header_size =
-		KC_MAGIC_NUMBER +
-		KC_CERT_VERSION +
-		KC_FLAGS +
-		KC_RESERVED;
-		break;
-	case TYPE_CONTENTCERT:
-	     header_size =
-		CC_MAGIC_NUMBER +
-		CC_CERT_VERSION +
-		CC_FLAGS +
-		CC_LOAD_ADDR +
-		CC_DEST_ADDR +
-		CC_IMAGE_SIZE +
-		CC_CODE_VERSION;
-		break;
-	default:
-		EMSG("Certificate is invalid!");
-		break;
-	}
-
+	/* Calculate certificate size */
 	cert_size = *(cert.tlv_length);
-	cert_size += header_size;
+	cert_size += CERT_HEADER_SIZE;
 	cert_size += TLV_LENGTH;
 
 	return cert_size;
 }
 
-static uint64_t check_object_addr(const uint32_t *cert_header)
+static uint64_t check_object_addr(const uint32_t *content_cert)
 {
 	const uint32_t *p_cert_base = NULL;
 	uint32_t obj_addr = 0U;
 
-	p_cert_base = cert_header;
+	p_cert_base = content_cert;
 	p_cert_base += (CC_MAGIC_NUMBER / 4);
 	p_cert_base += (CC_CERT_VERSION / 4);
 	p_cert_base += (CC_FLAGS / 4);
@@ -143,7 +121,7 @@ TEE_Result rcar_auth_ta_certificate(const struct shdr *key_cert,
 	uint32_t *p_hash_cal = NULL;
 
 	/* Get SecureBoot KeyCertificate size */
-	key_cert_size = get_cert_size(TYPE_KEYCERT, (const uint32_t *)key_cert);
+	key_cert_size = get_cert_size((const uint32_t *)key_cert);
 	if ((key_cert_size == 0U) || (key_cert_size > TA_KEY_CERT_AREA_SIZE)) {
 		res = TEE_ERROR_SECURITY;
 		EMSG("key_cert_size error");
@@ -152,8 +130,7 @@ TEE_Result rcar_auth_ta_certificate(const struct shdr *key_cert,
 
 	/* Get SecureBoot ContentCertificate size */
 	content_cert = (const uint32_t *)key_cert + (key_cert_size / 4);
-	content_cert_size = get_cert_size(TYPE_CONTENTCERT,
-			(const uint32_t *)content_cert);
+	content_cert_size = get_cert_size((const uint32_t *)content_cert);
 	if ((content_cert_size == 0U) ||
 		(content_cert_size > TA_CONTENT_CERT_AREA_SIZE)) {
 		res = TEE_ERROR_SECURITY;
@@ -226,6 +203,7 @@ TEE_Result rcar_auth_ta_certificate(const struct shdr *key_cert,
 				(uintptr_t)fixed_content_cert,
 				(uintptr_t)p_rekey, 0);
 		if (ret != BOOTROM_API_RETURN_ROM_OK) {
+			EMSG("Secure boot error: 0x%x", ret);
 			res = TEE_ERROR_SECURITY;
 			goto out;
 		}
@@ -233,6 +211,7 @@ TEE_Result rcar_auth_ta_certificate(const struct shdr *key_cert,
 		ret = fwss_secureboot_decrypt();
 		if (ret != BOOTROM_API_RETURN_ROM_OK &&
 			ret != BOOTROM_API_RETURN_ROM_NO_NEED_DECRYPTION) {
+			EMSG("Secure boot error: 0x%x", ret);
 			res = TEE_ERROR_SECURITY;
 			goto out;
 		}
@@ -250,6 +229,7 @@ TEE_Result rcar_auth_ta_certificate(const struct shdr *key_cert,
 				(uint32_t *)p_hash_cal,
 					HASH_INTEGRITY_CHECK_HASH_SIZE);
 		if (ret != BOOTROM_API_RETURN_ROM_OK) {
+			EMSG("Secure boot error: 0x%x", ret);
 			res = TEE_ERROR_SECURITY;
 			goto out;
 		}
