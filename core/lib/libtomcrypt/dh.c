@@ -43,12 +43,14 @@ TEE_Result crypto_acipher_gen_dh_key(struct dh_keypair *key, struct bignum *q,
 	dh_key ltc_tmp_key = { };
 	int ltc_res = 0;
 
+#if defined(CFG_CRYPT_HW_CRYPTOENGINE)
+	uint32_t keySize;
+#endif
+
 	if (key_size != 8 * mp_unsigned_bin_size(key->p))
 		return TEE_ERROR_BAD_PARAMETERS;
 
 #if defined(CFG_CRYPT_HW_CRYPTOENGINE)
-    uint32_t keySize;
-
     keySize = crypto_bignum_num_bits(key->p);
     if (crypto_hw_dh_check_support(keySize) == SS_HW_SUPPORT_ALG)
     {
