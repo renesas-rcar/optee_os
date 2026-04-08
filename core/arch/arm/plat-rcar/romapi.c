@@ -135,7 +135,7 @@ uint32_t plat_rom_getrndvector(uint8_t rndbuff[PLAT_RND_VECTOR_SZ],
 				       scratch_sz);
 		if (ret == 0)
 			break;
-		IMSG("ROM_GetRndVector() returned "PRIx32, ret);
+		IMSG("ROM_GetRndVector() returned %" PRIx32, ret);
 	}
 
 	/*
