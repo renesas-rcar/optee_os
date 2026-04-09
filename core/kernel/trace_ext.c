@@ -11,9 +11,9 @@
 #include <kernel/virtualization.h>
 #include <mm/core_mmu.h>
 
-const char trace_ext_prefix[] = "TC";
-int trace_level __nex_data = TRACE_LEVEL;
-static unsigned int puts_lock __nex_bss = SPINLOCK_UNLOCK;
+const char __weak trace_ext_prefix[] = "TC";
+int  __weak trace_level __nex_data = TRACE_LEVEL;
+static unsigned int __maybe_unused puts_lock __nex_bss = SPINLOCK_UNLOCK;
 
 void __weak plat_trace_ext_puts(const char *str __unused)
 {
@@ -31,8 +31,16 @@ void trace_ext_puts(const char *str)
 		cpu_spin_lock_no_dldetect(&puts_lock);
 	}
 
+#ifndef CFG_SCIF
+	if (mmu_enabled)
+		cpu_spin_unlock(&puts_lock);
+	thread_unmask_exceptions(itr_status);
+#endif
 	plat_trace_ext_puts(str);
 
+#ifndef CFG_SCIF
+	return;
+#endif
 	console_flush();
 
 	if (was_contended)

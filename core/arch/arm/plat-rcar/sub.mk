@@ -15,12 +15,7 @@ srcs-y += rcar_maskrom.c
 srcs-y += rcar_suspend_to_ram.c
 srcs-y += rcar_mutex.c
 
-ifneq ($(CFG_SCIF),y)
 srcs-y += trace_ext.c
-WITH_TRACE_EXT := n
-else
-WITH_TRACE_EXT := y
-endif
 
 subdirs-y += drivers
 subdirs-y += tee
