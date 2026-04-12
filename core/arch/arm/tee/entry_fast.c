@@ -14,6 +14,7 @@
 #include <optee_msg.h>
 #include <sm/optee_smc.h>
 #include <tee/entry_fast.h>
+#include <rcar_version.h>
 
 #ifdef CFG_CORE_RESERVED_SHM
 static void tee_entry_get_shm_config(struct thread_smc_args *args)
@@ -252,7 +253,10 @@ void __tee_entry_fast(struct thread_smc_args *args)
 		tee_entry_get_os_uuid(args);
 		break;
 	case OPTEE_SMC_CALL_GET_OS_REVISION:
-		tee_entry_get_os_revision(args);
+		if (args->a6 == OPTEE_SMC_GET_RCAR_REVISION)
+			tee_entry_get_rcar_bsp_revision(args);
+		else
+			tee_entry_get_os_revision(args);
 		break;
 
 	/* OP-TEE specific SMC functions */

@@ -132,6 +132,9 @@
 #define OPTEE_SMC_CALL_GET_OS_REVISION \
 	OPTEE_SMC_FAST_CALL_VAL(OPTEE_SMC_FUNCID_GET_OS_REVISION)
 
+/* Config to request getting the R-Car Software revision of optee_os */
+#define OPTEE_SMC_GET_RCAR_REVISION	1
+
 /*
  * Call with struct optee_msg_arg as argument
  *
