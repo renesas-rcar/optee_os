@@ -6269,6 +6269,7 @@ void crypto_hw_aes_ccm_final(void)
 #define CC63_RNG_ISR_ERR_BITS_MASK	0xE //bits: 1st, 2nd, 3rd
 TEE_Result crypto_hw_rng_read(void *outPtr, size_t outSize)
 {
+	TEE_Result tee_res;
 	SSError_t res;
 	CRYSError_t crys_res = (CRYSError_t)CRYS_OK;
 	size_t remain = outSize;
@@ -6300,7 +6301,11 @@ TEE_Result crypto_hw_rng_read(void *outPtr, size_t outSize)
 
 	res = ss_translate_error_crys2ss_rnd(crys_res);
 	PROV_DMSG("Result: crys_res=0x%08x -> res=0x%08x\n", crys_res, res);
-	return res;
+
+	tee_res = ss_translate_error_ss2tee(res);
+	PROV_OUTMSG("return res=0x%08x -> tee_res=0x%08x\n", res, tee_res);
+	return tee_res;
+
 }
 
 /*
