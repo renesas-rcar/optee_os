@@ -16,6 +16,8 @@
 #include <stdbool.h>
 #include <kernel/thread.h>
 
+extern unsigned int spin_lock;
+
 #ifdef CFG_TEE_CORE_DEBUG
 void spinlock_count_incr(void);
 void spinlock_count_decr(void);

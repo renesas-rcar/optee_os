@@ -12,6 +12,8 @@
 #include "../kernel/mutex_lockdep.h"
 #include "rcar_mutex.h"
 
+unsigned int spin_lock = SPINLOCK_UNLOCK;
+
 void rcar_nex_mutex_lock(struct mutex *m)
 {
 #ifdef CFG_VIRTUALIZATION
