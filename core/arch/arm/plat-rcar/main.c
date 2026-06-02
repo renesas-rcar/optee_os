@@ -192,7 +192,7 @@ register_phys_mem_pgdir(MEM_AREA_IO_SEC, PRR_BASE, SMALL_PAGE_SIZE);
 	defined(PLATFORM_FLAVOR_spider_s4)
 */
 #ifdef MEMORY1_BASE
-register_phys_mem_pgdir(MEMORY1_TYPE, MEMORY1_BASE, MEMORY1_SIZE);
+register_phys_mem(MEMORY1_TYPE, MEMORY1_BASE, MEMORY1_SIZE);
 #endif
 #ifdef MEMORY2_BASE
 register_phys_mem(MEMORY2_TYPE, MEMORY2_BASE, MEMORY2_SIZE);
@@ -204,7 +204,7 @@ register_phys_mem_pgdir(MEMORY3_TYPE, MEMORY3_BASE, MEMORY3_SIZE);
 register_phys_mem(MEMORY4_TYPE, MEMORY4_BASE, MEMORY4_SIZE);
 #endif
 #ifdef MEMORY5_BASE
-register_phys_mem_pgdir(MEMORY5_TYPE, MEMORY5_BASE, MEMORY5_SIZE);
+register_phys_mem(MEMORY5_TYPE, MEMORY5_BASE, MEMORY5_SIZE);
 #endif
 #ifdef MEMORY6_BASE
 register_phys_mem_pgdir(MEMORY6_TYPE, MEMORY6_BASE, MEMORY6_SIZE);
@@ -213,7 +213,7 @@ register_phys_mem_pgdir(MEMORY6_TYPE, MEMORY6_BASE, MEMORY6_SIZE);
 register_phys_mem_pgdir(MEMORY7_TYPE, MEMORY7_BASE, MEMORY7_SIZE);
 #endif
 #ifdef MEMORY8_BASE
-register_phys_mem_pgdir(MEMORY8_TYPE, MEMORY8_BASE, MEMORY8_SIZE);
+register_phys_mem(MEMORY8_TYPE, MEMORY8_BASE, MEMORY8_SIZE);
 #endif
 #ifdef MEMORY9_BASE
 register_phys_mem_pgdir(MEMORY9_TYPE, MEMORY9_BASE, MEMORY9_SIZE);
