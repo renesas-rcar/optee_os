@@ -62,7 +62,7 @@ static struct itr_ops main_itr_ops __nex_bss;
 void tee_entry_fast(struct thread_smc_args *args)
 {
 	DMSG("IN args->a0=0x%lX", args->a0);
-#ifdef CFG_VIRTUALIZATION
+#ifdef CFG_NS_VIRTUALIZATION
 	if (args->a0 == OPTEE_SMC_ENABLE_SHM_CACHE) {
 #else
 	if ((args->a0 == OPTEE_SMC_GET_SHM_CONFIG) &&

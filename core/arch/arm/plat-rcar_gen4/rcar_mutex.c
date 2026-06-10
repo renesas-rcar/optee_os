@@ -14,7 +14,7 @@
 
 void rcar_nex_mutex_lock(struct mutex *m)
 {
-#ifdef CFG_VIRTUALIZATION
+#ifdef CFG_NS_VIRTUALIZATION
 	bool can_lock;
 	TEE_Result res = TEE_SUCCESS;
 	struct thread_param params = THREAD_PARAM_VALUE(IN,
@@ -37,7 +37,7 @@ void rcar_nex_mutex_lock(struct mutex *m)
 
 void rcar_nex_mutex_unlock(struct mutex *m)
 {
-#ifdef CFG_VIRTUALIZATION
+#ifdef CFG_NS_VIRTUALIZATION
 	uint32_t old_itr_status;
 
 	old_itr_status = cpu_spin_lock_xsave(&m->spin_lock);

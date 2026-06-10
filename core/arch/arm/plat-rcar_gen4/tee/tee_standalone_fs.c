@@ -1399,7 +1399,7 @@ static struct spim_record_descriptor *spi_alloc_rdesc
 	int32_t descriptor;
 	void *buf;
 
-#ifdef CFG_VIRTUALIZATION
+#ifdef CFG_NS_VIRTUALIZATION
 	rdesc = nex_malloc(sizeof(struct spim_record_descriptor));
 #else
 	rdesc = malloc(sizeof(struct spim_record_descriptor));
@@ -1424,7 +1424,7 @@ static struct spim_record_descriptor *spi_alloc_rdesc
 		if (descriptor >= 0) {
 			rdesc->rd = descriptor;
 		} else {
-#ifdef CFG_VIRTUALIZATION
+#ifdef CFG_NS_VIRTUALIZATION
 			nex_free(rdesc);
 #else
 			free(rdesc);
@@ -1452,7 +1452,7 @@ static void spi_free_rdesc(struct spim_record_descriptor *rdesc)
 			}
 		}
 		(void)handle_put(&g_rd_handle_db, rdesc->rd);
-#ifdef CFG_VIRTUALIZATION
+#ifdef CFG_NS_VIRTUALIZATION
 		nex_free(rdesc);
 #else
 		free(rdesc);
@@ -1649,7 +1649,7 @@ static TEE_Result spi_erase_and_write_sector(uint32_t sector_addr,
 
 static int32_t spi_handle_get(struct handle_db *db, void *ptr)
 {
-#ifdef CFG_VIRTUALIZATION
+#ifdef CFG_NS_VIRTUALIZATION
 	const size_t HANDLE_DB_INITIAL_MAX_PTRS = 4;
 	size_t n;
 	void *p;
