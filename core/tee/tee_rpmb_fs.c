@@ -31,7 +31,9 @@
 #include <tee/tee_svc_storage.h>
 #include <trace.h>
 #include <util.h>
+#ifdef CFG_SECURE_STORAGE_BY_ICUMX_HWENGINE
 #include <rcar_asset_secure.h>
+#endif
 
 #define RPMB_STORAGE_START_ADDRESS      0
 #define RPMB_FS_FAT_START_ADDRESS       512

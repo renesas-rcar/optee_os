@@ -20,14 +20,18 @@ static void *g_ISD_BUFFER __nex_data = NULL;
 static void *g_LCS_BUFFER __nex_data = NULL;
 static void *g_CMAC_BUFFER __nex_data = NULL;
 static void *g_HASH_BUFFER __nex_data = NULL;
+#if defined(RCAR_TRNG_BY_ICUMX_HWENGINE) || defined(RCAR_SECURE_STORAGE_BY_ICUMX_HWENGINE)
 static void *g_ISD_SEC_SVC_BUFFER __nex_data = NULL;
 bool is_icum_initialized = false;
+#endif
 
+#if defined(RCAR_TRNG_BY_ICUMX_HWENGINE) || defined(RCAR_SECURE_STORAGE_BY_ICUMX_HWENGINE)
 /* Convert buffer length in bytes to number of word blocks */
 inline uint32_t byte_to_block(uint32_t buf_len) {
 	/* A block is equal to 4 bytes */
 	return (buf_len + WORD_BLOCK_SIZE - 1) / WORD_BLOCK_SIZE;
 }
+#endif
 static uint32_t fw_service_request(r_icumif_isd_t *p_ISD);
 
 uint32_t fwss_service_init(void)
@@ -37,7 +41,9 @@ uint32_t fwss_service_init(void)
 	uint32_t ret = FW_SERVICE_SUCCESS;
 
 	if (g_ISD_BUFFER == NULL) {
+#if defined(RCAR_TRNG_BY_ICUMX_HWENGINE) || defined(RCAR_SECURE_STORAGE_BY_ICUMX_HWENGINE)
 		g_ISD_SEC_SVC_BUFFER = (void *)ICUM_FW_SHARED_AREA_SEC_SRV_ADDR;
+#endif
 		g_ISD_BUFFER = (void *)ICUM_FW_SHARED_AREA_ADDR;
 		g_LCS_BUFFER = (void *)(ICUM_FW_SHARED_AREA_ADDR +
 						BUF_OFS_LCS);
@@ -240,6 +246,7 @@ uint32_t fwss_secureboot_dec_and_comp(uint8_t *cnt_cert, uint32_t *cmac)
 	return p_ISD->prm.SECURE_BOOT_API.api_return_value;
 }
 
+#if defined(RCAR_TRNG_BY_ICUMX_HWENGINE) || defined(RCAR_SECURE_STORAGE_BY_ICUMX_HWENGINE)
 /****************************************************************************************
  * Function name : fwss_trng_generate
  * Description : This function generates a true random number using ICUMX Firmware.
@@ -1041,6 +1048,7 @@ uint32_t check_icum_init(void)
 out:
 	return ret;
 }
+#endif
 
 static uint32_t fw_service_request(r_icumif_isd_t *p_ISD)
 {
