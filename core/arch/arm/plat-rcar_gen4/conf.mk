@@ -42,6 +42,7 @@ else
   RCAR_LSI:=${RCAR_S4}
 endif
 $(eval $(call add_define,RCAR_LSI))
+core-platform-cflags += $(DEFINES)
 
 ifeq ($(RCAR_LSI),$(RCAR_S4))			# Target board: S4
 $(call force,CFG_TEE_CORE_NB_CORE,8)
