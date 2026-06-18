@@ -45,7 +45,7 @@
  * Last part of DRAM is reserved as secure dram, note that the last 2MiB
  * of DRAM0 is used by SCP dor DDR retraining.
  */
-#define TZDRAM_BASE		(0x44000000U)
+#define TZDRAM_BASE		(0x44100000U)
 
 /*
  * Should be
@@ -53,7 +53,7 @@
  * but is smaller due to SECTION_SIZE alignment, can be fixed once
  * OP-TEE OS is mapped using small pages instead.
  */
-#define TZDRAM_SIZE		(0x03E00000U)
+#define TZDRAM_SIZE		(0x03D00000U)
 
 #define TEE_RAM_VA_SIZE		(1024 * 1024 * 3)
 
