@@ -41,7 +41,7 @@ void rcar_mfis_init(void)
 	uint32_t register_value;
 
 	/* Write Protection Control Register */
-	/* Enable write protection setting */
+	/* Disable write protection setting */
 	register_value = (MFISWPCNTR_CODEVALUE_SET | MFISWPCNTR_WPD_SET);
 	io_write32(MFIS_MFISWPCNTR, register_value);
 }
@@ -71,36 +71,22 @@ void rcar_mfis_lock(mfis_target_t target)
 
 void rcar_mfis_unlock(mfis_target_t target)
 {
-	uint32_t register_value_mfis_mfiswacntr;
 	uint32_t register_value_mfis_mfislckr;
 	bool mmu_enabled = cpu_mmu_enabled();
 	vaddr_t address =  p2v_ioadr(mfis_mfislckr_table[target],
 			MEMORY8_PA_END - (mfis_mfislckr_table[target]));
 
-	register_value_mfis_mfiswacntr = MFISWACNTR_CODEVALUE_SET;
 	if (mmu_enabled) {
-		register_value_mfis_mfiswacntr |= (address
-				& MFISWACNTR_REGISTERADDRESS_MASK);
 		register_value_mfis_mfislckr = io_read32(address);
 		register_value_mfis_mfislckr &= (~(MFISLCKR_LCK_MASK));
 		register_value_mfis_mfislckr |= MFISLCKR_LCK_RELEASE_SET;
-		/* write access control register */
-		/* mfislckr[j] register address setting */
-		io_write32(p2v_ioadr(MFIS_MFISWACNTR,
-				MEMORY8_PA_END - MFIS_MFISWACNTR),
-				register_value_mfis_mfiswacntr);
 		/* MFIS Lock Register [j] (MFISLCKR[j]) */
 		io_write32(address, register_value_mfis_mfislckr);
 	} else {
-		register_value_mfis_mfiswacntr |= (mfis_mfislckr_table[target]
-				& MFISWACNTR_REGISTERADDRESS_MASK);
 		register_value_mfis_mfislckr =
 			io_read32(mfis_mfislckr_table[target]);
 		register_value_mfis_mfislckr &= (~(MFISLCKR_LCK_MASK));
 		register_value_mfis_mfislckr |= MFISLCKR_LCK_RELEASE_SET;
-		/* write access control register */
-		/* mfislckr[j] register address setting */
-		io_write32(MFIS_MFISWACNTR, register_value_mfis_mfiswacntr);
 		/* MFIS Lock Register [j] (MFISLCKR[j]) */
 		io_write32(mfis_mfislckr_table[target],
 				register_value_mfis_mfislckr);
