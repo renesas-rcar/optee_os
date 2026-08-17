@@ -18,6 +18,7 @@
 #include <tee_api_defines.h>
 #include <stdbool.h>
 
+static struct mutex fwss_mutex = MUTEX_INITIALIZER;
 static uint8_t fw_pe_init[CFG_TEE_CORE_NB_CORE] __nex_bss;
 static void *g_ISD_BUFFER __nex_data = NULL;
 static void *g_LCS_BUFFER __nex_data = NULL;
@@ -80,7 +81,9 @@ uint32_t fwss_secureboot_get_lcs(uint32_t *lcs_out)
 	uint32_t *p_lcs;
 	r_icumif_isd_t *p_ISD;
 	uint32_t ret;
+	uint32_t fw_ret;
 
+	mutex_lock(&fwss_mutex);
 	/* Initialize the global buffer */
 	(void)memset(g_ISD_BUFFER, 0, SIZE_OF_ISD_BUFFER);
 	(void)memset(g_LCS_BUFFER, 0, SIZE_OF_LCS_BUFFER);
@@ -100,13 +103,14 @@ uint32_t fwss_secureboot_get_lcs(uint32_t *lcs_out)
 
 	/* Run ICU FW Security services */
 	ret = fw_service_request(p_ISD);
+	fw_ret = p_ISD->prm.SECURE_BOOT_API.api_return_value;
+	mutex_unlock(&fwss_mutex);
+
 	if (ret == FW_SERVICE_SUCCESS) {
-		if (p_ISD->prm.SECURE_BOOT_API.api_return_value ==
-			BOOTROMAPI_OK) {
+		if (fw_ret == BOOTROMAPI_OK) {
 			*lcs_out = *p_lcs;
 		} else {
-			EMSG("SECURE_BOOT_API return_value = 0x%x",
-			p_ISD->prm.SECURE_BOOT_API.api_return_value);
+			EMSG("SECURE_BOOT_API return_value = 0x%x", fw_ret);
 			ret = FW_SERVICE_FAILURE;
 		}
 	} else {
@@ -125,7 +129,9 @@ uint32_t fwss_secureboot_verify(uint8_t *key_cert, uint8_t *cnt_cert,
 	volatile uintptr_t p_cnt_cert;
 	volatile uintptr_t p_key_cert;
 	uint32_t ret;
+	uint32_t fw_ret;
 
+	mutex_lock(&fwss_mutex);
 	/* Initialize the global buffer */
 	(void)memset(g_ISD_BUFFER, 0, SIZE_OF_ISD_BUFFER);
 	(void)memset(g_CMAC_BUFFER, 0, SIZE_OF_CMAC_BUFFER);
@@ -151,22 +157,23 @@ uint32_t fwss_secureboot_verify(uint8_t *key_cert, uint8_t *cnt_cert,
 
 	/* Run ICU FW Security services */
 	ret = fw_service_request(p_ISD);
+	fw_ret = p_ISD->prm.SECURE_BOOT_API.api_return_value;
+	mutex_unlock(&fwss_mutex);
+
 	if ((ret == FW_SERVICE_SUCCESS) &&
-	    (p_ISD->prm.SECURE_BOOT_API.api_return_value == BOOTROMAPI_OK)) {
+	    (fw_ret == BOOTROMAPI_OK)) {
 		for (i = 0U; i < CMAC_COPY; i++) {
 			cmac[i] = *p_cmac_buf;
 			p_cmac_buf++;
 		}
 	} else if (ret != FW_SERVICE_SUCCESS){
 		EMSG("ret = 0x%x", ret);
-		p_ISD->prm.SECURE_BOOT_API.api_return_value =
-						FW_SERVICE_FAILURE;
+		fw_ret = FW_SERVICE_FAILURE;
 	} else {
-		EMSG("SECURE_BOOT_API return_value = 0x%x",
-			p_ISD->prm.SECURE_BOOT_API.api_return_value);
+		EMSG("SECURE_BOOT_API return_value = 0x%x", fw_ret);
 	}
 
-	return p_ISD->prm.SECURE_BOOT_API.api_return_value;
+	return fw_ret;
 }
 
 uint32_t fwss_secureboot_dec_and_comp(uint8_t *cnt_cert, uint32_t *cmac)
@@ -177,7 +184,9 @@ uint32_t fwss_secureboot_dec_and_comp(uint8_t *cnt_cert, uint32_t *cmac)
 	uint32_t i;
 	uint32_t ret;
 	volatile uintptr_t p_cnt_cert;
+	uint32_t fw_ret;
 
+	mutex_lock(&fwss_mutex);
 	/* Initialize the global buffer */
 	(void)memset(g_ISD_BUFFER, 0, SIZE_OF_ISD_BUFFER);
 	(void)memset(g_CMAC_BUFFER, 0, SIZE_OF_CMAC_BUFFER);
@@ -208,6 +217,7 @@ uint32_t fwss_secureboot_dec_and_comp(uint8_t *cnt_cert, uint32_t *cmac)
 
 	/* Run ICU FW Security services */
 	ret = fw_service_request(p_ISD);
+
 	if ((ret == FW_SERVICE_SUCCESS) ||
 	    (p_ISD->prm.SECURE_BOOT_API.api_return_value == BOOTROMAPI_OK) ||
 	    (p_ISD->prm.SECURE_BOOT_API.api_return_value ==
@@ -231,22 +241,20 @@ uint32_t fwss_secureboot_dec_and_comp(uint8_t *cnt_cert, uint32_t *cmac)
 		/* Run ICU FW Security services */
 		ret = fw_service_request(p_ISD);
 	}
+	fw_ret = p_ISD->prm.SECURE_BOOT_API.api_return_value;
+	mutex_unlock(&fwss_mutex);
 
 	if (ret != FW_SERVICE_SUCCESS) {
 		EMSG("ret = 0x%x", ret);
-		p_ISD->prm.SECURE_BOOT_API.api_return_value =
-						FW_SERVICE_FAILURE;
-	} else if (p_ISD->prm.SECURE_BOOT_API.api_return_value !=
-						BOOTROMAPI_OK) {
-		EMSG("SECURE_BOOT_API return_value = 0x%x",
-			p_ISD->prm.SECURE_BOOT_API.api_return_value);
-		p_ISD->prm.SECURE_BOOT_API.api_return_value =
-						FW_SERVICE_FAILURE;
+		fw_ret = FW_SERVICE_FAILURE;
+	} else if (fw_ret != BOOTROMAPI_OK) {
+		EMSG("SECURE_BOOT_API return_value = 0x%x", fw_ret);
+		fw_ret = FW_SERVICE_FAILURE;
 	} else {
 		/* no operation */
 	}
 
-	return p_ISD->prm.SECURE_BOOT_API.api_return_value;
+	return fw_ret;
 }
 
 #if defined(RCAR_TRNG_BY_ICUMX_HWENGINE) || defined(RCAR_SECURE_STORAGE_BY_ICUMX_HWENGINE)
@@ -282,6 +290,7 @@ uint32_t fwss_trng_generate(void *buf, size_t buf_len)
 		goto out;
 	}
 
+	mutex_lock(&fwss_mutex);
 	/* Initialize the global buffer */
 	(void)memset(g_ISD_SEC_SVC_BUFFER, 0, SIZE_OF_SEC_SRV);
 
@@ -300,6 +309,8 @@ uint32_t fwss_trng_generate(void *buf, size_t buf_len)
 
 	/* Run ICU FW Security services */
 	res = fw_service_request(p_ISD);
+	mutex_unlock(&fwss_mutex);
+
 	if (res != FW_SERVICE_SUCCESS) {
 		EMSG("fw_service_request error");
 		ret = TEE_ERROR_SECURITY;
@@ -325,6 +336,7 @@ uint32_t fwss_sys_fw_init(void)
 	r_icumif_isd_t *p_ISD;
 	uint32_t ret = TEE_SUCCESS;
 
+	mutex_lock(&fwss_mutex);
 	/* Initialize the global buffer */
 	(void)memset(g_ISD_SEC_SVC_BUFFER, 0, SIZE_OF_SEC_SRV);
 
@@ -342,6 +354,8 @@ uint32_t fwss_sys_fw_init(void)
 
 	/* Run ICU FW Security services */
 	res = fw_service_request(p_ISD);
+	mutex_unlock(&fwss_mutex);
+
 	if (res != FW_SERVICE_SUCCESS) {
 		EMSG("fw_service_request error");
 		ret = TEE_ERROR_SECURITY;
@@ -366,6 +380,7 @@ uint32_t fwss_set_mono_ctr(uint8_t nb_monoctr_nv)
 	r_icumif_isd_t *p_ISD;
 	uint32_t ret = TEE_SUCCESS;
 
+	mutex_lock(&fwss_mutex);
 	/* Initialize the global buffer */
 	(void)memset(g_ISD_SEC_SVC_BUFFER, 0, SIZE_OF_SEC_SRV);
 
@@ -381,6 +396,8 @@ uint32_t fwss_set_mono_ctr(uint8_t nb_monoctr_nv)
 
 	/* Run ICU FW Security services */
 	res = fw_service_request(p_ISD);
+	mutex_unlock(&fwss_mutex);
+
 	if (res != FW_SERVICE_SUCCESS) {
 		EMSG("fw_service_request error");
 		ret = TEE_ERROR_SECURITY;
@@ -404,6 +421,7 @@ uint32_t fwss_init_mydata_set(uint8_t nb_items, uint16_t item_size_in_bytes)
 	r_icumif_isd_t *p_ISD;
 	uint32_t ret = TEE_SUCCESS;
 
+	mutex_lock(&fwss_mutex);
 	/* Initialize the global buffer */
 	(void)memset(g_ISD_SEC_SVC_BUFFER, 0, SIZE_OF_SEC_SRV);
 
@@ -420,6 +438,8 @@ uint32_t fwss_init_mydata_set(uint8_t nb_items, uint16_t item_size_in_bytes)
 
 	/* Run ICU FW Security services */
 	res = fw_service_request(p_ISD);
+	mutex_unlock(&fwss_mutex);
+
 	if (res != FW_SERVICE_SUCCESS) {
 		EMSG("fw_service_request error");
 		ret = TEE_ERROR_SECURITY;
@@ -445,6 +465,7 @@ uint32_t fwss_init_mydata_set(uint8_t nb_items, uint16_t item_size_in_bytes)
 uint32_t fwss_get_current_stage(uint32_t *current_stage)
 {
 	uint32_t res;
+	uint32_t fw_stage;
 	r_icumif_isd_t *p_ISD;
 	uint32_t ret = TEE_SUCCESS;
 
@@ -452,6 +473,7 @@ uint32_t fwss_get_current_stage(uint32_t *current_stage)
 	if (!current_stage)
 		return TEE_ERROR_BAD_PARAMETERS;
 
+	mutex_lock(&fwss_mutex);
 	/* Initialize the global buffer */
 	(void)memset(g_ISD_SEC_SVC_BUFFER, 0, SIZE_OF_SEC_SRV);
 
@@ -465,13 +487,16 @@ uint32_t fwss_get_current_stage(uint32_t *current_stage)
 
 	/* Run ICU FW Security services */
 	res = fw_service_request(p_ISD);
+	fw_stage = p_ISD->prm.LIFE_CYCLE.current_stage;
+	mutex_unlock(&fwss_mutex);
+
 	if (res != FW_SERVICE_SUCCESS) {
 		EMSG("fw_service_request error");
 		ret = TEE_ERROR_SECURITY;
 	}
 
 	/* Retrieve ICU-M current stage */
-	*current_stage = p_ISD->prm.LIFE_CYCLE.current_stage;
+	*current_stage = fw_stage;
 
 	return ret;
 }
@@ -502,6 +527,7 @@ uint32_t fwss_lc_set_stage(uint32_t stage)
 		goto out;
 	}
 
+	mutex_lock(&fwss_mutex);
 	/* Initialize the global buffer */
 	(void)memset(g_ISD_SEC_SVC_BUFFER, 0, SIZE_OF_SEC_SRV);
 
@@ -521,6 +547,8 @@ uint32_t fwss_lc_set_stage(uint32_t stage)
 
 	/* Run ICU FW Security services */
 	res = fw_service_request(p_ISD);
+	mutex_unlock(&fwss_mutex);
+
 	if (res != FW_SERVICE_SUCCESS) {
 		EMSG("fw_service_request error");
 		ret = TEE_ERROR_SECURITY;
@@ -550,6 +578,7 @@ uint32_t fwss_plain_key_update(r_key_group_t key_group, uint8_t key_id,
 		void *key_buf, uint16_t key_len, uint8_t write_protected)
 {
 	uint32_t res;
+	uint32_t fw_result;
 	r_icumif_isd_t *p_ISD;
 	uint32_t ret = TEE_SUCCESS;
 	uint8_t *input_key_share;
@@ -567,6 +596,7 @@ uint32_t fwss_plain_key_update(r_key_group_t key_group, uint8_t key_id,
 		goto out;
 	}
 
+	mutex_lock(&fwss_mutex);
 	/* Initialize the global buffer */
 	(void)memset(g_ISD_SEC_SVC_BUFFER, 0, SIZE_OF_SEC_SRV);
 
@@ -596,13 +626,16 @@ uint32_t fwss_plain_key_update(r_key_group_t key_group, uint8_t key_id,
 
 	/* Run ICU FW Security services */
 	res = fw_service_request(p_ISD);
+	fw_result = p_ISD->service_result;
+	mutex_unlock(&fwss_mutex);
+
 	if (res != FW_SERVICE_SUCCESS) {
 		EMSG("fw_service_request error");
 		ret = TEE_ERROR_SECURITY;
 	}
 
 	/* Check service result */
-	if (p_ISD->service_result == SERV_KEY_WRITE_PROTECTED) {
+	if (fw_result == SERV_KEY_WRITE_PROTECTED) {
 		switch (key_group) {
 			case KEY_GRP_AES:
 				key_grp_str = KEY_GRP_AES_STR;
@@ -662,6 +695,7 @@ uint32_t fwss_aes_cmac(r_key_group_t key_group, r_key_index_t key_id, void *msg_
 		goto out;
 	}
 
+	mutex_lock(&fwss_mutex);
 	/* Initialize the global buffer */
 	(void)memset(g_ISD_SEC_SVC_BUFFER, 0, SIZE_OF_SEC_SRV);
 
@@ -690,6 +724,8 @@ uint32_t fwss_aes_cmac(r_key_group_t key_group, r_key_index_t key_id, void *msg_
 
 	/* Run ICU FW Security services */
 	res = fw_service_request(p_ISD);
+	mutex_unlock(&fwss_mutex);
+
 	if (res != FW_SERVICE_SUCCESS) {
 		EMSG("fw_service_request error");
 		ret = TEE_ERROR_SECURITY;
@@ -721,6 +757,7 @@ uint32_t fwss_ext_flash_write(void)
 		goto out;
 	}
 
+	mutex_lock(&fwss_mutex);
 	/* Initialize the global buffer */
 	(void)memset(g_ISD_SEC_SVC_BUFFER, 0, SIZE_OF_SEC_SRV);
 
@@ -733,6 +770,8 @@ uint32_t fwss_ext_flash_write(void)
 
 	/* Run ICU FW Security services */
 	res = fw_service_request(p_ISD);
+	mutex_unlock(&fwss_mutex);
+
 	if (res != FW_SERVICE_SUCCESS) {
 		EMSG("fw_service_request error");
 		ret = TEE_ERROR_SECURITY;
@@ -772,6 +811,7 @@ uint32_t fwss_auth_aes_cipher(cipher_direction_t direction, auth_cipher_modes_t 
 	uint32_t res;
 	r_icumif_isd_t *p_ISD;
 	uint32_t ret = TEE_SUCCESS;
+	uint32_t fw_result;
 	uint32_t *iv_share;
 	uint32_t *auth_share;
 	uint32_t *input_share;
@@ -789,6 +829,7 @@ uint32_t fwss_auth_aes_cipher(cipher_direction_t direction, auth_cipher_modes_t 
 		goto out;
 	}
 
+	mutex_lock(&fwss_mutex);
 	/* Initialize the global buffer */
 	(void)memset(g_ISD_SEC_SVC_BUFFER, 0, SIZE_OF_SEC_SRV);
 
@@ -832,6 +873,9 @@ uint32_t fwss_auth_aes_cipher(cipher_direction_t direction, auth_cipher_modes_t 
 
 	/* Run ICU FW Security services */
 	res = fw_service_request(p_ISD);
+	fw_result = p_ISD->prm.AES_AUTH_CIPHER.verification_result;
+	mutex_unlock(&fwss_mutex);
+
 	if (res != FW_SERVICE_SUCCESS) {
 		EMSG("fw_service_request error");
 		ret = TEE_ERROR_SECURITY;
@@ -841,7 +885,7 @@ uint32_t fwss_auth_aes_cipher(cipher_direction_t direction, auth_cipher_modes_t 
 	(void)memcpy((uint8_t *)out_buf, (uint8_t *)output_share, in_len);
 	if (direction == CIPHER_DIR_ENCRYPTION)
 		(void)memcpy((uint8_t *)tag_buf, (uint8_t *)tag_share, tag_len);
-	if (!p_ISD->prm.AES_AUTH_CIPHER.verification_result) {
+	if (!fw_result) {
 		EMSG("Verify MAC successfully!");
 	} else {
 		DMSG("Verify MAC failed!");
@@ -882,6 +926,7 @@ uint32_t fwss_hmac_import(void *key_buf, size_t key_len, uint8_t hmac_key_id)
 		goto out;
 	}
 
+	mutex_lock(&fwss_mutex);
 	/* Initialize the global buffer */
 	(void)memset(g_ISD_SEC_SVC_BUFFER, 0, SIZE_OF_SEC_SRV);
 
@@ -902,6 +947,8 @@ uint32_t fwss_hmac_import(void *key_buf, size_t key_len, uint8_t hmac_key_id)
 
 	/* Run ICU FW Security services */
 	res = fw_service_request(p_ISD);
+	mutex_unlock(&fwss_mutex);
+
 	if (res != FW_SERVICE_SUCCESS) {
 		EMSG("fw_service_request error");
 		ret = TEE_ERROR_SECURITY;
@@ -949,6 +996,7 @@ uint32_t fwss_hmac_generation(uint8_t hmac_key_id, uint8_t hash_primitive, void 
 		goto out;
 	}
 
+	mutex_lock(&fwss_mutex);
 	/* Initialize the global buffer */
 	(void)memset(g_ISD_SEC_SVC_BUFFER, 0, SIZE_OF_SEC_SRV);
 
@@ -975,6 +1023,8 @@ uint32_t fwss_hmac_generation(uint8_t hmac_key_id, uint8_t hash_primitive, void 
 
 	/* Run ICU FW Security services */
 	res = fw_service_request(p_ISD);
+	mutex_unlock(&fwss_mutex);
+
 	if (res != FW_SERVICE_SUCCESS) {
 		EMSG("fw_service_request error");
 		ret = TEE_ERROR_SECURITY;
