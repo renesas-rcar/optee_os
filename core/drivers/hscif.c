@@ -100,9 +100,11 @@ void hscif_console_init(void)
 
 void reset_regs_4lpm(void)
 {
+#if RCAR_LSI == RCAR_V4M
 	io_write8(HSCIF_HSBRR, 0x11);
 	io_write16(HSCIF_HSSCR, 0x30);
 	io_write8(HSCIF_HSFTDR, 0x3d);
 	io_write16(HSCIF_HSFSR, 0x60);
 	io_write16(HSCIF_HSSRR, 0x8007);
+#endif
 }
