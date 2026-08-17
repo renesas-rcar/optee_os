@@ -13,9 +13,12 @@
 #include <io.h>
 #include <trace.h>
 #include <kernel/delay.h>
+#include <kernel/misc.h>
+#include <kernel/thread.h>
 #include <tee_api_defines.h>
 #include <stdbool.h>
 
+static uint8_t fw_pe_init[CFG_TEE_CORE_NB_CORE] __nex_bss;
 static void *g_ISD_BUFFER __nex_data = NULL;
 static void *g_LCS_BUFFER __nex_data = NULL;
 static void *g_CMAC_BUFFER __nex_data = NULL;
@@ -1053,7 +1056,23 @@ out:
 static uint32_t fw_service_request(r_icumif_isd_t *p_ISD)
 {
 	int32_t res;
+	uint32_t exceptions;
+	size_t pos;
 	uint32_t ret = FW_SERVICE_SUCCESS;
+
+	exceptions = thread_mask_exceptions(THREAD_EXCP_ALL);
+	pos = get_core_pos();
+
+	if (!fw_pe_init[pos]) {
+		res = R_ICUMIF_Init((uint32_t *)((uintptr_t)ICU_FW_SHMEM_BASE));
+		if (res != R_ICUMIF_ER_OK) {
+			EMSG("R_ICUMIF_Init res = 0x%x", res);
+			thread_unmask_exceptions(exceptions);
+			ret = FW_SERVICE_FAILURE;
+			goto out;
+		}
+		fw_pe_init[pos] = 1U;
+	}
 
 	res = R_ICUMIF_ServiceRequest(p_ISD);
 	if (res == R_ICUMIF_ER_OK) {
@@ -1072,6 +1091,8 @@ static uint32_t fw_service_request(r_icumif_isd_t *p_ISD)
 		res = R_ICUMIF_ServiceResponse();
 	}
 
+	thread_unmask_exceptions(exceptions);
+
 	if (res != R_ICUMIF_ER_OK) {
 		EMSG("res = 0x%x", res);
 		ret = FW_SERVICE_FAILURE;
@@ -1082,5 +1103,6 @@ static uint32_t fw_service_request(r_icumif_isd_t *p_ISD)
 		/* no operation */
 	}
 
+out:
 	return ret;
 }
