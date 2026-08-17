@@ -162,6 +162,7 @@ TEE_Result rcar_auth_ta_certificate(const struct shdr *key_cert,
 	uint64_t object_addr;
 	uint32_t cmac[4] = {0};
 	size_t real_ta_size = 0U;
+	uint32_t lock = 0;
 
 	key_cert_size = get_key_cert_size((const uint32_t *)key_cert);
 	if ((key_cert_size == 0U) || (key_cert_size > TA_KEY_CERT_AREA_SIZE)) {
@@ -230,13 +231,17 @@ TEE_Result rcar_auth_ta_certificate(const struct shdr *key_cert,
 	}
 	auth_mode = get_auth_mode();
 	if (auth_mode == SECURE_BOOT_MODE) {
+		hw_engine_lock(&lock, HWENG_SECURE_CORE);
+
 		ret = fwss_secureboot_verify(fixed_key_cert,
 					fixed_content_cert, cmac);
 		if (ret != BOOTROMAPI_OK) {
 			res = TEE_ERROR_SECURITY;
+			hw_engine_unlock(lock);
 			goto out;
 		}
 		ret = fwss_secureboot_dec_and_comp(fixed_content_cert, cmac);
+		hw_engine_unlock(lock);
 		if (ret != BOOTROMAPI_OK) {
 			res = TEE_ERROR_SECURITY;
 			goto out;
