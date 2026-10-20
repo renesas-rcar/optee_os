@@ -9,7 +9,7 @@
 #include <stdint.h>
 #include <kernel/thread_arch.h>
 
-#define VERSION_OF_RENESAS	"1.3.1"
+#define VERSION_OF_RENESAS	"1.4.0"
 
 /* Struct to store version */
 typedef struct {
