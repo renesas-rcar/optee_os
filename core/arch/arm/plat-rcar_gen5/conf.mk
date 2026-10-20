@@ -55,6 +55,14 @@ core-platform-cflags += -DCFG_RCAR_MUTEX_DELAY=$(CFG_RCAR_MUTEX_DELAY)
 CFG_CORE_RESERVED_SHM ?= n
 endif
 
+# For Log Data Recorder feature
+CFG_LDR ?= n
+ifeq ($(CFG_LDR),y)
+RCAR_DEBUG_LOG = 0
+core-platform-cflags += -DCFG_LDR
+core-platform-includes += lib
+endif
+
 # For Direct mapping function
 core-platform-cflags += -DRCAR_MMU_DIRECT_MAPPING
 

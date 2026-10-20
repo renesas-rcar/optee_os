@@ -9,7 +9,11 @@
 #include "rcar_log_func.h"
 #include "rcar-common.h"
 
-#ifndef CFG_SCIF
+#ifdef CFG_LDR
+#include "rcar_ldr.h"
+#endif
+
+#if !defined(CFG_LDR) && !defined(CFG_SCIF)
 const char trace_ext_prefix[] = "TEE-CORE";
 int trace_level = TRACE_LEVEL;
 
@@ -84,5 +88,9 @@ void plat_trace_ext_puts(const char *str)
 #endif
 	}
 }
-
+#elif defined(CFG_LDR)
+void plat_trace_ext_puts(const char *str)
+{
+	rcar_ldr_record(ldr_level_from_trace_str(str), "%s", str);
+}
 #endif

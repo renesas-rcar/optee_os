@@ -26,6 +26,10 @@
 #include "rcar_log_func.h"
 #include "rcar-common.h"
 
+#ifdef CFG_LDR
+#include "rcar_ldr.h"
+#endif
+
 #ifdef MEMORY1_BASE
 register_phys_mem_pgdir(MEMORY1_TYPE, MEMORY1_BASE, MEMORY1_SIZE);
 #endif
@@ -49,6 +53,9 @@ register_phys_mem_pgdir(MEMORY7_TYPE, MEMORY7_BASE, MEMORY7_SIZE);
 #endif
 #ifdef MEMORY8_BASE
 register_phys_mem_pgdir(MEMORY8_TYPE, MEMORY8_BASE, MEMORY8_SIZE);
+#endif
+#ifdef MEMORY9_BASE
+register_phys_mem_pgdir(MEMORY9_TYPE, MEMORY9_BASE, MEMORY9_SIZE);
 #endif
 #ifdef DEVICE0_PA_BASE
 register_phys_mem_pgdir(DEVICE0_TYPE, DEVICE0_PA_BASE, DEVICE0_SIZE);
@@ -120,6 +127,10 @@ void plat_console_init(void)
 	rcar_mfis_init();
 	hscif_uart_init(&console_data, CONSOLE_UART_START);
 	register_serial_console(&console_data.chip);
+#endif
+
+#ifdef CFG_LDR
+	rcar_ldr_init();
 #endif
 }
 
