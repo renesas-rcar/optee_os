@@ -68,8 +68,13 @@
 #define MAP_DEVICE_REG_RCAR_SIZE	(0x1FC00000)
 
 #define LIFEC_BASE              (0x1C020000)    /* Life Cycle address   */
-#define PRR_BASE                (0xFFF00000U)   /* Product Register address */
 #define MFIS_BASE               (0x189E0000U)   /* MFIS address */
+/*
+ * Product Register address (R-Car Gen5: located inside MFIS).
+ * Reserved for future use: not read by OP-TEE yet, kept for identifying
+ * the product/cut when multiple Gen5 boards/SoCs need different handling.
+ */
+#define PRR_BASE                (MFIS_BASE + 0x44U)
 
 #define MEM_SECTION_SIZE        (0x00100000U)
 #define MEM_SECTION_MFIS_SIZE	(0x00010000U)
@@ -109,34 +114,30 @@
 #define MEMORY4_SIZE		(TA_VERIFICATION_SIZE)
 #define MEMORY4_TYPE		MEM_AREA_IO_SEC
 
-/* Product Register (PRR) */
-#define MEMORY5_BASE		ROUNDDOWN(PRR_BASE, MEM_SECTION_SIZE)
+/* Non Cache Stack Area */
+#define MEMORY5_BASE           ROUNDDOWN(NONCACHE_WORK_BASE, \
+					MEM_SECTION_SIZE)
 #define MEMORY5_SIZE		(MEM_SECTION_SIZE)
 #define MEMORY5_TYPE		MEM_AREA_IO_SEC
 
-/* Non Cache Stack Area */
-#define MEMORY6_BASE           ROUNDDOWN(NONCACHE_WORK_BASE, \
-					MEM_SECTION_SIZE)
-#define MEMORY6_SIZE		(MEM_SECTION_SIZE)
+/* RSIPM Share Memory Address Map */
+#define MEMORY6_BASE		ROUNDDOWN(RSIPM_FW_SHMEM_BASE, MEM_SECTION_SIZE)
+#define MEMORY6_SIZE		(RSIPM_FW_SHMEM_SIZE)
 #define MEMORY6_TYPE		MEM_AREA_IO_SEC
 
-/* ICU FW Share Memory Address Map */
-#define MEMORY7_BASE		ROUNDDOWN(RSIPM_FW_SHMEM_BASE, MEM_SECTION_SIZE)
-#define MEMORY7_SIZE		(RSIPM_FW_SHMEM_SIZE)
-#define MEMORY7_TYPE		MEM_AREA_IO_SEC
-
 /* MFIS Address Map */
-#define MEMORY8_BASE		ROUNDDOWN(MFIS_BASE, MEM_SECTION_MFIS_SIZE)
-#define MEMORY8_SIZE		(MEM_SECTION_SIZE)
-#define MEMORY8_TYPE		MEM_AREA_IO_SEC
-#define MEMORY8_PA_END		(MFIS_BASE + MEMORY8_SIZE)
+#define MEMORY7_BASE		ROUNDDOWN(MFIS_BASE, MEM_SECTION_MFIS_SIZE)
+#define MEMORY7_SIZE		(MEM_SECTION_SIZE)
+#define MEMORY7_TYPE		MEM_AREA_IO_SEC
+#define MEMORY7_PA_END		(MFIS_BASE + MEMORY7_SIZE)
 
 #define OPTEE_LDR_RING_BASE		UL(0x8C148000)
 #define OPTEE_LDR_RING_SIZE		UL(0x0003FE00)
 
-#define MEMORY9_BASE			ROUNDDOWN(OPTEE_LDR_RING_BASE, MEM_SECTION_SIZE)
-#define MEMORY9_SIZE                    OPTEE_LDR_RING_SIZE
-#define MEMORY9_TYPE			MEM_AREA_IO_SEC
+#define MEMORY8_BASE			ROUNDDOWN(OPTEE_LDR_RING_BASE, \
+						MEM_SECTION_SIZE)
+#define MEMORY8_SIZE                    OPTEE_LDR_RING_SIZE
+#define MEMORY8_TYPE			MEM_AREA_IO_SEC
 
 #endif  /* CFG_RCAR_GEN5 */
 

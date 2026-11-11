@@ -55,7 +55,7 @@ void rcar_mfis_lock(mfis_target_t target)
 
 	if (mmu_enabled)
 		lock_reg = (uintptr_t)(p2v_ioadr(mfis_mfislckr_table[target],
-			MEMORY8_PA_END - (mfis_mfislckr_table[target])));
+			MEMORY7_PA_END - (mfis_mfislckr_table[target])));
 	else
 		lock_reg = mfis_mfislckr_table[target];
 
@@ -74,7 +74,7 @@ void rcar_mfis_unlock(mfis_target_t target)
 	uint32_t register_value_mfis_mfislckr;
 	bool mmu_enabled = cpu_mmu_enabled();
 	vaddr_t address =  p2v_ioadr(mfis_mfislckr_table[target],
-			MEMORY8_PA_END - (mfis_mfislckr_table[target]));
+			MEMORY7_PA_END - (mfis_mfislckr_table[target]));
 
 	if (mmu_enabled) {
 		register_value_mfis_mfislckr = io_read32(address);

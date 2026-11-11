@@ -1211,7 +1211,7 @@ static bool assign_mem_va_dir(vaddr_t tee_ram_va, struct memory_map *mem_map,
 #ifdef RCAR_MMU_DIRECT_MAPPING
 	const paddr_t direct_map_area[][2] = {
 		{ MEMORY4_BASE, MEMORY4_SIZE }, /* TA area for verification */
-		{ MEMORY7_BASE, MEMORY7_SIZE } /* RSIP-M FW Share Memory */
+		{ MEMORY6_BASE, MEMORY6_SIZE } /* RSIP-M FW Share Memory */
 	};
 	const size_t dmnum = sizeof(direct_map_area) / sizeof(paddr_t) / 2;
 	size_t last;

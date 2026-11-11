@@ -25,8 +25,14 @@
 /* RPC No specific to R-Car */
 #define TEE_RPC_DEBUG_LOG      (0x3F000000U)
 
-/* Product Register */
-#define PRR     p2v_ioadr(0xFFF00044U, MEMORY5_SIZE)
+/*
+ * Product Register (PRR) virtual address.
+ * Reserved for future use: currently no code reads PRR on Gen5. Keep it
+ * so that board/SoC-specific handling (e.g. X5H, X5L, or different ES
+ * cut versions) can identify the product and revision at runtime.
+ * PRR is covered by the MFIS address map (MEMORY7).
+ */
+#define PRR     p2v_ioadr(PRR_BASE, MEMORY7_PA_END - PRR_BASE)
 
 /* Debug log output for test confirmation */
 #ifndef RCAR_TEST_LOG
@@ -44,9 +50,6 @@
 #define NORMAL_WORLD_COMPLETE_INIT      (1U)
 
 /* Declaration of global variables */
-extern uint32_t product_type;
-extern const int8_t *product_name;
-extern uint32_t prr_cut;
 extern uint32_t cpu_on_core_lock;
 extern uint32_t cpu_on_core_bit;
 
