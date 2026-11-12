@@ -58,8 +58,8 @@
 #define TA_VERIFICATION_BASE    (0x10100000U)	/* TA for verification addr */
 #define TA_VERIFICATION_SIZE    (0x00100000U)   /* TA for verification size */
 
-#define RSIPM_FW_SHMEM_BASE    (0x18500000U) /* RSIPM FW Share Memory address */
-#define RSIPM_FW_SHMEM_SIZE    (0x00100000U) /* RSIPM FW Share Memory size */
+#define RSIPM_FW_SHMEM_BASE    (0x12030000U) /* RSIPM FW Share Memory address */
+#define RSIPM_FW_SHMEM_SIZE    (0x00002000U) /* RSIPM FW Share Memory size */
 
 #define SYSSS_MAIN_REGION_0_BASE	(0xC1320000)
 

@@ -8,7 +8,7 @@
 
 #include <stdint.h>
 
-#define INTER_CORE_COMM_SHARED_MEM_ADDR     (0x185C0000uL)
+#define INTER_CORE_COMM_SHARED_MEM_ADDR	(0x12030000uL)
 
 #define SHARED_FLAG_SIZE          (16U)
 #define SHARED_DATA_SIZE          (104U)
