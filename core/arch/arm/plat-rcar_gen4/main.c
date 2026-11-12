@@ -29,6 +29,7 @@
  * Copyright (c) 2021-2024, Renesas Electronics Corporation.
  */
 
+#include <arm.h>
 #include <console.h>
 #include <kernel/panic.h>
 #include <mm/core_memprot.h>
@@ -36,7 +37,10 @@
 #include <stdint.h>
 #include <drivers/hscif.h>
 #include <drivers/gic.h>
+#include <inttypes.h>
 #include <kernel/boot.h>
+#include <string_ext.h>
+#include <tee/tee_cryp_utl.h>
 #include <trace.h>
 #include <kernel/misc.h>
 #include <kernel/spinlock.h>
@@ -257,6 +261,25 @@ static void main_hook_gic_add(struct itr_chip *chip, size_t it, uint32_t flags, 
 	cpu_spin_unlock_xrestore(&cpu_on_core_lock, exceptions);
 	DMSG("OUT cpu_mask=0x%x", cpu_mask);
 }
+
+#if !defined(CFG_CRYPT_HW_CRYPTOENGINE) && defined(CFG_WITH_SOFTWARE_PRNG)
+void plat_rng_init(void)
+{
+	uint64_t cntpct = 0;
+	TEE_Result res = TEE_SUCCESS;
+
+	cntpct = barrier_read_counter_timer();
+
+	res = crypto_rng_init(&cntpct, sizeof(cntpct));
+
+	memzero_explicit(&cntpct, sizeof(cntpct));
+
+	if (res) {
+		EMSG("Failed to initialize RNG: %#" PRIx32, res);
+		panic();
+	}
+}
+#endif
 
 /* Not defined. Use implementation from gic driver in core/drivers/gic.c
 void interrupt_main_handler(void){ }
