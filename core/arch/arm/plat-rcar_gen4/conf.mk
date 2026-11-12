@@ -35,11 +35,15 @@ $(eval $(call add_define,RCAR_V4M))
 # Set "LSI" as Make paramater with value: "S4", "V4H", "V4M" to select one of them.
 ifeq (${LSI},V4H)
   RCAR_LSI:=${RCAR_V4H}
+  RCAR_ICUM_TARGET_DEVICE:=-DTARGET_DEVICE_V4H
 else ifeq (${LSI},V4M)
   RCAR_LSI:=${RCAR_V4M}
-else
-  LSI = S4
+  RCAR_ICUM_TARGET_DEVICE:=-DTARGET_DEVICE_V4M
+else ifeq (${LSI},S4)
   RCAR_LSI:=${RCAR_S4}
+  RCAR_ICUM_TARGET_DEVICE:=-DTARGET_DEVICE_S4X
+else
+  $(error LSI is not defined. Please specify a supported LSI value: S4, V4H, or V4M)
 endif
 $(eval $(call add_define,RCAR_LSI))
 core-platform-cflags += $(DEFINES)
@@ -117,29 +121,23 @@ CFG_DYNAMIC_TA_AUTH_BY_HWENGINE ?= n
 ifeq ($(CFG_DYNAMIC_TA_AUTH_BY_HWENGINE),y)
 core-platform-cflags += -DRCAR_DYNAMIC_TA_AUTH_BY_HWENGINE
 CFG_ICUM_FW_SERVICE := y
-core-platform-cflags += -DTARGET_CORTEX_A
-core-platform-cflags += -DTARGET_DEVICE_S4X
-core-platform-cflags += -DAARCH64
 endif
 
 CFG_TRNG_BY_ICUMX_HWENGINE ?= n
 ifeq ($(CFG_TRNG_BY_ICUMX_HWENGINE),y)
 core-platform-cflags += -DRCAR_TRNG_BY_ICUMX_HWENGINE
 CFG_ICUM_FW_SERVICE := y
-core-platform-cflags += -DTARGET_CORTEX_A
-core-platform-cflags += -DTARGET_DEVICE_V4H
-core-platform-cflags += -DTARGET_DEVICE_V4M
-core-platform-cflags += -DAARCH64
 endif
 
 CFG_SECURE_STORAGE_BY_ICUMX_HWENGINE ?= n
-ifeq ($(CFG_SECURE_STORAGE_BY_ICUMX_HWENGINE), y)
+ifeq ($(CFG_SECURE_STORAGE_BY_ICUMX_HWENGINE),y)
 core-platform-cflags += -DRCAR_SECURE_STORAGE_BY_ICUMX_HWENGINE
 CFG_ICUM_FW_SERVICE := y
-core-platform-cflags += -DTARGET_CORTEX_A
-core-platform-cflags += -DTARGET_DEVICE_V4H
-core-platform-cflags += -DTARGET_DEVICE_V4M
-core-platform-cflags += -DAARCH64
+endif
+
+# Common flags for ICUMX FW service
+ifeq ($(CFG_ICUM_FW_SERVICE),y)
+core-platform-cflags += -DTARGET_CORTEX_A $(RCAR_ICUM_TARGET_DEVICE) -DAARCH64
 endif
 
 ifeq ($(CFG_NS_VIRTUALIZATION),y)
